@@ -439,6 +439,11 @@ class meower(files, security): # Meower Server itself
                                                 "username": val["username"]
                                             }
                                         }
+                                        
+                                        # Check for clients that are trying to steal the ID and kick em' / Disconnect other sessions
+                                        if val["username"] in self.cl.getUsernames():
+                                            print("detected someone trying to use the username {0} wrongly".format(val["username"]))
+                                            self.cl.kickClient(val["username"])
 
                                         self.cl.sendPacket({"cmd": "direct", "val": payload2, "id": message["id"]})
                                         self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
