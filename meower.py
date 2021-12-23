@@ -254,16 +254,17 @@ class security: # Security API for generating/checking passwords, creating sessi
                             "sfx": True,
                             "debug": False,
                             "bgm": True,
-                            "bgm_song": "Voxalice - Percussion bass loop"
+                            "bgm_song": "Voxalice - Percussion bass loop",
+                            "layout": "new"
                         },
                         "user_data": {
-                            "pfp_type": "",
-                            "pfp_data": ""
+                            "pfp_type": "2",
+                            "pfp_data": "1",
+                            "lvl": "0", # Account level, 0:Normal member, 1:Admin, 2:On-Watch
+                            "quote": "", # User's quote
+                            "email": "" # TODO: Add an Email bot for account recovery
                         },
-                        "lvl": "", # Account level, 0:Normal member, 1:Admin, 2:On-Watch
-                        "quote": "", # User's quote
-                        "pswd": "", # STORE ONLY SALTED HASHES FOR PASSWORD, DO NOT STORE PLAINTEXT OR UNSALTED HASHES
-                        "email": "" # TODO: Add an Email bot for account recovery
+                        "pswd": "" # STORE ONLY SALTED HASHES FOR PASSWORD, DO NOT STORE PLAINTEXT OR UNSALTED HASHES
                     }
                     result2 = self.fs.write("/Userdata/", str(username + ".json"), json.dumps(tmp))
                     if result2:
@@ -330,11 +331,11 @@ class meower(files, security): # Meower Server itself
         ])
     
         self.cl.loadIPBlocklist([
-            '127.0.0.1',
+            '127.0.0.1'
         ])
     
-        self.cl.setMOTD("Meower Social Media Platform - Prototype Server", enable=True)
-        os.system(clear_cmd+" && echo Meower Social Media Platform - Prototype Server")
+        self.cl.setMOTD("Meower Social Media Platform Server", enable=True)
+        os.system(clear_cmd+" && echo Meower Social Media Platform Server")
         self.cl.server()
     
     def get_client_statedata(self, client): # "steals" information from the CloudLink module to get better client data
@@ -444,7 +445,7 @@ class meower(files, security): # Meower Server itself
                                         if val["username"] in self.cl.getUsernames():
                                             print("detected someone trying to use the username {0} wrongly".format(val["username"]))
                                             self.cl.kickClient(val["username"])
-
+                                        
                                         self.cl.sendPacket({"cmd": "direct", "val": payload2, "id": message["id"]})
                                         self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
                                     else:
@@ -576,7 +577,7 @@ class meower(files, security): # Meower Server itself
                                 payload.pop("pswd") # Remove the password hash from message (why the duck would we want to send back the password)
                                 if str(val) != str(id): # Purge sensitive data if the specified ID isn't the same
                                     payload.pop("user_settings") # Remove the user's settings
-                                    payload.pop("email") # Remove the user's email
+                                    payload["user_data"].pop("email") # Remove the user's email
                                 payload = {
                                     "mode": "profile",
                                     "payload": payload
@@ -618,6 +619,9 @@ class meower(files, security): # Meower Server itself
                                                 "mode": "auth",
                                                 "payload": ""
                                             }
+                                            
+                                            # The client is authed
+                                            self.modify_client_statedata(id, "authed", True)
                                             
                                             self.cl.sendPacket({"cmd": "direct", "val": payload2, "id": message["id"]})
                                             self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
@@ -777,6 +781,7 @@ class meower(files, security): # Meower Server itself
                                 
                                 relay_post = post_w_metadata
                                 relay_post["mode"] = 1
+                                relay_post["post_id"] = str(post_id)
                                 #print(relay_post)
                                 
                                 self.cl.sendPacket({"cmd": "direct", "val": relay_post})
@@ -791,20 +796,27 @@ class meower(files, security): # Meower Server itself
             
             elif cmd == "get_post":
                 if (self.get_client_statedata(id)["authed"]) or (self.ignoreUnauthedBlanks):
-                    # Check for posts in storage
-                    result, payload = self.fs.read("/Storage/Posts/" + val)
-                    
-                    if result: # Format message for meower
-                        payload = {
-                            "mode": "post",
-                            "payload": json.loads(payload)
-                        }
-                    
-                    if result:
-                        self.cl.sendPacket({"cmd": "direct", "val": payload, "id": message["id"]})
-                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
+                    if type(val) == str:
+                        # Check for posts in storage
+                        result, payload = self.fs.read("/Storage/Posts/" + val)
+                        
+                        if result: # Format message for meower
+                            # Temporarily convert the JSON string to Dict to add the post ID data to it
+                            tmp_payload = json.loads(payload)
+                            tmp_payload["post_id"] = val
+                            payload = json.dumps(tmp_payload)
+                            
+                            payload = {
+                                "mode": "post",
+                                "payload": json.loads(payload)
+                            }
+                        if result:
+                            self.cl.sendPacket({"cmd": "direct", "val": payload, "id": message["id"]})
+                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
+                        else:
+                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
                     else:
-                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
+                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Datatype"], "id": message["id"]})
                 else:
                     self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": message["id"]})
             
