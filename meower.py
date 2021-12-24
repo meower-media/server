@@ -578,6 +578,9 @@ class meower(files, security): # Meower Server itself
                                 if str(val) != str(id): # Purge sensitive data if the specified ID isn't the same
                                     payload.pop("user_settings") # Remove the user's settings
                                     payload["user_data"].pop("email") # Remove the user's email
+                                
+                                payload["user_id"] = str(val) # Report user ID for profile
+                                
                                 payload = {
                                     "mode": "profile",
                                     "payload": payload
