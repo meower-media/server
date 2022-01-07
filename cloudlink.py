@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-version = "0.1.7.5"
+version = "0.1.7.6"
 
 # Server based on https://github.com/Pithikos/python-websocket-server
 # Client based on https://github.com/websocket-client/websocket-client
@@ -181,6 +181,8 @@ class API:
                             print('Sending {0} to {1}'.format(msg, client["id"]))
                         if self._get_client_type(client) == "scratch":
                             if ("val" in msg) and (type(msg["val"]) == dict):
+                                if self.debug:
+                                    print('Auto-converting to json string for scratch client')
                                 msg["val"] = json.dumps(msg["val"])
                         self.wss.send_message(client, json.dumps(msg))
                     except Exception as e:
@@ -197,6 +199,8 @@ class API:
                                 print('Sending {0} to {1}'.format(msg, id))
                             if self._get_client_type(client) == "scratch":
                                 if ("val" in msg) and (type(msg["val"]) == dict):
+                                    if self.debug:
+                                        print('Auto-converting to json string for scratch client')
                                     msg["val"] = json.dumps(msg["val"])
                             self.wss.send_message(client, json.dumps(msg))
                         except Exception as e:
@@ -469,27 +473,59 @@ class CloudLink(API):
         else:
             return False
     
-    def _send_to_all(self, payload): # "Better" (?) send to all function
-        tmp_payload = payload
-        for client in self.wss.clients:
-            #print("sending {0} to {1}".format(payload, client["id"]))
-            if self._get_client_type(client) == "scratch":
-                #print("sending to all, {0} is a scratcher".format(client["id"]))
-                if ("val" in payload) and (type(payload["val"]) == dict):
-                    #print("stringifying nested json")
-                    tmp_payload["val"] = json.dumps(payload["val"])
-                if not self.statedata["secure_enable"]:
-                    self.wss.send_message(client, json.dumps(tmp_payload))
-                else:
-                    if self._is_obj_trusted(client):
-                        self.wss.send_message(client, json.dumps(tmp_payload))
-            else:
-                if not self.statedata["secure_enable"]:
-                    self.wss.send_message(client, json.dumps(payload))
-                else:
-                    if self._is_obj_trusted(client):
+    def _send_to_all(self, payload): # Send to all function
+        if type(payload) == dict:
+            if self.debug:
+                print("Info on _send_to_all: Sending {0}".format(payload))
+            
+            auto_convert = False
+            if "val" in payload: # nested json checks
+                if self._is_json(payload["val"]):
+                    if self.debug:
+                        print("Info on _send_to_all: Detected nested JSON")
+                    if type(payload["val"]) == str:
+                        if self.debug:
+                            print("Info on _send_to_all: Nested JSON is string, auto-converting")
+                        try:
+                            payload["val"] = json.loads(payload["val"])
+                            auto_convert = True
+                        except json.decoder.JSONDecodeError:
+                            if self.debug:
+                                print("Error on _send_to_all: Auto-convert to JSON error")
+                            auto_convert = False
+                    elif type(payload["val"]) == dict:
+                        if self.debug:
+                            print("Info on _send_to_all: Nested JSON is already real JSON, not auto-converting to stringified JSON")
+                        auto_convert = True
+                    
+            
+            clients = self.wss.clients # Load client list
+            for client in clients: # Loop through list to send message
+                client_type = self._get_client_type(client) # Get the current client type
+                if client_type == "scratch": # Scratch type, MUST STRINGIFY NESTED JSON!
+                    if self.statedata["secure_enable"]: # Trusted Access
+                        if self._is_obj_trusted(client):
+                            if auto_convert:
+                                payload["val"] = json.dumps(payload["val"])
+                                self.wss.send_message(client, json.dumps(payload))
+                            else:
+                                self.wss.send_message(client, json.dumps(payload))
+                    else:
+                        if auto_convert:
+                            payload["val"] = json.dumps(payload["val"])
+                            self.wss.send_message(client, json.dumps(payload))
+                        else:
+                            self.wss.send_message(client, json.dumps(payload))
+                else: # Other types or JS, DO NOT STRINGIFY NESTED JSON!
+                    if self.statedata["secure_enable"]: # Trusted Access
+                        if self._is_obj_trusted(client):
+                            self.wss.send_message(client, json.dumps(payload))
+                    else:
                         self.wss.send_message(client, json.dumps(payload))
-    
+        else:
+            if self.debug:
+                print('Error on _send_to_all: Payload datatype invalid: expecting <class "bool">, got {0}'.format(type(payload)))
+
     def _server_packet_handler(self, client, server, message): # The almighty packet handler, single-handedly responsible for over hundreds of lines of code
         if not type(client) == type(None):
             if not len(str(message)) == 0:
@@ -916,28 +952,22 @@ class CloudLink(API):
                             msg = json.loads(message)
                             if ("cmd" in msg) and ("val" in msg):
                                 if (msg["cmd"] == "direct") and (type(msg["val"]) == dict) and (msg["val"]["cmd"] in ["ip", "type"]):
-                                    if self._is_obj_blocked(client):
-                                        if self.debug:
-                                            print("User {0} is IP blocked, not trusting".format(client["id"]))
-                                        # Tell the client it is IP blocked
-                                        self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["Blocked"]}))
-                                    else:
-                                        self._server_packet_handler(client, server, message)
+                                    self._server_packet_handler(client, server, message)
                                 else:
                                     if (msg["cmd"] == "direct") or (msg["cmd"] == "gmsg"):
-                                        if self._is_obj_blocked(client):
+                                        if (self._get_ip_of_obj(client) == "") or (self._get_ip_of_obj(client) == None):
                                             if self.debug:
-                                                print("User {0} is IP blocked, not trusting".format(client["id"]))
-                                            # Tell the client it is IP blocked
-                                            self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["Blocked"]}))
+                                                print("User {0} has sent a blank IP or not specified IP".format(client["id"]))
+                                            self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["IPRequred"]}))
                                         else:
-                                            if type(msg["val"]) == str:
-                                                if msg["val"] in self.statedata["secure_keys"]:
-                                                    if self._get_ip_of_obj(client) == None:
-                                                        if self.debug:
-                                                            print("User {0} has not set their IP address, not trusting".format(client["id"]))
-                                                        self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["IPRequred"]}))
-                                                    else:
+                                            if self._is_obj_blocked(client):
+                                                if self.debug:
+                                                    print("User {0} is IP blocked, not trusting".format(client["id"]))
+                                                # Tell the client it is IP blocked
+                                                self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["Blocked"]}))
+                                            else:
+                                                if type(msg["val"]) == str:
+                                                    if msg["val"] in self.statedata["secure_keys"]:
                                                         self.statedata["trusted"].append(client)
                                                         if self.debug:
                                                             print("Trusting user {0}".format(client["id"]))
@@ -950,10 +980,10 @@ class CloudLink(API):
 
                                                         # Tell the client it has been trusted
                                                         self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["OK"]}))
+                                                    else:
+                                                        self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["TAInvalid"]}))
                                                 else:
-                                                    self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["TAInvalid"]}))
-                                            else:
-                                                self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["Datatype"]}))
+                                                    self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["Datatype"]}))
                                     else:
                                         self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["Refused"]}))
                             else:

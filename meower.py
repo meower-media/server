@@ -290,7 +290,7 @@ class meower(files, security): # Meower Server itself
         self.cl.codes["KeyNotFound"] = "I:010 | Key Not Found"
         self.cl.codes["PasswordInvalid"] = "I:011 | Invalid Password"
         self.cl.codes["GettingReady"] = "I:012 | Getting ready"
-        self.cl.codes["ObsoleteClient"] = "I:013 | Client is out-of-date"
+        self.cl.codes["ObsoleteClient"] = "I:013 | Client is out-of-date or unsupported"
         self.cl.codes["Pong"] = "I:014 | Pong"
         self.cl.codes["IDExists"] = "I:015 | Account exists"
         self.cl.codes["2FAOnly"] = "I:016 | 2FA Required"
@@ -302,6 +302,13 @@ class meower(files, security): # Meower Server itself
         
         # init the filesystem
         self.fs.init_files()
+        
+        # create a list of supported versions
+        self.versions_supported = [
+            "scratch-beta-5.0",
+            "scratch-beta-5.1",
+            "js-test"
+        ]
         
         if runAuth:
             if autoAuth:
@@ -327,7 +334,7 @@ class meower(files, security): # Meower Server itself
         self.cl.callback("on_close", self.on_close)
         self.cl.callback("on_connect", self.on_connect)
         self.cl.trustedAccess(True, [
-            "meower" # DO NOT USE THIS KEY IN PRODUCTION
+            "meower" # Do not modify key
         ])
     
         self.cl.loadIPBlocklist([
@@ -384,8 +391,13 @@ class meower(files, security): # Meower Server itself
     def on_connect(self, client): # TODO: Write code that can tell clients that someone has connected
         self.modify_client_statedata(client, "authtype", "")
         self.modify_client_statedata(client, "authed", False)
+        
+        # Rate limiter
+        today = datetime.now()
+        self.modify_client_statedata(client, "last_packet", today.strftime("%d%m%Y%H%M%S"))
     
-    def on_packet(self, message): # TODO: Add authentication, storage, and GET/PUT-style storage implementation
+    def on_packet(self, message):
+        #print(message)
         id = message["id"]
         val = message["val"]
         if type(message["id"]) == dict:
@@ -397,8 +409,6 @@ class meower(files, security): # Meower Server itself
         if "cmd" in message:    
             cmd = message["cmd"]
             
-            # TODO: Add ratelimiter and IP anti-spam blocker
-            # TODO: Implement a password-based authentication system that doesn't suck a duck
             """if cmd == "block":
                 self.cl.blockIP(ip)
                 self.cl.untrust(id)
@@ -413,6 +423,15 @@ class meower(files, security): # Meower Server itself
             
             if cmd == "ping":
                 self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Pong"], "id": id})
+            
+            elif cmd == "version_chk":
+                if type(val) == str:
+                    if val in self.versions_supported:
+                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
+                    else:
+                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["ObsoleteClient"], "id": message["id"]})
+                else:
+                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Datatype"], "id": message["id"]})
             
             # Security and account stuff
             
@@ -624,6 +643,7 @@ class meower(files, security): # Meower Server itself
                                             }
                                             
                                             # The client is authed
+                                            print("{0} is authed w/ new account generated".format(val["username"]))
                                             self.modify_client_statedata(id, "authed", True)
                                             
                                             self.cl.sendPacket({"cmd": "direct", "val": payload2, "id": message["id"]})
