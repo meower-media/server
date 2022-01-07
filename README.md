@@ -24,3 +24,5 @@ Meower is configured to use CloudLink's Trusted Access feature, which implements
 1. Make a fork of the repo.
 2. Modify your source.
 3. Make a PR request.
+
+Meower server v 1.2 i guess
