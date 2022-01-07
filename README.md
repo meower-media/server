@@ -2,10 +2,7 @@
 Official source code of the Meower server, written in Python. Powered by CloudLink.
 
 ## Dependencies
-* CloudLink >=0.1.7.4
-* better-profanity
-* bcrypt
-* scratch2py
+* Run "pip install -r requirements.txt" in the downloaded and unzipped directory
 
 ## Running the server
 Simply download and run meower.py to start a localhost server.
