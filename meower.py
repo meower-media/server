@@ -583,7 +583,7 @@ class meower(files, security): # Meower Server itself
                             print("Error")
                             self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
                     else:
-                       self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]}) 
+                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]}) 
                 else:
                     self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": message["id"]})
             
@@ -643,7 +643,7 @@ class meower(files, security): # Meower Server itself
                                             }
                                             
                                             # The client is authed
-                                            print("{0} is authed w/ new account generated".format(val["username"]))
+                                            print("{0} is authed w/ new account generated".format(id))
                                             self.modify_client_statedata(id, "authed", True)
                                             
                                             self.cl.sendPacket({"cmd": "direct", "val": payload2, "id": message["id"]})
