@@ -158,7 +158,7 @@ class security: # Security API for generating/checking passwords, creating sessi
         self.fs = files()
         print("Security class ready.")
     
-    def create_pswd(self, password, strength=15): # bcrypt hashes w/ salt, TODO: add pepper and use a stronger default strength
+    def create_pswd(self, password, strength=18): # bcrypt hashes w/ salt
         if type(password) == str:
             if type(strength) == int:
                 pswd_bytes = bytes(password, "utf-8")
@@ -384,11 +384,11 @@ class meower(files, security): # Meower Server itself
             else:
                 return False
     
-    def on_close(self, client): # TODO: Write code that can tell clients that someone has disconnected
+    def on_close(self, client):
         #print("Client disconnected:", client["id"])
         pass
     
-    def on_connect(self, client): # TODO: Write code that can tell clients that someone has connected
+    def on_connect(self, client):
         self.modify_client_statedata(client, "authtype", "")
         self.modify_client_statedata(client, "authed", False)
         
