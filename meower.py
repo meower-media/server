@@ -7,6 +7,7 @@ import random
 import bcrypt
 import json
 from datetime import datetime
+import time
 
 """
 
@@ -240,7 +241,8 @@ class security: # Security API for generating/checking passwords, creating sessi
                         "secure_data": {
                             "email": "", # TODO: Add an Email bot for account recovery
                             "pswd": "", # STORE ONLY SALTED HASHES FOR PASSWORD, DO NOT STORE PLAINTEXT OR UNSALTED HASHES
-                            "lvl": "0" # Account levels. 
+                            "lvl": "0", # Account levels. 
+                            "banned": False # Banned?
                         }
                     }
                     result2 = self.fs.write("/Userdata/", str(username + ".json"), json.dumps(tmp))
@@ -272,6 +274,7 @@ class meower(files, security): # Meower Server itself
         self.cl.codes["IDExists"] = "I:015 | Account exists"
         self.cl.codes["2FAOnly"] = "I:016 | 2FA Required"
         self.cl.codes["MissingPermissions"] = "I:017 | Missing permissions"
+        self.cl.codes["Banned"] = "E:018 | Account Banned"
         
         clear_cmd = "clear" # Change for os-specific console clear
         # Instanciate the other classes into Meower
@@ -281,14 +284,25 @@ class meower(files, security): # Meower Server itself
         # init the filesystem
         self.fs.init_files()
         
+        # Peak number of users logger
+        self.peak_users_logger = {
+            "count": 0,
+            "timestamp": {
+                "mo": 0,
+                "d": 0,
+                "y": 0,
+                "h": 0,
+                "mi": 0,
+                "s": 0
+            }
+        }
+        
         # create a list of supported versions
         self.versions_supported = [
-            "scratch-beta-5",
-            "scratch-beta-5.0",
             "scratch-beta-4.8",
-            "scratch-beta-5.1",
             "scratch-beta-5.2",
             "scratch-beta-5.3",
+            "scratch-beta-5.4",
             "meower-mobile-0.4_3"
         ]
     
@@ -303,9 +317,11 @@ class meower(files, security): # Meower Server itself
         self.cl.loadIPBlocklist([
             '127.0.0.1'
         ])
-    
+        
         self.cl.setMOTD("Meower Social Media Platform Server", enable=True)
+        time.sleep(1)
         os.system(clear_cmd+" && echo Meower Social Media Platform Server")
+        time.sleep(1)
         self.cl.server(port=3000, ip="0.0.0.0")
     
     def log(self, event):
@@ -383,10 +399,16 @@ class meower(files, security): # Meower Server itself
             return 0, None, None
     
     def on_close(self, client):
-        self.log("{0} logged out".format(self.cl._get_username_of_obj(client)))
-        #self.cl.statedata["ulist"]["usernames"].pop(client)
-    
+        if type(client) == dict:
+            self.log("{0} Disconnected.".format(client["id"]))
+        elif type(client) == str:
+            self.log("{0} Logged out.".format(self.cl._get_username_of_obj(client)))
+        self.log_peak_users()
+        # Error on _closed_connection_server: object of type 'method' has no len()
+        # Error on _server_packet_handler: Replacement index 0 out of range for positional args tuple
+       
     def on_connect(self, client):
+        self.log("{0} Connected.".format(client["id"]))
         self.modify_client_statedata(client, "authtype", "")
         self.modify_client_statedata(client, "authed", False)
         
@@ -398,21 +420,60 @@ class meower(files, security): # Meower Server itself
             "s": today.strftime("%S")
         })
     
+    def log_peak_users(self):
+        current_users = len(self.cl.getUsernames())
+        if current_users > self.peak_users_logger["count"]:
+            today = datetime.now()
+            self.peak_users_logger = {
+                "count": current_users,
+                "timestamp": {
+                    "mo": (datetime.now()).strftime("%m"),
+                    "d": (datetime.now()).strftime("%d"),
+                    "y": (datetime.now()).strftime("%Y"),
+                    "h": (datetime.now()).strftime("%H"),
+                    "mi": (datetime.now()).strftime("%M"),
+                    "s": (datetime.now()).strftime("%S")
+                }
+            }
+            self.log("New peak in # of concurrent users! {0}".format(current_users))
+            payload = {
+                "mode": "peak",
+                "payload": self.peak_users_logger
+            }
+            self.cl.sendPacket({"cmd": "direct", "val": payload})
+    
     def on_packet(self, message):
-        #print(message)
         id = message["id"]
         val = message["val"]
         if type(message["id"]) == dict:
             ip = self.cl.getIPofObject(message["id"])
+            client = message["id"]
             clienttype = 0
         elif type(message["id"]) == str:
             ip = self.cl.getIPofUsername(message["id"])
+            client = self.cl._get_obj_of_username(message["id"])
             clienttype = 1
+        
         if "cmd" in message:    
             cmd = message["cmd"]
             
+            # General networking stuff
+            
+            if cmd == "ping":
+                self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Pong"], "id": id})
+            
+            elif cmd == "version_chk":
+                if type(val) == str:
+                    if val in self.versions_supported:
+                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
+                    else:
+                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["ObsoleteClient"], "id": message["id"]})
+                else:
+                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Datatype"], "id": message["id"]})
+            
             # moderator stuff
-            if cmd == "block":
+            
+            elif cmd == "block":
                 if (self.get_client_statedata(id)["authed"]):
                     try:
                         result, payload = self.secure.read_user_account(id)
@@ -420,24 +481,21 @@ class meower(files, security): # Meower Server itself
                             self.log("RCS: {0}'s account level is {1}".format(id, str(payload["secure_data"]["lvl"])))
                             if int(payload["secure_data"]["lvl"]) >= 2:
                                 if type(val) == str:
-                                    ip = self.cl.getIPofUsername(val)
-                                    self.log("Blocking {0}: IP of {1}".format(val, ip))
-                                    self.cl.blockIP(ip)
-                                    self.cl.untrust(val)
-                                    self.cl.kickClient(val)
+                                    self.log("Blocking IP {0}".format(val))
+                                    self.cl.blockIP(val)
                                     self.cl.sendPacket({"cmd": "direct", "val": "", "id": id})
                                     self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": id})
                                 else:
-                                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Datatype"], "id": message["id"]})
+                                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Datatype"], "id": id})
                             else:
-                                self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["MissingPermissions"], "id": message["id"]})
+                                self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["MissingPermissions"], "id": id})
                         else:
-                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
+                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
                     except Exception as e:
                         self.log("Error: {0}".format(e))
-                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
+                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
                 else:
-                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": message["id"]})
+                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": id})
             
             elif cmd == "kick":
                 if (self.get_client_statedata(id)["authed"]):
@@ -445,7 +503,7 @@ class meower(files, security): # Meower Server itself
                         result, payload = self.secure.read_user_account(id)
                         if result:
                             self.log("RCS: {0}'s account level is {1}".format(id, str(payload["secure_data"]["lvl"])))
-                            if int(payload["secure_data"]["lvl"]) >= 2:
+                            if int(payload["secure_data"]["lvl"]) >= 1:
                                 if type(val) == str:
                                     ip = self.cl.getIPofUsername(val)
                                     self.log("Kicking {0}".format(val))
@@ -495,7 +553,6 @@ class meower(files, security): # Meower Server itself
                             self.log("RCS: {0}'s account level is {1}".format(id, str(payload["secure_data"]["lvl"])))
                             if int(payload["secure_data"]["lvl"]) == 4:
                                 tmp_statedata = self.cl.statedata.copy()
-                                self.log(tmp_statedata)
                                 tmp_statedata.pop("ulist")
                                 tmp_statedata.pop("trusted")
                                 tmp_statedata.pop("gmsg")
@@ -504,26 +561,85 @@ class meower(files, security): # Meower Server itself
                                 tmp_statedata.pop("secure_enable")
                                 tmp_statedata.pop("secure_keys")
                                 tmp_statedata["users"] = self.cl.getUsernames()
-                                self.log(tmp_statedata)
                                 self.cl.sendPacket({"cmd": "direct", "val": tmp_statedata, "id": id})
                                 self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": id})
                             else:
-                                self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["MissingPermissions"], "id": message["id"]})
+                                self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["MissingPermissions"], "id": id})
                         else:
-                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
+                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
                     except Exception as e:
                         self.log("Error at get_statedata: {0}".format(e))
-                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
+                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
                 else:
-                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": message["id"]})
+                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": id})
             
-            elif cmd == "ban": # NOT FULLY IMPLEMENTED - ONLY KICKS CLIENTS THUS FAR
+            elif cmd == "get_user_ip":
                 if (self.get_client_statedata(id)["authed"]):
                     try:
                         result, payload = self.secure.read_user_account(id)
                         if result:
                             self.log("RCS: {0}'s account level is {1}".format(id, str(payload["secure_data"]["lvl"])))
-                            if int(payload["secure_data"]["lvl"]) >= 2:
+                            if int(payload["secure_data"]["lvl"]) >= 1:
+                                if type(val) == str:
+                                    self.cl.sendPacket({"cmd": "direct", "val": {"username": str(val), "ip": str(self.cl.getIPofUsername(val))}, "id": id})
+                                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": id})
+                                else:
+                                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Datatype"], "id": id})
+                            else:
+                                self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["MissingPermissions"], "id": id})
+                        else:
+                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
+                    except Exception as e:
+                        self.log("Error at get_statedata: {0}".format(e))
+                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
+                else:
+                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": id})
+            
+            elif cmd == "get_user_data":
+                if (self.get_client_statedata(id)["authed"]):
+                    try:
+                        result, payload = self.secure.read_user_account(id)
+                        if result:
+                            self.log("RCS: {0}'s account level is {1}".format(id, str(payload["secure_data"]["lvl"])))
+                            if int(payload["secure_data"]["lvl"]) >= 1:
+                                if type(val) == str:
+                                    try:
+                                        result, payload = self.secure.read_user_account(val)
+                                        if result:
+                                            payload["secure_data"].pop("pswd")
+                                            
+                                            payload2 = {
+                                                "username": str(val),
+                                                "payload": payload
+                                            }
+                                            
+                                            self.log("Fetching user {0}'s account data".format(val))
+                                            self.cl.sendPacket({"cmd": "direct", "val": payload2, "id": id})
+                                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": id})
+                                        else:
+                                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
+                                    except Exception as e:
+                                        self.log("Error: {0}".format(e))
+                                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
+                                else:
+                                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Datatype"], "id": id})
+                            else:
+                                self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["MissingPermissions"], "id": id})
+                        else:
+                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
+                    except Exception as e:
+                        self.log("Error at get_statedata: {0}".format(e))
+                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
+                else:
+                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": id})
+            
+            elif cmd == "ban":
+                if (self.get_client_statedata(id)["authed"]):
+                    try:
+                        result, payload = self.secure.read_user_account(id)
+                        if result:
+                            self.log("RCS: {0}'s account level is {1}".format(id, str(payload["secure_data"]["lvl"])))
+                            if int(payload["secure_data"]["lvl"]) >= 1:
                                 if type(val) == str:
                                     self.log("Attempting to ban {0}".format(val))
                                     result, payload = self.secure.read_user_account(val)
@@ -549,24 +665,36 @@ class meower(files, security): # Meower Server itself
                 else:
                     self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": message["id"]})
             
-            # elif cmd == "pardon":
-            # self.cl.unblockIP(message["val"])
-            # print("Unblocking IP", ip)
-            # self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
-            
-            # General networking stuff
-            
-            elif cmd == "ping":
-                self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Pong"], "id": id})
-            
-            elif cmd == "version_chk":
-                if type(val) == str:
-                    if val in self.versions_supported:
-                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
-                    else:
-                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["ObsoleteClient"], "id": message["id"]})
+            elif cmd == "pardon":
+                if (self.get_client_statedata(id)["authed"]):
+                    try:
+                        result, payload = self.secure.read_user_account(id)
+                        if result:
+                            self.log("RCS: {0}'s account level is {1}".format(id, str(payload["secure_data"]["lvl"])))
+                            if int(payload["secure_data"]["lvl"]) >= 1:
+                                if type(val) == str:
+                                    self.log("Attempting to pardon {0}".format(val))
+                                    result, payload = self.secure.read_user_account(val)
+                                    if result:
+                                        payload["secure_data"]["banned"] = False
+                                        result2, code2 = self.secure.write_user_account(val, payload)
+                                        if result2:
+                                            self.log("Pardoned {0}.".format(val))
+                                            self.cl.sendPacket({"cmd": "direct", "val": "", "id": id})
+                                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": id})
+                                    else:
+                                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
+                                else:
+                                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Datatype"], "id": message["id"]})
+                            else:
+                                self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["MissingPermissions"], "id": message["id"]})
+                        else:
+                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
+                    except Exception as e:
+                        self.log("Error: {0}".format(e))
+                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
                 else:
-                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Datatype"], "id": message["id"]})
+                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": message["id"]})
             
             # Security and account stuff
             
@@ -576,38 +704,41 @@ class meower(files, security): # Meower Server itself
                         if type(val) == dict:
                             result, payload = self.secure.read_user_account(val["username"])
                             if result:
-                                hashed_pswd = payload["secure_data"]["pswd"]
-                                if not hashed_pswd == "":
-                                    self.modify_client_statedata(id, "authtype", "pswd")
-                                    valid_auth = self.secure.check_pswd(val["pswd"], hashed_pswd)
-                                    #print(valid_auth)
-                                    if valid_auth:
-                                        self.log("{0} is authed".format(val["username"]))
-                                        self.modify_client_statedata(id, "authtype", "pswd")
-
-                                        # The client is authed
-                                        self.modify_client_statedata(id, "authed", True)
-
-                                        payload2 = {
-                                            "mode": "auth",
-                                            "payload": {
-                                                "username": val["username"]
-                                            }
-                                        }
-                                        
-                                        # Check for clients that are trying to steal the ID and kick em' / Disconnect other sessions
-                                        if val["username"] in self.cl.getUsernames():
-                                            self.log("Detected someone trying to use the username {0} wrongly".format(val["username"]))
-                                            self.cl.kickClient(val["username"])
-                                        
-                                        self.cl.sendPacket({"cmd": "direct", "val": payload2, "id": message["id"]})
-                                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
-                                    else:
-                                        self.log("{0} not authed".format(val["username"]))
-                                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["PasswordInvalid"], "id": message["id"]})
+                                if ("banned" in payload["secure_data"]) and (payload["secure_data"]["banned"]):
+                                    # User banned.
+                                    self.log("{0} not authed: Account banned.".format(val["username"]))
+                                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Banned"], "id": message["id"]})
                                 else:
-                                    self.log("{0} not authed: Attempted to sign into an account created with 2FA".format(val["username"]))
-                                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["2FAOnly"], "id": message["id"]})
+                                    hashed_pswd = payload["secure_data"]["pswd"]
+                                    if not hashed_pswd == "":
+                                        self.modify_client_statedata(id, "authtype", "pswd")
+                                        valid_auth = self.secure.check_pswd(val["pswd"], hashed_pswd)
+                                        #print(valid_auth)
+                                        if valid_auth:
+                                            self.log("{0} is authed".format(val["username"]))
+                                            self.modify_client_statedata(id, "authtype", "pswd")
+
+                                            # The client is authed
+                                            self.modify_client_statedata(id, "authed", True)
+
+                                            payload2 = {
+                                                "mode": "auth",
+                                                "payload": {
+                                                    "username": val["username"]
+                                                }
+                                            }
+                                            
+                                            # Check for clients that are trying to steal the ID and kick em' / Disconnect other sessions
+                                            if val["username"] in self.cl.getUsernames():
+                                                self.log("Detected someone trying to use the username {0} wrongly".format(val["username"]))
+                                                self.cl.kickClient(val["username"])
+                                            
+                                            self.cl.sendPacket({"cmd": "direct", "val": payload2, "id": message["id"]})
+                                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
+                                            self.log_peak_users()
+                                        else:
+                                            self.log("{0} not authed".format(val["username"]))
+                                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["PasswordInvalid"], "id": message["id"]})
                             else:
                                 if type(payload) == bool:
                                     self.log("{0} not found in accounts".format(val["username"]))
@@ -712,21 +843,17 @@ class meower(files, security): # Meower Server itself
                         if type(val) == dict:
                             result, payload = self.secure.read_user_account(id)
                             if result: # Format message for meower
-                                #print(payload)
-                                #print(val)
                                 for config in val:
-                                    self.log(config, val[config])
                                     if config in payload:
                                         if (not "lvl" in config) or (not "pswd" in config):
                                             payload[config] = val[config]
-                                #print(payload)
                                 result2, payload2 = self.secure.write_user_account(id, payload)
                                 if result2:
                                     payload3 = {
                                         "mode": "cfg",
                                         "payload": ""
                                     }
-                                    self.log("{0} updating their config".format(id))
+                                    self.log("{0} Updating their config".format(id))
                                     self.cl.sendPacket({"cmd": "direct", "val": payload3, "id": message["id"]})
                                     self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
                             else:
@@ -739,6 +866,17 @@ class meower(files, security): # Meower Server itself
                     self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": message["id"]})
             
             # General chat stuff
+            
+            elif cmd == "get_peak_users":
+                if (self.get_client_statedata(id)["authed"]) or (self.ignoreUnauthedBlanks):
+                    payload = {
+                        "mode": "peak",
+                        "payload": self.peak_users_logger
+                    }
+                    self.cl.sendPacket({"cmd": "direct", "val": payload, "id": message["id"]})
+                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
+                else:
+                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": message["id"]})
             
             elif cmd == "set_livechat_state":
                 if (self.get_client_statedata(id)["authed"]) or (self.ignoreUnauthedBlanks):
@@ -767,98 +905,110 @@ class meower(files, security): # Meower Server itself
             
             elif cmd == "post_livechat":
                 if (self.get_client_statedata(id)["authed"]) or (self.ignoreUnauthedBlanks):
-                    today = datetime.now()
-                    
-                    # Run word filter against post data
-                    post = profanity.censor(val)
-                    
-                    # Attach metadata to post
-                    post_w_metadata = {
-                        "t": {
-                            "mo": (datetime.now()).strftime("%m"),
-                            "d": (datetime.now()).strftime("%d"),
-                            "y": (datetime.now()).strftime("%Y"),
-                            "h": (datetime.now()).strftime("%H"),
-                            "mi": (datetime.now()).strftime("%M"),
-                            "s": (datetime.now()).strftime("%S"),
-                        },
-                        "p": post
-                    }
-                    if clienttype == 0:
-                        post_w_metadata["u"] = ""
+                    if type(val) == str:
+                        if (not len(val) >= 360):
+                            today = datetime.now()
+                            
+                            # Run word filter against post data
+                            post = profanity.censor(val)
+                            
+                            # Attach metadata to post
+                            post_w_metadata = {
+                                "t": {
+                                    "mo": (datetime.now()).strftime("%m"),
+                                    "d": (datetime.now()).strftime("%d"),
+                                    "y": (datetime.now()).strftime("%Y"),
+                                    "h": (datetime.now()).strftime("%H"),
+                                    "mi": (datetime.now()).strftime("%M"),
+                                    "s": (datetime.now()).strftime("%S"),
+                                },
+                                "p": post
+                            }
+                            if clienttype == 0:
+                                post_w_metadata["u"] = ""
+                            else:
+                                post_w_metadata["u"] = id
+                                
+                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
+                             
+                            # Broadcast the post to all listening clients
+                            relay_post = post_w_metadata
+                            relay_post["mode"] = 2
+                            self.log("{0} posting livechat message".format(id))
+                            #print(relay_post)
+                            self.cl.sendPacket({"cmd": "direct", "val": relay_post})
+                        else:
+                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["TooLarge"], "id": message["id"]})
                     else:
-                        post_w_metadata["u"] = id
-                        
-                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
-                     
-                    # Broadcast the post to all listening clients
-                    relay_post = post_w_metadata
-                    relay_post["mode"] = 2
-                    self.log("{0} posting livechat message".format(id))
-                    #print(relay_post)
-                    self.cl.sendPacket({"cmd": "direct", "val": relay_post})
+                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Datatype"], "id": message["id"]})
                 else:
                     self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": message["id"]})
             
             elif cmd == "post_home":
                 if (self.get_client_statedata(id)["authed"]) or (self.ignoreUnauthedBlanks):
-                    today = datetime.now()
-                    # Generate a post ID
-                    post_id = str(today.strftime("%d%m%Y%H%M%S")) 
-                    if clienttype == 0:
-                        post_id = "-" + post_id
-                    else:
-                        post_id = id + "-" + post_id
-                    
-                    # Run word filter against post data
-                    post = profanity.censor(val)
-                    
-                    # Attach metadata to post
-                    post_w_metadata = {
-                        "t": {
-                            "mo": (datetime.now()).strftime("%m"),
-                            "d": (datetime.now()).strftime("%d"),
-                            "y": (datetime.now()).strftime("%Y"),
-                            "h": (datetime.now()).strftime("%H"),
-                            "mi": (datetime.now()).strftime("%M"),
-                            "s": (datetime.now()).strftime("%S"),
-                        },
-                        "p": post
-                    }
-                    if clienttype == 0:
-                        post_w_metadata["u"] = ""
-                    else:
-                        post_w_metadata["u"] = id
-                    
-                    # Read back current homepage state (and create a new homepage if needed)
-                    status, payload = self.get_home()
-                    
-                    # Check status of homepage
-                    if status != 0:
-                        # Update the current homepage
-                        new_home = str(payload + post_id + ";")
-                        result = self.update_home(new_home)
-                        
-                        if result:
-                            # Store the post
-                            result2 = self.fs.write("/Storage/Posts", post_id, post_w_metadata)
-                            if result2:
-                                self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
+                    if type(val) == str:
+                        if (not len(val) >= 360):
+                            today = datetime.now()
+                            # Generate a post ID
+                            post_id = str(today.strftime("%d%m%Y%H%M%S")) 
+                            if clienttype == 0:
+                                post_id = "-" + post_id
+                            else:
+                                post_id = id + "-" + post_id
+                            
+                            # Run word filter against post data
+                            post = profanity.censor(val)
+                            
+                            # Attach metadata to post
+                            post_w_metadata = {
+                                "t": {
+                                    "mo": (datetime.now()).strftime("%m"),
+                                    "d": (datetime.now()).strftime("%d"),
+                                    "y": (datetime.now()).strftime("%Y"),
+                                    "h": (datetime.now()).strftime("%H"),
+                                    "mi": (datetime.now()).strftime("%M"),
+                                    "s": (datetime.now()).strftime("%S"),
+                                },
+                                "p": post
+                            }
+                            if clienttype == 0:
+                                post_w_metadata["u"] = ""
+                            else:
+                                post_w_metadata["u"] = id
+                            
+                            # Read back current homepage state (and create a new homepage if needed)
+                            status, payload = self.get_home()
+                            
+                            # Check status of homepage
+                            if status != 0:
+                                # Update the current homepage
+                                new_home = str(payload + post_id + ";")
+                                result = self.update_home(new_home)
                                 
-                                # Broadcast the post to all listening clients
-                                
-                                relay_post = post_w_metadata
-                                relay_post["mode"] = 1
-                                relay_post["post_id"] = str(post_id)
-                                #print(relay_post)
-                                self.log("{0} posting home message {1}".format(id, post_id))
-                                self.cl.sendPacket({"cmd": "direct", "val": relay_post})
+                                if result:
+                                    # Store the post
+                                    result2 = self.fs.write("/Storage/Posts", post_id, post_w_metadata)
+                                    if result2:
+                                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
+                                        
+                                        # Broadcast the post to all listening clients
+                                        
+                                        relay_post = post_w_metadata
+                                        relay_post["mode"] = 1
+                                        relay_post["post_id"] = str(post_id)
+                                        #print(relay_post)
+                                        self.log("{0} posting home message {1}".format(id, post_id))
+                                        self.cl.sendPacket({"cmd": "direct", "val": relay_post})
+                                    else:
+                                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
+                                else:
+                                    self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
                             else:
                                 self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
                         else:
-                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
+                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["TooLarge"], "id": message["id"]})
                     else:
-                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
+                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Datatype"], "id": message["id"]})
                 else:
                     self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": message["id"]})
             
@@ -916,6 +1066,14 @@ class meower(files, security): # Meower Server itself
                 self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Invalid"], "id": message["id"]})
         else:
             self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Syntax"], "id": message["id"]})
+        
+        # Rate limiter
+        today = datetime.now()
+        self.modify_client_statedata(client, "last_packet", {
+            "h": today.strftime("%H"),
+            "m": today.strftime("%M"),
+            "s": today.strftime("%S")
+        })
     
 if __name__ == "__main__":
     meower(debug = False, ignoreUnauthedBlanks = False) # Runs the server
