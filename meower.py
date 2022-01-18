@@ -404,8 +404,6 @@ class meower(files, security): # Meower Server itself
         elif type(client) == str:
             self.log("{0} Logged out.".format(self.cl._get_username_of_obj(client)))
         self.log_peak_users()
-        # Error on _closed_connection_server: object of type 'method' has no len()
-        # Error on _server_packet_handler: Replacement index 0 out of range for positional args tuple
        
     def on_connect(self, client):
         self.log("{0} Connected.".format(client["id"]))
@@ -441,6 +439,15 @@ class meower(files, security): # Meower Server itself
                 "payload": self.peak_users_logger
             }
             self.cl.sendPacket({"cmd": "direct", "val": payload})
+    
+    def check_for_spam(self, client):
+        today = datetime.now()
+        current_time = int(today.strftime("%H%M%S"))
+        self.log("Current time is {0}".format(current_time))
+        not_formatter = self.get_client_statedata(client)["last_packet"]
+        formatter = not_formatter["h"] + not_formatter["m"] + not_formatter["s"]
+        self.log("Last timestamp for user post was {0}".format(formatter))
+        return (int(formatter) <= (current_time + 1))
     
     def on_packet(self, message):
         id = message["id"]
@@ -733,6 +740,13 @@ class meower(files, security): # Meower Server itself
                                                 self.log("Detected someone trying to use the username {0} wrongly".format(val["username"]))
                                                 self.cl.kickClient(val["username"])
                                             
+                                            # really janky code that automatically sets user ID
+                                            if self.get_client_statedata(id)["type"] != "scratch": # Prevent this from breaking compatibility with scratch clients
+                                                self.modify_client_statedata(id, "username", val["username"])
+                                                self.cl.statedata["ulist"]["usernames"][val["username"]] = id["id"]
+                                                self.cl.sendPacket({"cmd": "ulist", "val": self.cl._get_ulist()})
+                                                self.log("{0} autoID given".format(val["username"]))
+                                            
                                             self.cl.sendPacket({"cmd": "direct", "val": payload2, "id": message["id"]})
                                             self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
                                             self.log_peak_users()
@@ -907,36 +921,39 @@ class meower(files, security): # Meower Server itself
                 if (self.get_client_statedata(id)["authed"]) or (self.ignoreUnauthedBlanks):
                     if type(val) == str:
                         if (not len(val) >= 360):
-                            today = datetime.now()
-                            
-                            # Run word filter against post data
-                            post = profanity.censor(val)
-                            
-                            # Attach metadata to post
-                            post_w_metadata = {
-                                "t": {
-                                    "mo": (datetime.now()).strftime("%m"),
-                                    "d": (datetime.now()).strftime("%d"),
-                                    "y": (datetime.now()).strftime("%Y"),
-                                    "h": (datetime.now()).strftime("%H"),
-                                    "mi": (datetime.now()).strftime("%M"),
-                                    "s": (datetime.now()).strftime("%S"),
-                                },
-                                "p": post
-                            }
-                            if clienttype == 0:
-                                post_w_metadata["u"] = ""
-                            else:
-                                post_w_metadata["u"] = id
+                            if self.check_for_spam(id):
+                                today = datetime.now()
                                 
-                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
-                             
-                            # Broadcast the post to all listening clients
-                            relay_post = post_w_metadata
-                            relay_post["mode"] = 2
-                            self.log("{0} posting livechat message".format(id))
-                            #print(relay_post)
-                            self.cl.sendPacket({"cmd": "direct", "val": relay_post})
+                                # Run word filter against post data
+                                post = profanity.censor(val)
+                                
+                                # Attach metadata to post
+                                post_w_metadata = {
+                                    "t": {
+                                        "mo": (datetime.now()).strftime("%m"),
+                                        "d": (datetime.now()).strftime("%d"),
+                                        "y": (datetime.now()).strftime("%Y"),
+                                        "h": (datetime.now()).strftime("%H"),
+                                        "mi": (datetime.now()).strftime("%M"),
+                                        "s": (datetime.now()).strftime("%S"),
+                                    },
+                                    "p": post
+                                }
+                                if clienttype == 0:
+                                    post_w_metadata["u"] = ""
+                                else:
+                                    post_w_metadata["u"] = id
+                                    
+                                self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
+                                 
+                                # Broadcast the post to all listening clients
+                                relay_post = post_w_metadata
+                                relay_post["mode"] = 2
+                                self.log("{0} posting livechat message".format(id))
+                                #print(relay_post)
+                                self.cl.sendPacket({"cmd": "direct", "val": relay_post})
+                            else:
+                                self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["RateLimit"], "id": message["id"]})
                         else:
                             self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["TooLarge"], "id": message["id"]})
                     else:
@@ -948,63 +965,66 @@ class meower(files, security): # Meower Server itself
                 if (self.get_client_statedata(id)["authed"]) or (self.ignoreUnauthedBlanks):
                     if type(val) == str:
                         if (not len(val) >= 360):
-                            today = datetime.now()
-                            # Generate a post ID
-                            post_id = str(today.strftime("%d%m%Y%H%M%S")) 
-                            if clienttype == 0:
-                                post_id = "-" + post_id
-                            else:
-                                post_id = id + "-" + post_id
-                            
-                            # Run word filter against post data
-                            post = profanity.censor(val)
-                            
-                            # Attach metadata to post
-                            post_w_metadata = {
-                                "t": {
-                                    "mo": (datetime.now()).strftime("%m"),
-                                    "d": (datetime.now()).strftime("%d"),
-                                    "y": (datetime.now()).strftime("%Y"),
-                                    "h": (datetime.now()).strftime("%H"),
-                                    "mi": (datetime.now()).strftime("%M"),
-                                    "s": (datetime.now()).strftime("%S"),
-                                },
-                                "p": post
-                            }
-                            if clienttype == 0:
-                                post_w_metadata["u"] = ""
-                            else:
-                                post_w_metadata["u"] = id
-                            
-                            # Read back current homepage state (and create a new homepage if needed)
-                            status, payload = self.get_home()
-                            
-                            # Check status of homepage
-                            if status != 0:
-                                # Update the current homepage
-                                new_home = str(payload + post_id + ";")
-                                result = self.update_home(new_home)
+                            if self.check_for_spam(id):
+                                today = datetime.now()
+                                # Generate a post ID
+                                post_id = str(today.strftime("%d%m%Y%H%M%S")) 
+                                if clienttype == 0:
+                                    post_id = "-" + post_id
+                                else:
+                                    post_id = id + "-" + post_id
                                 
-                                if result:
-                                    # Store the post
-                                    result2 = self.fs.write("/Storage/Posts", post_id, post_w_metadata)
-                                    if result2:
-                                        self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
-                                        
-                                        # Broadcast the post to all listening clients
-                                        
-                                        relay_post = post_w_metadata
-                                        relay_post["mode"] = 1
-                                        relay_post["post_id"] = str(post_id)
-                                        #print(relay_post)
-                                        self.log("{0} posting home message {1}".format(id, post_id))
-                                        self.cl.sendPacket({"cmd": "direct", "val": relay_post})
+                                # Run word filter against post data
+                                post = profanity.censor(val)
+                                
+                                # Attach metadata to post
+                                post_w_metadata = {
+                                    "t": {
+                                        "mo": (datetime.now()).strftime("%m"),
+                                        "d": (datetime.now()).strftime("%d"),
+                                        "y": (datetime.now()).strftime("%Y"),
+                                        "h": (datetime.now()).strftime("%H"),
+                                        "mi": (datetime.now()).strftime("%M"),
+                                        "s": (datetime.now()).strftime("%S"),
+                                    },
+                                    "p": post
+                                }
+                                if clienttype == 0:
+                                    post_w_metadata["u"] = ""
+                                else:
+                                    post_w_metadata["u"] = id
+                                
+                                # Read back current homepage state (and create a new homepage if needed)
+                                status, payload = self.get_home()
+                                
+                                # Check status of homepage
+                                if status != 0:
+                                    # Update the current homepage
+                                    new_home = str(payload + post_id + ";")
+                                    result = self.update_home(new_home)
+                                    
+                                    if result:
+                                        # Store the post
+                                        result2 = self.fs.write("/Storage/Posts", post_id, post_w_metadata)
+                                        if result2:
+                                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
+                                            
+                                            # Broadcast the post to all listening clients
+                                            
+                                            relay_post = post_w_metadata
+                                            relay_post["mode"] = 1
+                                            relay_post["post_id"] = str(post_id)
+                                            #print(relay_post)
+                                            self.log("{0} posting home message {1}".format(id, post_id))
+                                            self.cl.sendPacket({"cmd": "direct", "val": relay_post})
+                                        else:
+                                            self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
                                     else:
                                         self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
                                 else:
                                     self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
                             else:
-                                self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
+                                self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["RateLimit"], "id": message["id"]})
                         else:
                             self.cl.sendPacket({"cmd": "statuscode", "val": self.cl.codes["TooLarge"], "id": message["id"]})
                     else:
