@@ -8,14 +8,6 @@ version = "0.1.7.6"
 """
 CloudLink by MikeDEV
 Please see https://github.com/MikeDev101/cloudlink for more details.
-
-0BSD License
-Copyright (C) 2020-2022 MikeDEV Software, Co.
-Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted.
-THE SOFTWARE IS PROVIDED “AS IS” AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 """
 
 import json
@@ -23,6 +15,7 @@ import sys
 import threading
 from websocket_server import WebsocketServer as ws_server
 import websocket as ws_client
+import time
 
 """
 Code formatting
@@ -39,15 +32,20 @@ Description: String, Describes the code
 """
 
 class API:
-    def server(self, ip="127.0.0.1", port=3000, threaded=False): # Runs CloudLink in server mode.
+    def server(self, ip="127.0.0.1", port=3000, threaded=False, throttle_usernames=False): # Runs CloudLink in server mode.
         try:
             if self.state == 0:
+                # manage username throttling
+                self.disabled_username_throttle = not(throttle_usernames)
+                
                 # Change the link state to 1 (Server mode)
                 self.state = 1
                 self.wss = ws_server(
                     host=ip,
                     port=port
                 )
+                
+                self.ConnectedIps = {} 
                 
                 # Set the server's callbacks to CloudLink's class functions
                 self.wss.set_fn_new_client(self._on_connection_server)
@@ -383,6 +381,8 @@ class CLTLS: #Feature NOT YET IMPLEMENTED
 
 class CloudLink(API):
     def __init__(self, debug=False): # Initializes CloudLink
+        self.LastSetUserNameTime = 0
+        self.disabled_username_throttle = True
         self.wss = None # Websocket Object
         self.state = 0 # Module state
         self.userlist = [] # Stores usernames set on link
@@ -416,7 +416,8 @@ class CloudLink(API):
             "TALostTrust": "E:117 | Trust lost",
             "Invalid": "E:118 | Invalid command",
             "Blocked": "E:119 | IP Blocked",
-            "IPRequred": "E:120 | IP Address required"
+            "IPRequred": "E:120 | IP Address required",
+            "TooManyUserNameChanges": "E:121 | Too Many Username Changes"
         }
         
         print("CloudLink v{0}".format(str(version))) # Report version number
@@ -617,18 +618,26 @@ class CloudLink(API):
                                                 if type(msg["val"]) == str:
                                                     if self.statedata["ulist"]["objs"][client['id']]["username"] == "":
                                                         if not msg["val"] in self.statedata["ulist"]["usernames"]:
-                                                            # Add the username to the list
-                                                            self.statedata["ulist"]["usernames"][msg["val"]] = client["id"]
-                                                            # Set the object's username info
-                                                            self.statedata["ulist"]["objs"][client['id']]["username"] = msg["val"]
-                                                            
-                                                            if listener_detected:
-                                                                self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["OK"], "listener": listener_id}))
+                                                            if (not time.Time - API.connectedIps['ips'][API.getIPofObject(client)] > 60) or (self.disabled_username_throttle):
+                                                                # Add the username to the list
+                                                                self.statedata["ulist"]["usernames"][msg["val"]] = client["id"]
+                                                                # Set the object's username info
+                                                                self.statedata["ulist"]["objs"][client['id']]["username"] = msg["val"]
+                                                                
+                                                                if listener_detected:
+                                                                    self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["OK"], "listener": listener_id}))
+                                                                else:
+                                                                    self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["OK"]}))
+                                                                self._send_to_all({"cmd": "ulist", "val": self._get_ulist()})
+                                                                if self.debug:
+                                                                    print("User {0} set username: {1}".format(client["id"], msg["val"]))
                                                             else:
-                                                                self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["OK"]}))
-                                                            self._send_to_all({"cmd": "ulist", "val": self._get_ulist()})
-                                                            if self.debug:
-                                                                print("User {0} set username: {1}".format(client["id"], msg["val"]))
+                                                                if self.debug:
+                                                                    print("Error: Refusing to set username due to setting username less then a minute ago")
+                                                                if listener_detected:
+                                                                    self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["TooManyUserNameChanges"], "listener": listener_id}))
+                                                                else:
+                                                                    self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["TooManyUserNameChanges"]}))
                                                         else:
                                                             if self.debug:
                                                                 print('Error: Refusing to set username because it would cause a conflict')
