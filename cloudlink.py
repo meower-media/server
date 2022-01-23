@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# Last edited 11:01 PM CST On 1/22/2022 By Bloctans.
+
 version = "0.1.7.6"
 
 # Server based on https://github.com/Pithikos/python-websocket-server
@@ -618,7 +620,7 @@ class CloudLink(API):
                                                 if type(msg["val"]) == str:
                                                     if self.statedata["ulist"]["objs"][client['id']]["username"] == "":
                                                         if not msg["val"] in self.statedata["ulist"]["usernames"]:
-                                                            if (not time.Time - API.connectedIps['ips'][API.getIPofObject(client)] > 60) or (self.disabled_username_throttle):
+                                                            if (not time.time - API.connectedIps['ips'][API.getIPofObject(client)] > 60) or (self.disabled_username_throttle): # I think this is the typo fix mike was looking for.
                                                                 # Add the username to the list
                                                                 self.statedata["ulist"]["usernames"][msg["val"]] = client["id"]
                                                                 # Set the object's username info
