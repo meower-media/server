@@ -8,6 +8,7 @@ import bcrypt
 import json
 from datetime import datetime
 import time
+import traceback
 
 """
 
@@ -19,6 +20,21 @@ Dependencies:
 * bcrypt
 
 """
+
+def full_stack():
+    import traceback, sys
+    exc = sys.exc_info()[0]
+    if exc is not None:
+        f = sys.exc_info()[-1].tb_frame.f_back
+        stack = traceback.extract_stack(f)
+    else:
+        stack = traceback.extract_stack()[:-1]  # last one would be full_stack()
+    trc = 'Traceback (most recent call last):\n'
+    stackstr = trc + ''.join(traceback.format_list(stack))
+    if exc is not None:
+        stackstr += '  ' + traceback.format_exc().lstrip(trc)
+    return stackstr
+
 class files: # Storage API for... well... storing things.
     def __init__(self):
         self.dirpath = os.path.dirname(os.path.abspath(__file__)) + "/Meower"
@@ -33,6 +49,7 @@ class files: # Storage API for... well... storing things.
             "./Meower/Storage/Categories/Home",
             "./Meower/Storage/Categories/Announcements",
             "./Meower/Storage/Categories/Threads",
+            "./Meower/Storage/Categories/Chats",
             "./Meower/Userdata",
             "./Meower/Logs",
             "./Meower/Jail",
@@ -41,11 +58,16 @@ class files: # Storage API for... well... storing things.
                 os.mkdir(directory)
             except FileExistsError:
                 pass
+         
+        # Create server account file
+        
+        data = json.dumps({"user_settings": {}, "user_data": {"pfp_data": "22", "quote": ""}, "secure_data": {"email": "", "pswd": "", "lvl": "0", "banned": False}})
+        
+        self.write("/Userdata/", "Server.json", data)
     
     def write(self, fdir, fname, data):
         try:
             if os.path.exists(self.dirpath + "/" + fdir):
-                #print("TYPE:", type(data))
                 if type(data) == str:
                     f = open((self.dirpath + "/" + fdir + "/" + fname), "w")
                     f.write(data)
@@ -62,7 +84,7 @@ class files: # Storage API for... well... storing things.
             else:
                 return False
         except Exception as e:
-            print(e)
+            print(full_stack())
             return False
     
     def mkdir(self, directory):
@@ -71,7 +93,7 @@ class files: # Storage API for... well... storing things.
             os.makedirs((self.dirpath + "/" + directory), exist_ok=True)
             check1 = True
         except Exception as e:
-            print(e)
+            print(full_stack())
             return False
     
     def rm(self, file):
@@ -79,7 +101,7 @@ class files: # Storage API for... well... storing things.
             os.remove((self.dirpath + "/" + file))
             return True
         except Exception as e:
-            print(e)
+            print(full_stack())
             return False
     
     def rmdir(self, directory):
@@ -90,7 +112,7 @@ class files: # Storage API for... well... storing things.
             else:
                 return False, 2
         except Exception as e:
-            print(e)
+            print(full_stack())
             return False, 1
     
     def read(self, fname):
@@ -101,7 +123,7 @@ class files: # Storage API for... well... storing things.
             else:
                 return False, None
         except Exception as e:
-            print(e)
+            print(full_stack())
             return False, None
     
     def chkfile(self, file):
@@ -114,7 +136,7 @@ class files: # Storage API for... well... storing things.
         try:
             return True, os.listdir(self.dirpath + "/" +directory)
         except Exception as e:
-            print(e)
+            print(full_stack())
             return False, None
     
     def chktype(self, directory, file):
@@ -126,7 +148,7 @@ class files: # Storage API for... well... storing things.
             else:
                 return False, None
         except Exception as e:
-            print(e)
+            print(full_stack())
             return False, None
 
 class security: # Security API for generating/checking passwords, creating session tokens and authentication codes
@@ -276,7 +298,7 @@ class meower(files, security): # Meower Server itself
         self.cl.codes["MissingPermissions"] = "I:017 | Missing permissions"
         self.cl.codes["Banned"] = "E:018 | Account Banned"
         
-        clear_cmd = "clear" # Change for os-specific console clear
+        clear_cmd = "cls" # Change for os-specific console clear
         # Instanciate the other classes into Meower
         self.fs = files()
         self.secure = security()
@@ -299,11 +321,7 @@ class meower(files, security): # Meower Server itself
         
         # create a list of supported versions
         self.versions_supported = [
-            "scratch-beta-4.8",
-            "scratch-beta-5.2",
-            "scratch-beta-5.3",
-            "scratch-beta-5.4",
-            "meower-mobile-0.4_3"
+            "scratch-beta-5.5"
         ]
     
         self.cl.callback("on_packet", self.on_packet)
@@ -311,7 +329,6 @@ class meower(files, security): # Meower Server itself
         self.cl.callback("on_connect", self.on_connect)
         self.cl.trustedAccess(True, [
             "meower", # Do not modify key
-            "1gr3grthsg2htgfhsz24u4uy46tggsv2wytuy354hg3u75i57b3u5tgu35hsdfth24673244y2"
         ])
     
         self.cl.loadIPBlocklist([
@@ -319,10 +336,9 @@ class meower(files, security): # Meower Server itself
         ])
         
         self.cl.setMOTD("Meower Social Media Platform Server", enable=True)
-        time.sleep(1)
         os.system(clear_cmd+" && echo Meower Social Media Platform Server")
-        time.sleep(1)
         self.cl.server(port=3000)
+        
     
     def log(self, event):
         today = datetime.now()
@@ -348,7 +364,7 @@ class meower(files, security): # Meower Server itself
                     self.cl.statedata["ulist"]["objs"][client['id']][key] = newvalue
                     return True
                 except Exception as e:
-                    print(e)
+                    print(full_stack())
                     return False
             else:
                 return False
@@ -363,40 +379,109 @@ class meower(files, security): # Meower Server itself
                         del self.cl.statedata["ulist"]["objs"][client['id']][key]
                         return True
                     except Exception as e:
-                        print(e)
+                        print(full_stack())
                         return False
             else:
                 return False
     
-    def update_home(self, new_data):
-        status, payload = self.get_home()
+    def update_indexer(self, new_data, location="/Categories/Home/"):
+        status, payload = self.get_indexer(location=location, truncate=False, convert=False)
         today = datetime.now()
         today = str(today.strftime("%d%m%Y"))
         if status != 0:
-            result = self.fs.write("/Storage/Categories/Home/", today, new_data)
+            payload.append(new_data)
+            result = self.fs.write(("/Storage" + str(location)), today, {"index": payload})
             return result
         else:
             return False
     
-    def get_home(self):
+    def get_indexer(self, location="/Categories/Home/", truncate=False, convert=False, mode="Latest", searchLvl=0):
         today = datetime.now()
         today = str(today.strftime("%d%m%Y"))
         result, dirlist = self.fs.lsdir("/Storage/Categories/Home/")
         if result:
             if today in dirlist:
-                result2, payload = self.fs.read(str("/Storage/Categories/Home/" + today))
+                result2, payload = self.fs.read(str("/Storage" + str(location) + today))
+                try:
+                    payload = json.loads(payload)
+                    payload = payload["index"]
+                except Exception as e:
+                    self.log("Error on get_home function: {0}".format(full_stack()))
+                    return 0, None, None
+                
                 if result2:
-                    return 2, payload
+                    if truncate:
+                        # Truncate home to 25 items.
+                        if len(payload) > 25:
+                            if mode == "Latest":
+                                payload = payload[(len(payload)-25):len(payload)]
+                            elif mode == "Search":
+                                #TODO: Add searching features
+                                pass
+                    
+                    if convert:
+                        #convert list to format that meower can use
+                        tmp1 = ""
+                        for item in payload:
+                            tmp1 = str(tmp1 + item + ";")
+                        return 2, tmp1
+                    else:
+                        return 2, payload
                 else:
                     return 0, None
             else:
-                result2 = self.fs.write("/Storage/Categories/Home/", today, "")
+                result2 = self.fs.write(("/Storage" + str(location)), today, {"index":[]})
                 if result2:
-                    return 1, ""
+                    return 1, ";"
                 else:
                     return 0, None
         else:
             return 0, None, None
+    
+    def create_system_message(self, post):
+        today = datetime.now()
+        # Generate a post ID
+        post_id = str(today.strftime("%d%m%Y%H%M%S")) 
+        post_id = "Server-" + post_id
+        
+        # Attach metadata to post
+        post_w_metadata = {
+            "t": {
+                "mo": (datetime.now()).strftime("%m"),
+                "d": (datetime.now()).strftime("%d"),
+                "y": (datetime.now()).strftime("%Y"),
+                "h": (datetime.now()).strftime("%H"),
+                "mi": (datetime.now()).strftime("%M"),
+                "s": (datetime.now()).strftime("%S"),
+            },
+            "p": post,
+            "post_origin": "home"
+        }
+        post_w_metadata["u"] = "Server"
+        
+        # Read back current homepage state (and create a new homepage if needed)
+        status, payload = self.get_indexer(location="/Categories/Home/")
+        
+        # Check status of homepage
+        if status != 0:
+            # Update the current homepage
+            result = self.update_indexer(post_id, location="/Categories/Home/")
+            if result:
+                # Store the post
+                result2 = self.fs.write("/Storage/Posts", post_id, post_w_metadata)
+                
+                self.log("Created system message with ID {0}".format(post_id))
+                
+                relay_post = post_w_metadata
+                relay_post["mode"] = 1
+                relay_post["post_id"] = str(post_id)
+                self.log("Relaying system message {0}".format(post_id))
+                self.sendPacket({"cmd": "direct", "val": relay_post})
+                return result2
+            else:
+                return False
+        else:
+            return False
     
     def on_close(self, client):
         if type(client) == dict:
@@ -433,7 +518,8 @@ class meower(files, security): # Meower Server itself
                     "s": (datetime.now()).strftime("%S")
                 }
             }
-            self.log("New peak in # of concurrent users! {0}".format(current_users))
+            self.log("New peak in # of concurrent users: {0}".format(current_users))
+            self.create_system_message("Yay! New peak in # of concurrent users: {0}".format(current_users))
             payload = {
                 "mode": "peak",
                 "payload": self.peak_users_logger
@@ -464,7 +550,6 @@ class meower(files, security): # Meower Server itself
         
         if self.listener_detected:
             self.listener_id = message["listener"]
-            #self.log("listener {0}".format(self.listener_id))
         
         # Read packet contents
         id = message["id"]
@@ -517,7 +602,7 @@ class meower(files, security): # Meower Server itself
                         else:
                             self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
                     except Exception as e:
-                        self.log("Error: {0}".format(e))
+                        self.log("Error: {0}".format(full_stack()))
                         self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
                 else:
                     self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": id})
@@ -542,7 +627,7 @@ class meower(files, security): # Meower Server itself
                         else:
                             self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
                     except Exception as e:
-                        self.log("Error: {0}".format(e))
+                        self.log("Error: {0}".format(full_stack()))
                         self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
                 else:
                     self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": message["id"]})
@@ -556,16 +641,18 @@ class meower(files, security): # Meower Server itself
                             if int(payload["secure_data"]["lvl"]) >= 1:
                                 today = datetime.now()
                                 today = str(today.strftime("%d%m%Y"))
-                                result = self.fs.write("/Storage/Categories/Home/", today, "")
-                                self.log("cleared home")
+                                result = self.fs.write("/Storage/Categories/Home/", today, {"index": []})
+                                self.log("{0} cleared home.".format(id))
                                 self.sendPacket({"cmd": "direct", "val": "", "id": id})
                                 self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": id})
+                                time.sleep(1)
+                                self.create_system_message("{0} has cleared the homepage!".format(str(id)))
                             else:
                                 self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["MissingPermissions"], "id": message["id"]})
                         else:
                             self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
                     except Exception as e:
-                        self.log("Error: {0}".format(e))
+                        self.log("Error on clear_home request: {0}".format(full_stack()))
                         self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
                 else:
                     self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": message["id"]})
@@ -593,7 +680,7 @@ class meower(files, security): # Meower Server itself
                         else:
                             self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
                     except Exception as e:
-                        self.log("Error at get_statedata: {0}".format(e))
+                        self.log("Error at get_statedata: {0}".format(full_stack()))
                         self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
                 else:
                     self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": id})
@@ -615,7 +702,7 @@ class meower(files, security): # Meower Server itself
                         else:
                             self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
                     except Exception as e:
-                        self.log("Error at get_statedata: {0}".format(e))
+                        self.log("Error at get_statedata: {0}".format(full_stack()))
                         self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
                 else:
                     self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": id})
@@ -644,7 +731,7 @@ class meower(files, security): # Meower Server itself
                                         else:
                                             self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
                                     except Exception as e:
-                                        self.log("Error: {0}".format(e))
+                                        self.log("Error: {0}".format(full_stack()))
                                         self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
                                 else:
                                     self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Datatype"], "id": id})
@@ -653,7 +740,7 @@ class meower(files, security): # Meower Server itself
                         else:
                             self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
                     except Exception as e:
-                        self.log("Error at get_statedata: {0}".format(e))
+                        self.log("Error at get_statedata: {0}".format(full_stack()))
                         self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": id})
                 else:
                     self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": id})
@@ -685,7 +772,7 @@ class meower(files, security): # Meower Server itself
                         else:
                             self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
                     except Exception as e:
-                        self.log("Error: {0}".format(e))
+                        self.log("Error: {0}".format(full_stack()))
                         self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
                 else:
                     self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": message["id"]})
@@ -716,7 +803,7 @@ class meower(files, security): # Meower Server itself
                         else:
                             self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
                     except Exception as e:
-                        self.log("Error: {0}".format(e))
+                        self.log("Error: {0}".format(full_stack()))
                         self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
                 else:
                     self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": message["id"]})
@@ -1008,7 +1095,8 @@ class meower(files, security): # Meower Server itself
                                         "mi": (datetime.now()).strftime("%M"),
                                         "s": (datetime.now()).strftime("%S"),
                                     },
-                                    "p": post
+                                    "p": post,
+                                    "post_origin": "home"
                                 }
                                 if clienttype == 0:
                                     post_w_metadata["u"] = ""
@@ -1016,13 +1104,12 @@ class meower(files, security): # Meower Server itself
                                     post_w_metadata["u"] = id
                                 
                                 # Read back current homepage state (and create a new homepage if needed)
-                                status, payload = self.get_home()
+                                status, payload = self.get_indexer(location="/Categories/Home/")
                                 
                                 # Check status of homepage
                                 if status != 0:
                                     # Update the current homepage
-                                    new_home = str(payload + post_id + ";")
-                                    result = self.update_home(new_home)
+                                    result = self.update_indexer(post_id, location="/Categories/Home/")
                                     
                                     if result:
                                         # Store the post
@@ -1031,7 +1118,6 @@ class meower(files, security): # Meower Server itself
                                             self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
                                             
                                             # Broadcast the post to all listening clients
-                                            
                                             relay_post = post_w_metadata
                                             relay_post["mode"] = 1
                                             relay_post["post_id"] = str(post_id)
@@ -1082,24 +1168,29 @@ class meower(files, security): # Meower Server itself
             
             elif cmd == "get_home":
                 if (self.get_client_statedata(id)["authed"]) or (self.ignoreUnauthedBlanks):
-                    status, payload = self.get_home()
-                    
-                    if status != 0: # Format message for meower
-                        payload = {
-                            "mode": "home",
-                            "payload": payload
-                        }
-                    self.log("{0} getting home index".format(id))
-                    
-                    if status == 0: # Home error
-                        self.log("Error while generating homepage")
+                
+                    try:
+                        status, payload = self.get_indexer(location="/Categories/Home/", truncate=True, convert=True, mode="Latest")
+                        
+                        if status != 0: # Format message for meower
+                            payload = {
+                                "mode": "home",
+                                "payload": payload
+                            }
+                        self.log("{0} getting home index".format(id))
+                        
+                        if status == 0: # Home error
+                            self.log("Error while generating homepage")
+                            self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
+                        elif status == 1: # Home was generated
+                            self.sendPacket({"cmd": "direct", "val": payload, "id": message["id"]})
+                            self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
+                        elif status == 2: # Home already generated
+                            self.sendPacket({"cmd": "direct", "val": payload, "id": message["id"]})
+                            self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
+                    except Exception as e:
+                        self.log("Error on get_home request: {0}".format(full_stack()))
                         self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["InternalServerError"], "id": message["id"]})
-                    elif status == 1: # Home was generated
-                        self.sendPacket({"cmd": "direct", "val": payload, "id": message["id"]})
-                        self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
-                    elif status == 2: # Home already generated
-                        self.sendPacket({"cmd": "direct", "val": payload, "id": message["id"]})
-                        self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["OK"], "id": message["id"]})
                 else:
                     self.sendPacket({"cmd": "statuscode", "val": self.cl.codes["Refused"], "id": message["id"]})
             
