@@ -16,6 +16,8 @@ import threading
 from websocket_server import WebsocketServer as ws_server
 import websocket as ws_client
 import time
+import traceback
+import sys
 
 """
 Code formatting
@@ -30,6 +32,19 @@ Code: Number, defines the code
 
 Description: String, Describes the code
 """
+
+def full_stack():
+    exc = sys.exc_info()[0]
+    if exc is not None:
+        f = sys.exc_info()[-1].tb_frame.f_back
+        stack = traceback.extract_stack(f)
+    else:
+        stack = traceback.extract_stack()[:-1]
+    trc = 'Traceback (most recent call last):\n'
+    stackstr = trc + ''.join(traceback.format_list(stack))
+    if exc is not None:
+        stackstr += '  ' + traceback.format_exc().lstrip(trc)
+    return stackstr
 
 class API:
     def server(self, ip="127.0.0.1", port=3000, threaded=False): # Runs CloudLink in server mode.
@@ -179,7 +194,7 @@ class API:
                         self.wss.send_message(client, json.dumps(msg))
                     except Exception as e:
                         if self.debug:
-                            print("Error on sendPacket (server): {0}".format(e))
+                            print("Error on sendPacket (server): {0}".format(full_stack()))
                     
                 elif ("id" in msg) and (type(msg["id"]) == str) and (msg["cmd"] not in ["gmsg", "gvar"]):
                     id = msg["id"]
@@ -955,7 +970,7 @@ class CloudLink(API):
                         self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["Syntax"]}))
                 except Exception as e:
                     if self.debug:
-                        print("Error on _server_packet_handler: {0}".format(e))
+                        print("Error on _server_packet_handler: {0}".format(full_stack()))
                     if listener_detected:
                         self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["InternalServerError"], "listener": listener_id}))
                     else:
