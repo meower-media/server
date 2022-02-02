@@ -1,11 +1,11 @@
 # Meower-server
-Official source code of the Meower server, written in Python. Powered by CloudLink.
+Official source code of the Meower server, written in Python. Powered by CloudLink. 
 
 ## Dependencies
 * Run "pip install -r requirements.txt" in the downloaded and unzipped directory
 
 ## Running the server
-Simply download and run meower.py to start a localhost server.
+Simply download and run main.py to start the server. Files and directories will be created to store posts, logs, and userdata.
 
 To connect to the server, change the IP settings of your client to connect to ws://127.0.0.1:3000/.
 
