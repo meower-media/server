@@ -3,3 +3,4 @@ better-profanity
 bcrypt
 scratch2py
 uuid
+flask
