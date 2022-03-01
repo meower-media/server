@@ -17,8 +17,10 @@ class Meower:
     def getIndex(self, location="/Storage/Categories/Home/",  truncate=False, convert=False, mode=1, page=1, query="", noCheck=False):
         if mode == 1:
             result, ls = self.filesystem.get_directory(location + "Indexes/")
-        elif (mode == 2) or (mode == 3):
+        elif mode == 2:
             result, ls = self.filesystem.get_directory(location)
+        elif mode == 3:
+            result = True
         if result:
             if mode == 1:
                 today = self.supporter.timestamp(5)
@@ -85,45 +87,60 @@ class Meower:
                 return True, query_return
             elif mode == 3:
                 result, payload = self.filesystem.load_file(location + query)
-                ls = payload["index"]
-                
-                query_get = []
-                
-                if not noCheck:
-                    for file in ls:
-                        if file.split("-")[0] == query:
-                            query_get.append(file)
-                else:
-                    for file in ls:
-                        query_get.append(file)
-                query_get.reverse()
-               
-                # Get number of pages
-                if len(query_get) == 0:
-                    pages = 0
-                else:
-                    if (len(query_get) % 25) == 0:
-                        if (len(query_get) < 25):
-                            pages = 1
-                        else:
-                            pages = (len(query_get) // 25)
+                if result:
+                    ls = payload["index"]
+                    
+                    query_get = []
+                    
+                    if not noCheck:
+                        for file in ls:
+                            if file.split("-")[0] == query:
+                                query_get.append(file)
                     else:
-                        pages = (len(query_get) // 25)+1
-                
-                query_return = query_get[((page*25)-25):page*25]
-                
-                query_convert = ""
-                for item in query_return:
-                    query_convert = str(query_convert + str(item) + ";")
-                
-                query_return = {
-                    "query": query,
-                    "index": query_convert,
-                    "page#": page,
-                    "pages": pages
-                }
-                
-                return True, query_return
+                        for file in ls:
+                            query_get.append(file)
+                    query_get.reverse()
+                   
+                    # Get number of pages
+                    if len(query_get) == 0:
+                        pages = 0
+                    else:
+                        if (len(query_get) % 25) == 0:
+                            if (len(query_get) < 25):
+                                pages = 1
+                            else:
+                                pages = (len(query_get) // 25)
+                        else:
+                            pages = (len(query_get) // 25)+1
+                    
+                    query_return = query_get[((page*25)-25):page*25]
+                    
+                    if convert:
+                        query_convert = ""
+                        for item in query_return:
+                            query_convert = str(query_convert + str(item) + ";")
+                    else:
+                        query_convert = query_return
+                    
+                    query_return = {
+                        "query": query,
+                        "index": query_convert,
+                        "page#": page,
+                        "pages": pages
+                    }
+                    
+                    return True, query_return
+                else:
+                    result = self.filesystem.create_file(location, query, {"index":[]})
+                    if result:
+                        return 1, {
+                            "query": query,
+                            "index": [],
+                            "page#": 1,
+                            "pages": 0
+                        }
+                    else:
+                        return 0, None
         else:
             if mode == 1:
                 return 0, None
@@ -239,7 +256,6 @@ class Meower:
                                         if FileCheck and FileRead:
                                             if ValidAuth:
                                                 self.supporter.kickBadUsers(username) # Kick bad clients missusing the username
-                                                time.sleep(1)
                                                 self.supporter.autoID(client, username) # If the client is JS-based then give them an AutoID
                                                 self.supporter.setAuthenticatedState(client, True) # Make the server know that the client is authed
                                                 # Return info to sender
