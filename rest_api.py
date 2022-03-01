@@ -32,25 +32,21 @@ meower = Meower(
 )
 
 def fetch_post_from_storage(post_id):
-    status, payload = filesystem.get_directory("/Storage/Categories/Home/Messages/")
-    if status:
-        if post_id in payload:
-            result, payload = filesystem.load_file("/Storage/Categories/Home/Messages/{0}".format(post_id))
-            
-            if result:
-                if ("isDeleted" in payload) and (payload["isDeleted"]):
-                    payload = {
-                        "isDeleted": True
-                    }
-                    
-                else:
-                    payload["isDeleted"] = False
-            
-            return True, result, payload
-        else:
-            return True, False, {}
+    if filesystem.does_file_exist("/Storage/Categories/Home/Messages/", post_id):
+        result, payload = filesystem.load_file("/Storage/Categories/Home/Messages/{0}".format(post_id))
+        
+        if result:
+            if ("isDeleted" in payload) and (payload["isDeleted"]):
+                payload = {
+                    "isDeleted": True
+                }
+                
+            else:
+                payload["isDeleted"] = False
+        
+        return True, result, payload
     else:
-        return False, False, {}
+        return True, False, {}
 
 @app.route('/', methods = ['GET']) # Index
 def index():
@@ -112,10 +108,12 @@ def get_home():
             payload["error"] = False
             return payload, 200
         else:
+            supporter.log("Loaded index, data {0}".format(payload))
             try:
-                tmp_payload = {"error": False, "autoget": []}
+                tmp_payload = {"error": False, "autoget": [], "page#": payload["page#"], "pages": payload["pages"],}
                 
                 for post_id in payload["index"]:
+                    supporter.log("Loading post {0}".format(post_id))
                     filecheck, fileget, filedata = fetch_post_from_storage(post_id)
                     if filecheck and fileget:
                         tmp_payload["autoget"].append(filedata)
