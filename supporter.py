@@ -48,6 +48,8 @@ class Supporter:
         for char in string.digits:
             self.permitted_chars_username.append(char)
             self.permitted_chars_post.append(char)
+        for char in string.punctuation:
+            self.permitted_chars_post.append(char)
         self.permitted_chars_username.append(" ")
         self.permitted_chars_post.append(" ")
         
