@@ -1311,7 +1311,7 @@ class Meower:
                 post = val["p"]
                 chatid = val["chatid"]
                 
-                if (not len(post) > 100) and (not len(chatid) > 50):
+                if (not len(post) > 360) and (not len(chatid) > 50):
                     if self.supporter.check_for_spam(client):
                         
                         # Generate a Post ID
