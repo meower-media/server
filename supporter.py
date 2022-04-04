@@ -197,11 +197,7 @@ class Supporter:
             self.modify_client_statedata(client, "authed", False)
             
             # Rate limiter
-            self.modify_client_statedata(client, "last_packet", {
-                "h": 0,
-                "m": 0,
-                "s": 0
-            })
+            self.modify_client_statedata(client, "last_packet", 0)
     
     def on_packet(self, message):
         if not self.cl == None:
@@ -256,11 +252,7 @@ class Supporter:
     
     def ratelimit(self, client):
         # Rate limiter
-        self.modify_client_statedata(client, "last_packet", {
-            "h": self.timestamp(1)["t"]["h"],
-            "m": self.timestamp(1)["t"]["mi"],
-            "s": self.timestamp(1)["t"]["s"]
-        })
+        self.modify_client_statedata(client, "last_packet", int(time.time()))
     
     def wordfilter(self, message):
         return self.profanity.censor(message)
@@ -307,7 +299,4 @@ class Supporter:
     
     def check_for_spam(self, client):
         if not self.cl == None:
-            current_time = int(self.timestamp(2))
-            not_formatter = self.get_client_statedata(client)["last_packet"]
-            formatter = not_formatter["h"] + not_formatter["m"] + not_formatter["s"]
-            return ((int(formatter) + 1) <= (current_time))
+            return ((self.get_client_statedata(client)["last_packet"]) < (int(time.time())))
