@@ -214,3 +214,19 @@ class Files:
         else:
             self.log("Error on does_file_exist: Expected str for directory and filename, got {0} for directory and {1} for filename".format(type(directory), type(filename)))
             return False
+    
+    def delete_file(self, directory, filename):
+        """
+        Returns true if the file was created successfully.
+        """
+        try:
+            if os.path.exists(self.dirpath + directory):
+                os.remove(self.dirpath + directory + filename)
+                return True
+            else:
+                return False
+        except FileExistsError:
+            return True
+        except Exception:
+            self.log("{0}".format(self.errorhandler()))
+            return False

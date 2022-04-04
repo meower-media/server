@@ -63,7 +63,7 @@ class Main:
         self.cl.setMOTD("Meower Social Media Platform Server", True)
         
         # Run server
-        self.cl.server(port=3000)
+        self.cl.server(port=3000, ip="0.0.0.0")
     
     def returnCode(self, client, code, listener_detected, listener_id):
         self.supporter.sendPacket({"cmd": "statuscode", "val": self.cl.codes[str(code)], "id": client}, listener_detected = listener_detected, listener_id = listener_id)
@@ -144,6 +144,8 @@ class Main:
                 self.meower.set_chat_state(client, val, listener_detected, listener_id)
             elif cmd == "create_chat":
                 self.meower.create_chat(client, val, listener_detected, listener_id)
+            elif cmd == "leave_chat":
+                self.meower.leave_chat(client, val, listener_detected, listener_id)
             elif cmd == "get_chat_list":
                 self.meower.get_chat_list(client, val, listener_detected, listener_id)
             elif cmd == "get_chat_data":

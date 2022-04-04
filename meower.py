@@ -1069,40 +1069,89 @@ class Meower:
                     
                     # Create user's chat directory if they haven't created a chat before
                     result = self.filesystem.create_directory("/Storage/Chats/UserIndexes/{0}".format(client))
-                    if result:
-                        result, ls = self.filesystem.get_directory("/Storage/Chats/UserIndexes/{0}/".format(client))
+                    
+                    if not self.supporter.checkForBadCharsUsername(val):
                         if result:
-                            if not val in ls:
-                                # Create chat ID in root index of chats
-                                chat_uuid = str(uuid.uuid4()) # Generate a UUID for the chat
-                                self.log("New chat: {0} UUID: {1}".format(val, chat_uuid))
-                                result = self.filesystem.create_file("/Storage/Chats/Indexes/", "{0}".format(chat_uuid), {
-                                    "index": [],
-                                    "owner": client,
-                                    "nickname": val
-                                    }
-                                )
-                                
-                                # Create reference indexer for user
-                                result2 = self.filesystem.create_file("/Storage/Chats/UserIndexes/{0}/".format(client), "{0}".format(val), {
-                                    "chat_uuid": chat_uuid
-                                    }
-                                )
-                                
-                                if result and result2:
-                                    self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                                else:   
-                                    # Some other error, raise an internal error.
-                                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                            result, ls = self.filesystem.get_directory("/Storage/Chats/UserIndexes/{0}/".format(client))
+                            if result:
+                                if not val in ls:
+                                    # Create chat ID in root index of chats
+                                    chat_uuid = str(uuid.uuid4()) # Generate a UUID for the chat
+                                    self.log("New chat: {0} UUID: {1}".format(val, chat_uuid))
+                                    result = self.filesystem.create_file("/Storage/Chats/Indexes/", "{0}".format(chat_uuid), {
+                                        "index": [],
+                                        "owner": client,
+                                        "nickname": val
+                                        }
+                                    )
+                                    
+                                    # Create reference indexer for user
+                                    result2 = self.filesystem.create_file("/Storage/Chats/UserIndexes/{0}/".format(client), "{0}".format(val), {
+                                        "chat_uuid": chat_uuid
+                                        }
+                                    )
+                                    
+                                    if result and result2:
+                                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                                    else:   
+                                        # Some other error, raise an internal error.
+                                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                                else:
+                                    # Chat exists
+                                    self.returnCode(client = client, code = "ChatExists", listener_detected = listener_detected, listener_id = listener_id)
                             else:
-                                # Chat exists
-                                self.returnCode(client = client, code = "ChatExists", listener_detected = listener_detected, listener_id = listener_id)
+                                # Some other error, raise an internal error.
+                                self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                         else:
                             # Some other error, raise an internal error.
                             self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                     else:
-                        # Some other error, raise an internal error.
-                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                        # Bad characters being used
+                        self.returnCode(client = client, code = "IllegalChars", listener_detected = listener_detected, listener_id = listener_id)
+                else:
+                    # Bad syntax
+                    self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
+            else:
+                # Bad datatype
+                self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
+        else:
+            # Not authenticated
+            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
+    
+    def leave_chat(self, client, val, listener_detected, listener_id):
+        # Check if the client is already authenticated
+        if self.supporter.isAuthenticated(client):
+            if type(val) == str:
+                if not len(val) > 20:
+                    
+                    # Create user's chat directory if they haven't created a chat before
+                    result = self.filesystem.create_directory("/Storage/Chats/UserIndexes/{0}".format(client))
+                    
+                    if not self.supporter.checkForBadCharsUsername(val):
+                        if result:
+                            result, ls = self.filesystem.get_directory("/Storage/Chats/UserIndexes/{0}/".format(client))
+                            if result:
+                                if val in ls:
+                                    # Delete reference indexer for user
+                                    result = self.filesystem.delete_file("/Storage/Chats/UserIndexes/{0}/".format(client), "{0}".format(val))
+                                    
+                                    if result:
+                                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                                    else:   
+                                        # Some other error, raise an internal error.
+                                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                                else:
+                                    # Chat does not exist
+                                    self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
+                            else:
+                                # Some other error, raise an internal error.
+                                self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                        else:
+                            # Some other error, raise an internal error.
+                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                    else:
+                        # Bad characters being used
+                        self.returnCode(client = client, code = "IllegalChars", listener_detected = listener_detected, listener_id = listener_id)
                 else:
                     # Bad syntax
                     self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)

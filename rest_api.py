@@ -10,6 +10,7 @@ app = Flask(__name__)
 cors = CORS(app, resources=r'*')
 
 repair_mode = False
+is_deprecated = False
 
 # Init libraries
 supporter = Supporter()
@@ -132,7 +133,7 @@ def get_home():
 
 @app.route('/status', methods=["GET"])
 def get_status():
-    return {"isRepairMode": repair_mode}, 200
+    return {"isRepairMode": repair_mode, "scratchDeprecated": is_deprecated}, 200
 
 @app.errorhandler(405) # Method not allowed
 def not_allowed(e):
