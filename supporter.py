@@ -284,11 +284,10 @@ class Supporter:
     def autoID(self, client, username):
         if not self.cl == None:
             # really janky code that automatically sets user ID
-            if self.get_client_statedata(client)["type"] != "scratch": # Prevent this from breaking compatibility with scratch clients
-                self.modify_client_statedata(client, "username", username)
-                self.cl.statedata["ulist"]["usernames"][username] = client["id"]
-                self.sendPacket({"cmd": "ulist", "val": self.cl._get_ulist()})
-                self.log("{0} autoID given".format(username))
+            self.modify_client_statedata(client, "username", username)
+            self.cl.statedata["ulist"]["usernames"][username] = client["id"]
+            self.sendPacket({"cmd": "ulist", "val": self.cl._get_ulist()})
+            self.log("{0} autoID given".format(username))
     
     def kickBadUsers(self, username):
         if not self.cl == None:
