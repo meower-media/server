@@ -255,6 +255,9 @@ class Supporter:
         self.modify_client_statedata(client, "last_packet", int(time.time()))
     
     def wordfilter(self, message):
+        # Word censor
+        filter = json.loads(open("Meower/Config/filter.json").read())
+        self.profanity.load_censor_words(whitelist_words=filter["whitelist"], custom_words=filter["blacklist"])
         return self.profanity.censor(message)
     
     def isAuthenticated(self, client):

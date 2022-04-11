@@ -106,10 +106,13 @@ class Files:
         })
         
         # Create Version support file
-        self.create_file("/Config/", "supported_versions.json", {"index": ["scratch-beta-5-r1"]})
+        self.create_file("/Config/", "supported_versions.json", {"index": ["scratch-beta-5-r3"]})
         
         # Create Trust Keys file
         self.create_file("/Config/", "trust_keys.json", {"index": ["meower"]})
+
+        # Create Filter file
+        self.create_file("/Config/", "filter.json", {"whitelist": [], "blacklist": []})
         
         self.log("Files initialized!")
     
@@ -217,7 +220,7 @@ class Files:
     
     def delete_file(self, directory, filename):
         """
-        Returns true if the file was created successfully.
+        Returns true if the file was deleted successfully.
         """
         try:
             if os.path.exists(self.dirpath + directory):
