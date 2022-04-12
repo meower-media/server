@@ -301,4 +301,4 @@ class Supporter:
     
     def check_for_spam(self, client):
         if not self.cl == None:
-            return ((self.get_client_statedata(client)["last_packet"]) < (int(time.time())))
+            return (((self.get_client_statedata(client)["last_packet"])+1) < (int(time.time())))
