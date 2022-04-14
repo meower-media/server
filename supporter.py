@@ -257,8 +257,11 @@ class Supporter:
     def wordfilter(self, message):
         # Word censor
         filter = json.loads(open("Meower/Config/filter.json").read())
+        self.profanity.load_censor_words(whitelist_words=filter["whitelist"])
+        message = self.profanity.censor(message)
         self.profanity.load_censor_words(whitelist_words=filter["whitelist"], custom_words=filter["blacklist"])
-        return self.profanity.censor(message)
+        message = self.profanity.censor(message)
+        return message
     
     def isAuthenticated(self, client):
         if not self.cl == None:
