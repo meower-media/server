@@ -1069,7 +1069,8 @@ class Meower:
                             for post_id in all_posts:
                                 result, payload = self.filesystem.load_item("posts", post_id)
                                 if result:
-                                    payload["isDeleted"] = True
+                                    payload["u"] = "Deleted"
+                                    payload["p"] = "[This user was deleted]"
                                     self.filesystem.write_item("posts", post_id, payload)
                             FileCheck, FileRead, FileWrite = self.accounts.update_setting(val, {"theme": None, "mode": None, "sfx": None, "debug": None, "bgm": None, "bgm_song": None, "layout": None, "pfp_data": None, "quote": None, "email": None, "pswd": None, "lvl": None, "banned": True, "last_ip": None}, forceUpdate=True)
                             if FileCheck and FileRead and FileWrite:
@@ -1695,26 +1696,8 @@ class Meower:
                         result, payload = self.filesystem.load_item("posts", post_id)
                         if result:
                             payload["u"] = "Deleted"
-                            payload["p"] = "[This user was deleted - GDPR]"
-                            payload["isDeleted"] = True
+                            payload["p"] = "[This user was deleted]"
                             self.filesystem.write_item("posts", post_id, payload)
-                    chat_index = self.getIndex(location="chats", query={"members": {"$all": [client]}}, truncate=False)["index"]
-                    for chat_id in chat_index:
-                        result, payload = self.filesystem.load_item("chats", chat_id)
-                        if result:
-                            if payload["owner"] == client:
-                                self.filesystem.delete_item("chats", chat_id)
-                            else:
-                                payload["members"].remove(client)
-                                self.filesystem.write_item("chats", chat_id, payload)
-                    netlog_index = self.getIndex(location="netlog", query={"users": {"$all": [client]}}, truncate=False)["index"]
-                    for ip in netlog_index:
-                        result, payload = self.filesystem.load_item("netlog", ip)
-                        if result:
-                            payload["users"].remove(client)
-                            if payload["last_user"] == client:
-                                payload["last_user"] = "Deleted"
-                            self.filesystem.write_item("netlog", ip, payload)
                     result = self.filesystem.delete_item("usersv0", client)
                     if result:
                         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
