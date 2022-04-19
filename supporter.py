@@ -4,7 +4,6 @@ import time
 import traceback
 import sys
 import string
-import json
 
 """
 
@@ -17,6 +16,8 @@ This keeps the main.py clean and more understandable.
 
 class Supporter:
     def __init__(self, cl=None, packet_callback=None):
+        self.filter = None
+        self.status = {"repair_mode": True, "is_deprecated": False}
         self.cl = cl
         self.profanity = profanity
         self.packet_handler = packet_callback
@@ -49,26 +50,16 @@ class Supporter:
             self.permitted_chars_username.append(char)
             self.permitted_chars_post.append(char)
         for char in string.punctuation:
+            self.permitted_chars_username.append(char)
             self.permitted_chars_post.append(char)
+        self.permitted_chars_username.append(" ")
         self.permitted_chars_post.append(" ")
-        
-        # Create chats
-        self.chats = {}
-        
-        """
-        
-        Example reference for chats (excluding livechat, as that chat is purely stateless)
-        
-        self.chats = {
-            "(Chat unique ID)": {
-                "nickname": "foobarchat",
-                "owner": "MikeDEV",
-                "userlist": [
-                    "MikeDEV"
-                ]
-            }
-        }
-        """
+
+        # Removes bad characters for username
+        self.permitted_chars_username.remove('"')
+        self.permitted_chars_username.remove("'")
+        self.permitted_chars_username.remove("*")
+        self.permitted_chars_username.remove(";")
         
         # Peak number of users logger
         self.peak_users_logger = {
@@ -79,7 +70,8 @@ class Supporter:
                 "y": 0,
                 "h": 0,
                 "mi": 0,
-                "s": 0
+                "s": 0,
+                "e": 0
             }
         }
         
@@ -165,14 +157,7 @@ class Supporter:
                 today = datetime.now()
                 self.peak_users_logger = {
                     "count": current_users,
-                    "timestamp": {
-                        "mo": (datetime.now()).strftime("%m"),
-                        "d": (datetime.now()).strftime("%d"),
-                        "y": (datetime.now()).strftime("%Y"),
-                        "h": (datetime.now()).strftime("%H"),
-                        "mi": (datetime.now()).strftime("%M"),
-                        "s": (datetime.now()).strftime("%S")
-                    }
+                    "timestamp": self.timestamp(1)
                 }
                 self.log("New peak in # of concurrent users: {0}".format(current_users))
                 #self.create_system_message("Yay! New peak in # of concurrent users: {0}".format(current_users))
@@ -192,12 +177,16 @@ class Supporter:
     
     def on_connect(self, client):
         if not self.cl == None:
-            self.log("{0} Connected.".format(client["id"]))
-            self.modify_client_statedata(client, "authtype", "")
-            self.modify_client_statedata(client, "authed", False)
-            
-            # Rate limiter
-            self.modify_client_statedata(client, "last_packet", 0)
+            if self.status["repair_mode"]:
+                self.log("Refusing connection from {0} due to repair mode being enabled".format(client["id"]))
+                self.cl.kickClient(client)
+            else:
+                self.log("{0} Connected.".format(client["id"]))
+                self.modify_client_statedata(client, "authtype", "")
+                self.modify_client_statedata(client, "authed", False)
+                
+                # Rate limiter
+                self.modify_client_statedata(client, "last_packet", 0)
     
     def on_packet(self, message):
         if not self.cl == None:
@@ -232,15 +221,14 @@ class Supporter:
         today = datetime.now()
         if ttype == 1:
             return {
-                "t": {
-                        "mo": (datetime.now()).strftime("%m"),
-                        "d": (datetime.now()).strftime("%d"),
-                        "y": (datetime.now()).strftime("%Y"),
-                        "h": (datetime.now()).strftime("%H"),
-                        "mi": (datetime.now()).strftime("%M"),
-                        "s": (datetime.now()).strftime("%S")
-                    }
-                }
+                "mo": (datetime.now()).strftime("%m"),
+                "d": (datetime.now()).strftime("%d"),
+                "y": (datetime.now()).strftime("%Y"),
+                "h": (datetime.now()).strftime("%H"),
+                "mi": (datetime.now()).strftime("%M"),
+                "s": (datetime.now()).strftime("%S"),
+                "e": (int(time.time()))
+            }
         elif ttype == 2:
             return str(today.strftime("%H%M%S"))
         elif ttype == 3:
@@ -256,11 +244,15 @@ class Supporter:
     
     def wordfilter(self, message):
         # Word censor
-        filter = json.loads(open("Meower/Config/filter.json").read())
-        self.profanity.load_censor_words(whitelist_words=filter["whitelist"])
-        message = self.profanity.censor(message)
-        self.profanity.load_censor_words(whitelist_words=filter["whitelist"], custom_words=filter["blacklist"])
-        message = self.profanity.censor(message)
+        if self.filter != None:
+            self.profanity.load_censor_words(whitelist_words=self.filter["whitelist"])
+            message = self.profanity.censor(message)
+            self.profanity.load_censor_words(whitelist_words=self.filter["whitelist"], custom_words=self.filter["blacklist"])
+            message = self.profanity.censor(message)
+        else:
+            self.log("Failed loading profanity filter : Using default filter as fallback")
+            self.profanity.load_censor_words()
+            message = self.profanity.censor(message)
         return message
     
     def isAuthenticated(self, client):
@@ -272,6 +264,9 @@ class Supporter:
             self.modify_client_statedata(client, "authed", value)
     
     def checkForBadCharsUsername(self, value):
+        # Check for profanity in username, will return '*' if there's profanity which will be blocked as an illegal character
+        value = self.wordfilter(value)
+
         badchars = False
         for char in value:
             if not char in self.permitted_chars_username:

@@ -4,3 +4,4 @@ bcrypt
 scratch2py
 uuid
 flask
+pymongo
