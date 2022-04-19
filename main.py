@@ -94,7 +94,7 @@ class Main:
                 self.meower.del_account(client, listener_detected, listener_id)
             elif cmd == "get_home":
                 # Get homepage index
-                self.meower.get_home(client, listener_detected, listener_id)
+                self.meower.get_home(client, val, listener_detected, listener_id)
             elif cmd == "get_inbox":
                 # Get inbox posts
                 self.meower.get_inbox(client, val, listener_detected, listener_id)
