@@ -4,13 +4,9 @@ from security import Security
 from supporter import Supporter
 from meower import Meower
 from files import Files
-import json
 
 app = Flask(__name__)
 cors = CORS(app, resources=r'*')
-
-repair_mode = False
-is_deprecated = False
 
 # Init libraries
 supporter = Supporter()
@@ -33,8 +29,8 @@ meower = Meower(
 )
 
 def fetch_post_from_storage(post_id):
-    if filesystem.does_file_exist("/Storage/Categories/Home/Messages/", post_id):
-        result, payload = filesystem.load_file("/Storage/Categories/Home/Messages/{0}".format(post_id))
+    if filesystem.does_item_exist("posts", post_id):
+        result, payload = filesystem.load_item("posts", post_id)
         
         if result:
             if ("isDeleted" in payload) and (payload["isDeleted"]):
@@ -60,7 +56,7 @@ def ip_tracer():
 		if "Cf-Connecting-Ip" in request.headers:
 			return str(request.headers["Cf-Connecting-Ip"]), 200
 		else:
-			return {"error": True, "type": "Internal"}, 500
+			return str(request.remote_addr)
 	else:
 		return {"error": True, "type": "notAllowed"}, 405
 
@@ -88,7 +84,6 @@ def get_post():
 
 @app.route('/home', methods=["GET"])
 def get_home():
-    
     page = 1
     autoget = False
     args = request.args
@@ -102,38 +97,38 @@ def get_home():
     
     if "autoget" in args:
         autoget = True
-    
-    result, payload = meower.getIndex(location="/Storage/Categories/Home/Indexes/", mode=3, query=supporter.timestamp(5), noCheck=True, convert=False, page=page)
-    if result != 0:
-        if not autoget:
-            payload["error"] = False
-            return payload, 200
-        else:
-            supporter.log("Loaded index, data {0}".format(payload))
-            try:
-                tmp_payload = {"error": False, "autoget": [], "page#": payload["page#"], "pages": payload["pages"],}
-                
-                for post_id in payload["index"]:
-                    supporter.log("Loading post {0}".format(post_id))
-                    filecheck, fileget, filedata = fetch_post_from_storage(post_id)
-                    if filecheck and fileget:
-                        tmp_payload["autoget"].append(filedata)
-                    else:
-                        if filecheck and (not fileget):
-                            tmp_payload["autoget"].append({"error": True, "type": "notFound"})
-                        else:
-                            tmp_payload["autoget"].append({"error": True, "type": "Internal"})
-                
-                return tmp_payload, 200
-            except Exception as e:
-                print(e)
-                return {"error": True, "type": "Internal"}, 500
+
+    payload = meower.getIndex(location="posts", query={"post_origin": "home", "isDeleted": False}, truncate=True, page=page)
+    if not autoget:
+        payload["error"] = False
+        return payload, 200
     else:
-        return {"error": True, "type": "Internal"}, 500
+        supporter.log("Loaded index, data {0}".format(payload))
+        try:
+            tmp_payload = {"error": False, "autoget": [], "page#": payload["page#"], "pages": payload["pages"],}
+            
+            for post_id in payload["index"]:
+                supporter.log("Loading post {0}".format(post_id))
+                filecheck, fileget, filedata = fetch_post_from_storage(post_id)
+                if filecheck and fileget:
+                    tmp_payload["autoget"].append(filedata)
+                else:
+                    if filecheck and (not fileget):
+                        tmp_payload["autoget"].append({"error": True, "type": "notFound"})
+                    else:
+                        tmp_payload["autoget"].append({"error": True, "type": "Internal"})
+            
+            return tmp_payload, 200
+        except:
+            return {"error": True, "type": "Internal"}, 500
 
 @app.route('/status', methods=["GET"])
 def get_status():
-    return {"isRepairMode": repair_mode, "scratchDeprecated": is_deprecated}, 200
+    result, payload = filesystem.load_item("config", "status")
+    if result:
+        return {"isRepairMode": payload["repair_mode"], "scratchDeprecated": payload["is_deprecated"]}, 200
+    else:
+        return {"error": True, "type": "Internal"}, 500
 
 @app.errorhandler(405) # Method not allowed
 def not_allowed(e):
@@ -148,4 +143,4 @@ def page_not_found(e):
 	return {"error": True, "type": "notFound"}, 404
 
 if __name__ == '__main__': # Run server
-	app.run(host="0.0.0.0", port=3001, debug=True)
+	app.run(host="0.0.0.0", port=3001, debug=False)

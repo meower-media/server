@@ -1,5 +1,4 @@
 import bcrypt
-import json
 
 """
 
@@ -31,11 +30,11 @@ class Security:
         """
         
         if (type(password) == str) and (type(username) == str):
-            if not self.files.does_file_exist("/Userdata/", str(username)):
+            if not self.files.does_item_exist("usersv0", str(username)):
                 self.log("Creating account: {0}".format(username))
                 pswd_bytes = bytes(password, "utf-8") # Convert password to bytes
                 hashed_pw = self.bc.hashpw(pswd_bytes, self.bc.gensalt(strength)) # Hash and salt the password
-                result = self.files.create_file("/Userdata/", str(username), { # Default account data
+                result = self.files.create_item("usersv0", str(username), { # Default account data
                         "theme": "orange",
                         "mode": True,
                         "sfx": True,
@@ -48,7 +47,8 @@ class Security:
                         "email": "",
                         "pswd": hashed_pw.decode(),
                         "lvl": 0,
-                        "banned": False
+                        "banned": False,
+                        "last_ip": None
                     }
                 )
                 return True, result
@@ -73,9 +73,9 @@ class Security:
         """
         
         if type(username) == str:
-            if self.files.does_file_exist("/Userdata/", str(username)):
+            if self.files.does_item_exist("usersv0", str(username)):
                 self.log("Reading account: {0}".format(username))
-                result, accountData = self.files.load_file("/Userdata/{0}".format(str(username)))
+                result, accountData = self.files.load_item("usersv0", str(username))
                 
                 if omitSensitive: # Purge sensitive data and remove user settings
                     for sensitive in [
@@ -87,13 +87,16 @@ class Security:
                         "bgm_song",
                         "layout",
                         "email",
-                        "pswd"
+                        "pswd",
+                        "last_ip"
                     ]:
                         del accountData[sensitive]
                 
                 if isClient:
                     if "pswd" in accountData:
                         del accountData["pswd"]
+                    if "last_ip" in accountData:
+                        del accountData["last_ip"]
                 
                 return True, result, accountData
             else:
@@ -116,9 +119,9 @@ class Security:
         """
         
         if type(username) == str:
-            if self.files.does_file_exist("/Userdata/", str(username)):
+            if self.files.does_item_exist("usersv0", str(username)):
                 self.log("Authenticating account: {0}".format(username))
-                result, accountData = self.files.load_file("/Userdata/{0}".format(str(username)))
+                result, accountData = self.files.load_item("usersv0", str(username))
                 if result:
                     if type(accountData) == dict:
                         hashed_pw = accountData["pswd"]
@@ -156,9 +159,9 @@ class Security:
         """
         
         if (type(username) == str) and (type(oldpassword) == str) and (type(newpassword) == str):
-            if self.files.does_file_exist("/Userdata/", str(username)):
+            if self.files.does_item_exist("usersv0", str(username)):
                 self.log("Changing {0} password".format(username))
-                result, accountData = self.files.load_file("/Userdata/{0}".format(str(username)))
+                result, accountData = self.files.load_item("usersv0", str(username))
                 if result:
                     hashed_pw = accountData["pswd"]
                     pswd_bytes = bytes(oldpassword, "utf-8")
@@ -171,7 +174,7 @@ class Security:
                             
                             accountData["pswd"] = hashed_pw.decode()
                             
-                            result = self.files.write_file("/Userdata/", str(username), accountData)
+                            result = self.files.write_item("usersv0", str(username), accountData)
                             self.log("Change {0} password: {1}".format(username, result))
                             return True, True, result
                         else:
@@ -190,7 +193,7 @@ class Security:
     
     def account_exists(self, username):
         if type(username) == str:
-            return self.files.does_file_exist("/Userdata/", str(username))
+            return self.files.does_item_exist("usersv0", str(username))
         else:
             self.log("Error on account_exists: Expected str for username, got {0}".format(type(username)))
             return False
@@ -209,9 +212,9 @@ class Security:
         """
         
         if type(username) == str:
-            if self.files.does_file_exist("/Userdata/", str(username)):
+            if self.files.does_item_exist("usersv0", str(username)):
                 self.log("Reading account: {0}".format(username))
-                result, accountData = self.files.load_file("/Userdata/{0}".format(str(username)))
+                result, accountData = self.files.load_item("usersv0", str(username))
                 return True, result, accountData["banned"]
             else:
                 return False, True, None
@@ -233,22 +236,22 @@ class Security:
         """
         
         if (type(username) == str) and (type(newdata) == dict):
-            if self.files.does_file_exist("/Userdata/", str(username)):
+            if self.files.does_item_exist("usersv0", str(username)):
                 self.log("Updating account settings: {0}".format(username))
-                result, accountData = self.files.load_file("/Userdata/{0}".format(str(username)))
+                result, accountData = self.files.load_item("usersv0", str(username))
                 if result:
                     for key, value in newdata.items():
                         if forceUpdate:
                             if key in accountData.keys():
                                 accountData[key] = value
                         else:
-                            if not key in ["lvl", "pswd", "banned", "quote", "email"]:
+                            if not key in ["lvl", "pswd", "banned", "quote", "email", "last_ip"]:
                                 if key in accountData.keys():
                                     accountData[key] = value
                             else:
                                 self.log("Blocking attempt to modify secure key {0}".format(key))
                     
-                    result = self.files.write_file("/Userdata/", str(username), accountData)
+                    result = self.files.write_item("usersv0", str(username), accountData)
                     self.log("Updating {0} account settings: {1}".format(username, result))
                     return True, True, result
                 else:
