@@ -56,6 +56,7 @@ for item in os.listdir("Meower/Userdata"):
         if item in unban:
             print("Unbanning {0}".format(item))
             userdata["banned"] = False
+        userdata["lower_username"] = userdata["_id"].lower()
         userdata["last_ip"] = ""
         db["usersv0"].insert_one(userdata)
         print("Added {0} to Mongo!".format(userdata["_id"]))
