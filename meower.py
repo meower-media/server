@@ -1266,6 +1266,9 @@ class Meower:
 
                             # Relay post to clients
                             self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": val}})
+                            
+                            # Return to the client the post was deleted
+                            self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                         else:
                             self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                     else:
