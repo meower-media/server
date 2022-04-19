@@ -1069,8 +1069,7 @@ class Meower:
                             for post_id in all_posts:
                                 result, payload = self.filesystem.load_item("posts", post_id)
                                 if result:
-                                    payload["u"] = "Deleted"
-                                    payload["p"] = "[This user was deleted]"
+                                    payload["isDeleted"] = True
                                     self.filesystem.write_item("posts", post_id, payload)
                             FileCheck, FileRead, FileWrite = self.accounts.update_setting(val, {"theme": None, "mode": None, "sfx": None, "debug": None, "bgm": None, "bgm_song": None, "layout": None, "pfp_data": None, "quote": None, "email": None, "pswd": None, "lvl": None, "banned": True, "last_ip": None}, forceUpdate=True)
                             if FileCheck and FileRead and FileWrite:
@@ -1696,7 +1695,8 @@ class Meower:
                         result, payload = self.filesystem.load_item("posts", post_id)
                         if result:
                             payload["u"] = "Deleted"
-                            payload["p"] = "[This user was deleted]"
+                            payload["p"] = "[This user was deleted - GDPR]"
+                            payload["isDeleted"] = True
                             self.filesystem.write_item("posts", post_id, payload)
                     result = self.filesystem.delete_item("usersv0", client)
                     if result:
