@@ -30,11 +30,12 @@ class Security:
         """
         
         if (type(password) == str) and (type(username) == str):
-            if not self.files.does_item_exist("usersv0", str(username)):
+            if not self.account_exists(str(username), ignore_case=True):
                 self.log("Creating account: {0}".format(username))
                 pswd_bytes = bytes(password, "utf-8") # Convert password to bytes
                 hashed_pw = self.bc.hashpw(pswd_bytes, self.bc.gensalt(strength)) # Hash and salt the password
                 result = self.files.create_item("usersv0", str(username), { # Default account data
+                        "lower_username": username.lower(),
                         "theme": "orange",
                         "mode": True,
                         "sfx": True,
@@ -191,9 +192,16 @@ class Security:
             self.log("Error on get_account: Expected str for username, oldpassword and newpassword, got {0} for username, {1} for oldpassword, and {2} for newpassword".format(type(username), type(oldpassword), type(newpassword)))
             return False, False, False
     
-    def account_exists(self, username):
+    def account_exists(self, username, ignore_case=False):
         if type(username) == str:
-            return self.files.does_item_exist("usersv0", str(username))
+            if ignore_case:
+                payload = self.files.find_items("usersv0", {"lower_username": str(username).lower()})
+                if len(payload) == 0:
+                    return False
+                else:
+                    return True
+            else:
+                return self.files.does_item_exist("usersv0", str(username))
         else:
             self.log("Error on account_exists: Expected str for username, got {0}".format(type(username)))
             return False
