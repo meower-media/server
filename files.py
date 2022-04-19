@@ -32,6 +32,7 @@ class Files:
         
         # Create collection indexes
         self.db["netlog"].create_index("users")
+        self.db["usersv0"].create_index("lower_username")
         self.db["posts"].create_index("u")
         self.db["posts"].create_index("post_origin")
         self.db["posts"].create_index("type")
@@ -39,6 +40,7 @@ class Files:
         
         # Create reserved accounts
         self.create_item("usersv0", "Server", {
+            "lower_username": "server",
             "theme": "",
             "mode": None,
             "sfx": None,
@@ -55,6 +57,7 @@ class Files:
         })
         
         self.create_item("usersv0", "Deleted", {
+            "lower_username": "deleted",
             "theme": "",
             "mode": None,
             "sfx": None,
@@ -71,6 +74,7 @@ class Files:
         })
 
         self.create_item("usersv0", "username", {
+            "lower_username": "username",
             "theme": "",
             "mode": None,
             "sfx": None,
@@ -87,6 +91,7 @@ class Files:
         })
 
         self.create_item("usersv0", "Meower", {
+            "lower_username": "meower",
             "theme": "",
             "mode": None,
             "sfx": None,
@@ -139,6 +144,15 @@ class Files:
             "is_deprecated": False
         })
         
+        # 'lower_username' patch
+        result, payload = self.load_item("usersv0", "Server")
+        if result:
+            if not "lower_username" in payload:
+                self.log("Updating users to include 'lower_username'")
+                payload = self.find_items("usersv0", {})
+                for item in payload:
+                    self.update_item("usersv0", str(item), {"lower_username": str(item).lower()})
+
         self.log("Files initialized!")
 
     def does_item_exist(self, collection, id):
@@ -161,6 +175,16 @@ class Files:
                 return False
         else:
             self.log("{0} collection doesn't exist".format(collection))
+            return False
+
+    def update_item(self, collection, id, data):
+        if collection in self.db.list_collection_names():
+            if self.does_item_exist(collection, id):
+                self.db[collection].update_one({"_id": id}, {"$set": data})
+                return True
+            else:
+                return False
+        else:
             return False
 
     def write_item(self, collection, id, data):
