@@ -130,7 +130,7 @@ class Meower:
                         "payload": post_data
                     }
 
-                    self.cl.sendPacket({"cmd": "direct", "val": payload})
+                    self.cl.sendPacket({"cmd": "direct", "val": payload, "id": user})
                 return True
             else:
                 return False
