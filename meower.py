@@ -1258,11 +1258,11 @@ class Meower:
             if self.filesystem.does_item_exist("posts", val):
                 result, payload = self.filesystem.load_item("posts", val)
                 if result:
-                    if payload["u"] == client:
+                    if payload["u"] == client and payload["type"] != 2:
                         payload["isDeleted"] = True
                         result = self.filesystem.write_item("posts", val, payload)
                         if result:
-                            self.log("{0} deleting home post {1}".format(client, val))
+                            self.log("{0} deleting post {1}".format(client, val))
 
                             # Relay post to clients
                             self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": val}})
@@ -1274,20 +1274,22 @@ class Meower:
                     else:
                         FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
                         if FileCheck and FileRead:
-                            if accountData["lvl"] >= 1:
+                            if (accountData["lvl"] >= 1 and payload["type"] == 1) or (accountData["lvl"] >= 3 and payload["type"] == 2):
                                 if type(val) == str:
                                     payload["isDeleted"] = True
                                     result = self.filesystem.write_item("posts", val, payload)
                                     if result:
-                                        self.log("{0} deleting home post {1}".format(client, val))
+                                        self.log("{0} deleting post {1}".format(client, val))
 
                                         # Relay post to clients
-                                        self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": val}})
+                                        if payload["type"] == 3:
+                                            self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": val}, "id": payload["u"]})
+                                        else:
+                                            self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": val}})
 
                                         # Create moderator alert
-                                        result, payload = self.filesystem.load_item("posts", val)
-                                        if result:
-                                            self.createPost(post_origin="inbox", user=payload["u"], content="One of your posts were removed by a moderator! Post: '{0}'".format(payload["p"]))
+                                        if payload["type"] == 1:
+                                            self.createPost(post_origin="inbox", user=payload["u"], content="One of your posts were removed by a moderator! Please make sure to follow the Meower community guidelines in the future. Post: '{0}'".format(payload["p"]))
 
                                         # Return to the client the post was deleted
                                         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
