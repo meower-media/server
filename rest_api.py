@@ -33,13 +33,13 @@ def fetch_post_from_storage(post_id):
         result, payload = filesystem.load_item("posts", post_id)
         
         if result:
-	    	if payload["post_origin"] != "home":
-				return {"error": True, "type": "forbidden"}, 403
-            if payload["isDeleted"]:
+	    if payload["post_origin"] != "home":
+		payload["u"] = None
+		payload["p"] = None
+            elif payload["isDeleted"]:
                 payload = {
                     "isDeleted": True
                 }
-                
             else:
                 payload["isDeleted"] = False
         
