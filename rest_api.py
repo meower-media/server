@@ -33,11 +33,11 @@ def fetch_post_from_storage(post_id):
         result, payload = filesystem.load_item("posts", post_id)
         
         if result:
-	    if payload["post_origin"] != "home":
-		payload["post_origin"] = None
-		payload["t"] = None
-		payload["u"] = None
-		payload["p"] = None
+            if payload["post_origin"] != "home":
+                payload["post_origin"] = None
+                payload["t"] = None
+                payload["u"] = None
+                payload["p"] = None
             elif payload["isDeleted"]:
                 payload = {
                     "isDeleted": True
