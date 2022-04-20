@@ -130,7 +130,7 @@ class Meower:
                         "payload": post_data
                     }
 
-                    self.cl.sendPacket({"cmd": "direct", "val": payload})
+                    self.cl.sendPacket({"cmd": "direct", "val": payload, "id": user})
                 return True
             else:
                 return False
@@ -652,7 +652,7 @@ class Meower:
                                 payload["isDeleted"] = True
                                 result = self.filesystem.write_item("posts", post_id, payload)
                         # Send alert to user
-                        self.createPost(post_origin="inbox", user=str(val), content="All your posts have been deleted by a moderator.")
+                        self.createPost(post_origin="inbox", user=str(val), content="All your posts have been deleted by a moderator. If you think this is a mistake please contact the Meower Team.")
                         # Return to the client it's data
                         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                     else:
@@ -680,7 +680,7 @@ class Meower:
                     if type(val) == dict:
                         if ("username" in val) and ("p" in val):
                             if self.accounts.account_exists(val["username"]):
-                                self.createPost(post_origin="inbox", user=val["username"], content="Message from Meower Team: {0}".format(val["p"]))
+                                self.createPost(post_origin="inbox", user=val["username"], content="Message from the Meower Team: {0}".format(val["p"]))
                             else:
                                 # Account not found
                                 self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
@@ -710,7 +710,7 @@ class Meower:
             if FileCheck and FileRead:
                 if accountData["lvl"] >= 3:
                     if type(val) == str:
-                        self.createPost(post_origin="announcement", user=client, content="Announcement from {0}: {1}".format(client, val))
+                        self.createPost(post_origin="announcement", user=client, content=val)
                     else:
                         # Bad datatype
                         self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
@@ -985,7 +985,7 @@ class Meower:
                         if self.accounts.account_exists(val):
                             FileCheck, FileRead, FileWrite = self.accounts.update_setting(val, {"banned": True}, forceUpdate=True)
                             if FileCheck and FileRead and FileWrite:
-                                self.createPost(post_origin="inbox", user=val, content="Your account has been banned due to recent activity.")
+                                self.createPost(post_origin="inbox", user=val, content="Your account has been banned due to recent activity. If you think this is a mistake please contact the Meower Team.")
                                 self.log("Banning {0}".format(val))
                                 # Tell client it's going to get banned
                                 self.sendPacket({"cmd": "direct", "val": self.cl.codes["Banned"], "id": val})
@@ -1030,7 +1030,7 @@ class Meower:
                         if self.accounts.account_exists(val):
                             FileCheck, FileRead, FileWrite = self.accounts.update_setting(val, {"banned": False}, forceUpdate=True)
                             if FileCheck and FileRead and FileWrite:
-                                self.createPost(post_origin="inbox", user=val, content="Your account has been unbanned. Welcome back!")
+                                self.createPost(post_origin="inbox", user=val, content="Your account has been unbanned. Welcome back! Please make sure to follow the Meower community guidelines in the future otherwise you may receive more severe punishments.")
                                 self.log("Pardoning {0}".format(val))
                                 # Tell client it pardoned the user
                                 self.sendPacket({"cmd": "direct", "val": "", "id": client}, listener_detected = listener_detected, listener_id = listener_id)
@@ -1258,11 +1258,11 @@ class Meower:
             if self.filesystem.does_item_exist("posts", val):
                 result, payload = self.filesystem.load_item("posts", val)
                 if result:
-                    if payload["u"] == client:
+                    if payload["u"] == client and payload["type"] != 2:
                         payload["isDeleted"] = True
                         result = self.filesystem.write_item("posts", val, payload)
                         if result:
-                            self.log("{0} deleting home post {1}".format(client, val))
+                            self.log("{0} deleting post {1}".format(client, val))
 
                             # Relay post to clients
                             self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": val}})
@@ -1274,20 +1274,22 @@ class Meower:
                     else:
                         FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
                         if FileCheck and FileRead:
-                            if accountData["lvl"] >= 1:
+                            if (accountData["lvl"] >= 1 and payload["type"] == 1) or (accountData["lvl"] >= 3 and payload["type"] == 2):
                                 if type(val) == str:
                                     payload["isDeleted"] = True
                                     result = self.filesystem.write_item("posts", val, payload)
                                     if result:
-                                        self.log("{0} deleting home post {1}".format(client, val))
+                                        self.log("{0} deleting post {1}".format(client, val))
 
                                         # Relay post to clients
-                                        self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": val}})
+                                        if payload["type"] == 3:
+                                            self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": val}, "id": payload["u"]})
+                                        else:
+                                            self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": val}})
 
                                         # Create moderator alert
-                                        result, payload = self.filesystem.load_item("posts", val)
-                                        if result:
-                                            self.createPost(post_origin="inbox", user=payload["u"], content="One of your posts were removed by a moderator! Post: '{0}'".format(payload["p"]))
+                                        if payload["type"] == 1:
+                                            self.createPost(post_origin="inbox", user=payload["u"], content="One of your posts were removed by a moderator! Please make sure to follow the Meower community guidelines in the future, otherwise your account may be suspended/banned. Post: '{0}'".format(payload["p"]))
 
                                         # Return to the client the post was deleted
                                         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
