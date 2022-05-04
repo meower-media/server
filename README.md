@@ -8,7 +8,7 @@ Use this code to develop forks of Meower for Scratch clients.
 APIv0 will be upgraded automatically to APIv1 when New Meower is released. The API can be found at https://api.meower.org/
 
 ## Dependencies
-* Run "pip install -r requirements.txt" in the downloaded and unzipped directory
+* Run "pip3 install -r requirements.txt" in the downloaded and unzipped directory
 
 ## Running the server
 Simply download and run main.py to start the server. Files and directories will be created to store posts, logs, and userdata.
