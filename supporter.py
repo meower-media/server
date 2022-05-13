@@ -52,7 +52,6 @@ class Supporter:
         for char in string.punctuation:
             self.permitted_chars_username.append(char)
             self.permitted_chars_post.append(char)
-        self.permitted_chars_username.append(" ")
         self.permitted_chars_post.append(" ")
 
         # Removes bad characters for username
