@@ -121,7 +121,7 @@ class Files:
         # Create Version support file
         self.create_item("config", "supported_versions", {
             "index": [
-                "scratch-beta-5-r3",
+                "scratch-beta-5-r6",
             ]
         })
         
