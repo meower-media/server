@@ -1392,6 +1392,13 @@ class Meower:
         # Check if the client is already authenticated
         if self.supporter.isAuthenticated(client):
             chat_index = self.getIndex(location="chats", query={"members": {"$all": [client]}}, truncate=True)
+            chat_index["all_chats"] = []
+            for item in chat_index["index"]:
+                FileRead, chatdata = self.filesystem.load_item("chats", item)
+                if FileRead:
+                    chatdata["chatid"] = item
+                    del chatdata["_id"]
+                    chat_index["all_chats"].append(chatdata)
             payload = {
                 "mode": "chats",
                 "payload": chat_index
