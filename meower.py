@@ -346,7 +346,7 @@ class Meower:
                                         self.supporter.log_peak_users()
 
                                         # Send welcome message
-                                        self.createPost(post_origin="inbox", user=username, content="Welcome to Meower! We hope you enjoy it here :)")
+                                        self.createPost(post_origin="inbox", user=username, content="Welcome to Meower! We welcome you with open arms! You can get started by making friends in the global chat or home, or by searching for people and adding them to a group chat. We hope you have fun!")
                                     else:
                                         self.returnCode(client = client, code = "Internal", listener_detected = listener_detected, listener_id = listener_id)
                                 else:
@@ -680,7 +680,7 @@ class Meower:
                     if type(val) == dict:
                         if ("username" in val) and ("p" in val):
                             if self.accounts.account_exists(val["username"]):
-                                self.createPost(post_origin="inbox", user=val["username"], content="Message from the Meower Team: {0}".format(val["p"]))
+                                self.createPost(post_origin="inbox", user=val["username"], content="Message a moderator: {0}".format(val["p"]))
                             else:
                                 # Account not found
                                 self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
@@ -1071,7 +1071,7 @@ class Meower:
                                 if result:
                                     payload["isDeleted"] = True
                                     self.filesystem.write_item("posts", post_id, payload)
-                            FileCheck, FileRead, FileWrite = self.accounts.update_setting(val, {"theme": None, "mode": None, "sfx": None, "debug": None, "bgm": None, "bgm_song": None, "layout": None, "pfp_data": None, "quote": None, "email": None, "pswd": None, "lvl": None, "banned": True, "last_ip": None}, forceUpdate=True)
+                            FileCheck, FileRead, FileWrite = self.accounts.update_setting(val, {"banned": True}, forceUpdate=True)
                             if FileCheck and FileRead and FileWrite:
                                 self.log("Terminating {0}".format(val))
                                 # Tell client it's going to get terminated
@@ -1357,7 +1357,13 @@ class Meower:
                             if result:
                                 if client in payload["members"]:
                                     if payload["owner"] == client:
-                                        result = self.filesystem.delete_item("chats", val)
+                                        payload["members"].remove(client)
+                                        if len(payload["members"]) > 0:
+                                            payload["owner"] = payload["members"][0]
+                                            result = self.filesystem.write_item("chats", val, payload)
+                                            self.createPost(post_origin="inbox", user=payload["owner"], content="You have been given ownership of the group chat '{0}'!".format(payload["nickname"]))
+                                        else:
+                                            result = self.filesystem.delete_item("chats", val)
                                         if result:
                                             self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                                         else:
@@ -1478,44 +1484,61 @@ class Meower:
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
 
-    # Kinda want to deprecate :/ -- has no permission checking because it's kinda useless and I hope it gets deprecated anyway
+    # Formatting looks different to other commands because this is taken from the beta 6 server
     def set_chat_state(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
-        if self.supporter.isAuthenticated(client):
-            if (type(val) == dict) and (("state" in val) and (type(val["state"]) == int)) and (("chatid" in val) and (type(val["chatid"]) == str)):
-                
-                state = val["state"]
-                chatid = val["chatid"]
-                
-                if not len(chatid) > 50:
-                    if self.supporter.check_for_spam(client):
-                        
-                        # Create post format
-                        post_w_metadata = {}
-                        post_w_metadata["state"] = state
-                        post_w_metadata["u"] = str(client)
-                        post_w_metadata["chatid"] = str(chatid)
-                        
-                        self.log("{0} modifying {1} state to {2}".format(client, chatid, state))
-                        
-                        self.sendPacket({"cmd": "direct", "val": post_w_metadata})
-                        
-                        # Tell client message was sent
-                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                        
-                        self.supporter.ratelimit(client)
-                    else:
-                        # Rate limiter
-                        self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    # Message too large
-                    self.returnCode(client = client, code = "TooLarge", listener_detected = listener_detected, listener_id = listener_id)
-            else:
-                # Bad datatype
-                self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        else:
+        if not self.supporter.isAuthenticated(client):
             # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
+            return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
+        elif not ((type(val) == dict) and (("state" in val) and (type(val["state"]) == int)) and (("chatid" in val) and (type(val["chatid"]) == str))):
+            # Bad datatype
+            return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
+        elif len(val["chatid"]) > 50:
+            # Chat ID too long
+            return self.returnCode(client = client, code = "TooLarge", listener_detected = listener_detected, listener_id = listener_id)
+        elif not self.supporter.check_for_spam(client):
+            # Rate limiter
+            return self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
+        
+        # Extract state and chat ID for simplicity
+        state = val["state"]
+        chatid = val["chatid"]
+
+        # Some messy permission checking
+        if chatid == "livechat":
+            pass
+        else:
+            FileRead, chatdata = self.filesystem.load_item("chats", chatid)
+            if not FileRead:
+                if not self.filesystem.does_item_exist("chats", chatid):
+                    # Chat doesn't exist
+                    return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
+                else:
+                    # Some other error, raise an internal error
+                    return self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+            if not (client in chatdata["members"]):
+                # User not in chat
+                return self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
+
+        # Create post format
+        post_w_metadata = {}
+        post_w_metadata["state"] = state
+        post_w_metadata["u"] = str(client)
+        post_w_metadata["chatid"] = str(chatid)
+        
+        self.log("{0} modifying {1} state to {2}".format(client, chatid, state))
+
+        if chatid == "livechat":
+            self.sendPacket({"cmd": "direct", "val": post_w_metadata})
+        else:
+            for member in chatdata["members"]:
+                self.sendPacket({"cmd": "direct", "val": post_w_metadata, "id": member})
+        
+        # Tell client message was sent
+        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+        
+        # Rate limit user
+        self.supporter.ratelimit(client)
     
     def post_chat(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
