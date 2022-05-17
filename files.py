@@ -145,13 +145,7 @@ class Files:
         })
         
         # 'lower_username' patch
-        result, payload = self.load_item("usersv0", "Server")
-        if result:
-            if not "lower_username" in payload:
-                self.log("Updating users to include 'lower_username'")
-                payload = self.find_items("usersv0", {})
-                for item in payload:
-                    self.update_item("usersv0", str(item), {"lower_username": str(item).lower()})
+        self.db["usersv0"].update_many({"isDeleted": None}, {"$set": {"isDeleted": False}})
 
         self.log("Files initialized!")
 
@@ -207,11 +201,23 @@ class Files:
         else:
             return False, None
 
-    def find_items(self, collection, query):
+    def find_items(self, collection, query, sort_by_epoch=False):
         if collection in self.db.list_collection_names():
             payload = []
+            if sort_by_epoch:
+                tmp = {}
             for item in self.db[collection].find(query):
-                payload.append(item["_id"])
+                print(item)
+                if sort_by_epoch:
+                    if "t" in item:
+                        if "e" in item["t"]:
+                            tmp[item["_id"]] = item["t"]["e"]
+                else:
+                    payload.append(item["_id"])
+            if sort_by_epoch:
+                tmp = sorted(tmp.items(), key=lambda x: x[1])
+                for i in tmp:
+                    payload.append(str(i[0]))
             return payload
         else:
             return []

@@ -65,6 +65,13 @@ class Main:
         # Run server
         self.cl.server(port=3000, ip="0.0.0.0")
     
+        self.meower.createPost(post_origin="inbox", user="tnix_alt", content={"h": "Moderator Alert", "p": "Message from a moderator: test alert"})
+        self.meower.createPost(post_origin="inbox", user="tnix_alt", content={"h": "Account Alert", "p": "Your account was about to be deleted but you logged in! Your account has been restored. If you weren't the one to request your account to be deleted, please change your password immediately."})
+        self.meower.createPost(post_origin="inbox", user="tnix_alt", content={"h": "New Love", "p": "test new love"})
+        self.meower.createPost(post_origin="inbox", user="tnix_alt", content={"h": "New Meow", "p": "test new love"})
+        self.meower.createPost(post_origin="inbox", user="tnix_alt", content={"h": "Notification", "p": "You have been added to the group chat 'alt_home'!"})
+        self.meower.createPost(post_origin="inbox", user="tnix_alt", content={"h": "Announcement", "p": "test new announcement"})
+
     def returnCode(self, client, code, listener_detected, listener_id):
         self.supporter.sendPacket({"cmd": "statuscode", "val": self.cl.codes[str(code)], "id": client}, listener_detected = listener_detected, listener_id = listener_id)
     
@@ -113,6 +120,12 @@ class Main:
             elif cmd == "search_user_posts":
                 # Get user's posts
                 self.meower.search_user_posts(client, val, listener_detected, listener_id)
+            elif cmd == "search_home_posts":
+                # Get home post by query
+                self.meower.search_home_posts(client, val, listener_detected, listener_id)
+            elif cmd == "search_profiles":
+                # Get profiles by query
+                self.meower.search_profiles(client, val, listener_detected, listener_id)
             elif cmd == "clear_home":
                 # Clear a page of home
                 self.meower.clear_home(client, val, listener_detected, listener_id)
