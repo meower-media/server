@@ -1314,7 +1314,7 @@ class Meower:
             if self.filesystem.does_item_exist("posts", val):
                 result, payload = self.filesystem.load_item("posts", val)
                 if result:
-                    if payload["u"] == client and payload["type"] != 2:
+                    if payload["u"] == client:
                         payload["isDeleted"] = True
                         result = self.filesystem.write_item("posts", val, payload)
                         if result:
@@ -1330,7 +1330,7 @@ class Meower:
                     else:
                         FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
                         if FileCheck and FileRead:
-                            if (accountData["lvl"] >= 1 and payload["type"] == 1) or (accountData["lvl"] >= 3 and payload["type"] == 2):
+                            if accountData["lvl"] >= 1 and payload["post_origin"] != "inbox":
                                 if type(val) == str:
                                     payload["isDeleted"] = True
                                     result = self.filesystem.write_item("posts", val, payload)
@@ -1689,7 +1689,7 @@ class Meower:
         elif not (("username" in val) and ("chatid" in val)):
             # Bad syntax
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        elif not ((val["username"] == str) or (val["chatid"] == str)):
+        elif not ((type(val["username"]) == str) and (type(val["chatid"]) == str)):
             # Bad datatype
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
         
