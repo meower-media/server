@@ -50,27 +50,31 @@ class Main:
         )
         
         # Load trust keys
-        result, payload = self.filesystem.load_item("config", "trust_keys")
-        if result:
+        FileRead, payload = self.filesystem.load_item("config", "trust_keys")
+        if FileRead:
             self.cl.trustedAccess(True, payload["index"])
         
         # Load IP Banlist
-        result, payload = self.filesystem.load_item("config", "IPBanlist")
-        if result:
+        FileRead, payload = self.filesystem.load_item("config", "IPBanlist")
+        if FileRead:
             self.cl.loadIPBlocklist(payload["wildcard"])
         
+        # Load profanity filter
+        FileRead, payload = self.filesystem.load_item("config", "filter")
+        if FileRead:
+            self.supporter.profanity.load_censor_words(whitelist_words=payload["whitelist"])
+            self.supporter.profanity.add_censor_words(custom_words=payload["blacklist"])
+
+        # Set repair status
+        FileRead, payload = self.filesystem.load_item("config", "status")
+        if FileRead:
+            self.supporter.repair_mode = payload["repair_mode"]
+
         # Set server MOTD
-        self.cl.setMOTD("Meower Social Media Platform Server", True)
+        self.cl.setMOTD("Meower Social Media Platform Server - v0.1.0", True)
         
         # Run server
         self.cl.server(port=3000, ip="0.0.0.0")
-    
-        self.meower.createPost(post_origin="inbox", user="tnix_alt", content={"h": "Moderator Alert", "p": "Message from a moderator: test alert"})
-        self.meower.createPost(post_origin="inbox", user="tnix_alt", content={"h": "Account Alert", "p": "Your account was about to be deleted but you logged in! Your account has been restored. If you weren't the one to request your account to be deleted, please change your password immediately."})
-        self.meower.createPost(post_origin="inbox", user="tnix_alt", content={"h": "New Love", "p": "test new love"})
-        self.meower.createPost(post_origin="inbox", user="tnix_alt", content={"h": "New Meow", "p": "test new love"})
-        self.meower.createPost(post_origin="inbox", user="tnix_alt", content={"h": "Notification", "p": "You have been added to the group chat 'alt_home'!"})
-        self.meower.createPost(post_origin="inbox", user="tnix_alt", content={"h": "Announcement", "p": "test new announcement"})
 
     def returnCode(self, client, code, listener_detected, listener_id):
         self.supporter.sendPacket({"cmd": "statuscode", "val": self.cl.codes[str(code)], "id": client}, listener_detected = listener_detected, listener_id = listener_id)
@@ -80,7 +84,7 @@ class Main:
             # Meower's Packet Interpreter goes here. All Requests to the server are handled here.
             if cmd == "ping":
                 # Network heartbeat
-                self.meower.ping(client, listener_detected, listener_id)
+                self.meower.ping(client, val, listener_detected, listener_id)
             elif cmd == "version_chk":
                 # Check client versions
                 self.meower.version_chk(client, val, listener_detected, listener_id)
@@ -98,16 +102,13 @@ class Main:
                 self.meower.update_config(client, val, listener_detected, listener_id)
             elif cmd == "del_account":
                 # Delete user account
-                self.meower.del_account(client, listener_detected, listener_id)
+                self.meower.del_account(client, val, listener_detected, listener_id)
             elif cmd == "get_home":
                 # Get homepage index
                 self.meower.get_home(client, val, listener_detected, listener_id)
             elif cmd == "get_inbox":
                 # Get inbox posts
                 self.meower.get_inbox(client, val, listener_detected, listener_id)
-            elif cmd == "get_announcements":
-                # Get announcement posts
-                self.meower.get_announcements(client, val, listener_detected, listener_id)
             elif cmd == "post_home":
                 # Create post for homepage
                 self.meower.post_home(client, val, listener_detected, listener_id)
@@ -116,7 +117,7 @@ class Main:
                 self.meower.get_post(client, val, listener_detected, listener_id)
             elif cmd == "get_peak_users":
                 # Get current peak # of users data
-                self.meower.get_peak_users(client, listener_detected, listener_id)
+                self.meower.get_peak_users(client, val, listener_detected, listener_id)
             elif cmd == "search_user_posts":
                 # Get user's posts
                 self.meower.search_user_posts(client, val, listener_detected, listener_id)
@@ -173,7 +174,7 @@ class Main:
                 self.meower.terminate(client, val, listener_detected, listener_id)
             elif cmd == "repair_mode":
                 # Enable repair mode
-                self.meower.repair_mode(client, listener_detected, listener_id)
+                self.meower.repair_mode(client, val, listener_detected, listener_id)
             elif cmd == "delete_post":
                 # Delete posts
                 self.meower.delete_post(client, val, listener_detected, listener_id)
@@ -191,7 +192,7 @@ class Main:
                 self.meower.leave_chat(client, val, listener_detected, listener_id)
             elif cmd == "get_chat_list":
                 # Get group chat list
-                self.meower.get_chat_list(client, listener_detected, listener_id)
+                self.meower.get_chat_list(client, val, listener_detected, listener_id)
             elif cmd == "get_chat_data":
                 # Get group chat data
                 self.meower.get_chat_data(client, val, listener_detected, listener_id)

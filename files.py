@@ -144,8 +144,12 @@ class Files:
             "is_deprecated": False
         })
         
-        # 'lower_username' patch
-        self.db["usersv0"].update_many({"isDeleted": None}, {"$set": {"isDeleted": False}})
+        self.db["usersv0"].update_many({"last_login": None}, {"$set": {"last_login": None}})
+        self.db["usersv0"].update_many({"created_at": None}, {"$set": {"created_at": 1668465928}})
+        self.db["usersv0"].update_many({}, {"$set": {"layout": "new"}})
+        self.db["usersv0"].update_many({"flags": None}, {"$set": {"flags": {"dormant": False, "locked_until": 0, "suspended_until": 0, "banned_until": 0, "delete_after": None, "isDeleted": False}}})
+        self.db["usersv0"].update_many({"banned": True}, {"$set": {"flags": {"banned_until": -1}}})
+        self.db["usersv0"].update_many({"isDeleted": True}, {"$set": {"flags": {"isDeleted": True}}})
 
         self.log("Files initialized!")
 

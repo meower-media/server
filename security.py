@@ -1,4 +1,5 @@
 import bcrypt
+import time
 
 """
 Meower Security Module
@@ -7,14 +8,25 @@ This module provides account management and authentication services.
 
 class Security:
     def __init__(self, files, logger, errorhandler):
-        self.bc = bcrypt
         self.files = files
         self.log = logger
         self.errorhandler = errorhandler
         self.log("Security initialized!")
     
+    def account_exists(self, username, ignore_case=False):
+        if not (type(username) == str):
+            self.log("Error on account_exists: Expected str for username, got {0}".format(type(username)))
+            return False
+        if ignore_case:
+            payload = self.files.find_items("usersv0", {"lower_username": str(username).lower()})
+            if len(payload) == 0:
+                return False
+            else:
+                return True
+        else:
+            return self.files.does_item_exist("usersv0", str(username))   
+
     def create_account(self, username, password, strength=12):
-    
         """
         Returns 2 booleans.
         
@@ -26,39 +38,46 @@ class Security:
         |  False |   False  | Exception
         """
         
-        if (type(password) == str) and (type(username) == str):
-            if not self.account_exists(str(username), ignore_case=True):
-                self.log("Creating account: {0}".format(username))
-                pswd_bytes = bytes(password, "utf-8") # Convert password to bytes
-                hashed_pw = self.bc.hashpw(pswd_bytes, self.bc.gensalt(strength)) # Hash and salt the password
-                result = self.files.create_item("usersv0", str(username), { # Default account data
-                        "lower_username": username.lower(),
-                        "theme": "orange",
-                        "mode": True,
-                        "sfx": True,
-                        "debug": False,
-                        "bgm": True,
-                        "bgm_song": 2,
-                        "layout": "new",
-                        "pfp_data": 1,
-                        "quote": "",
-                        "email": "",
-                        "pswd": hashed_pw.decode(),
-                        "lvl": 0,
-                        "banned": False,
-                        "last_ip": None
-                    }
-                )
-                return True, result
-            else:
-                self.log("Not creating account {0}: Account already exists".format(username))
-                return False, True
-        else:
+        if not ((type(username) == str) and (type(password) == str)):
             self.log("Error on generate_account: Expected str for username and password, got {0} for username and {1} for password".format(type(username), type(password)))
             return False, False
+        if self.account_exists(str(username), ignore_case=True):
+            self.log("Not creating account {0}: Account already exists".format(username))
+            return False, True
+        
+        self.log("Creating account: {0}".format(username))
+        pswd_bytes = bytes(password, "utf-8") # Convert password to bytes
+        hashed_pw = bcrypt.hashpw(pswd_bytes, bcrypt.gensalt(strength)) # Hash and salt the password
+        FileWrite = self.files.create_item("usersv0", username, { # Default account data
+                "lower_username": username.lower(),
+                "theme": "orange",
+                "mode": True,
+                "sfx": True,
+                "debug": False,
+                "bgm": True,
+                "bgm_song": 2,
+                "layout": "new", # Remove once beta 6 happens
+                "pfp_data": 1,
+                "quote": "",
+                "email": "",
+                "pswd": hashed_pw.decode(),
+                "lvl": 0,
+                "flags": {
+                    "dormant": False,
+                    "locked_until": 0,
+                    "suspended_until": 0,
+                    "banned_until": 0,
+                    "delete_after": None,
+                    "isDeleted": False
+                },
+                "last_login": None,
+                "last_ip": None
+            }
+        )
+
+        return True, FileWrite
     
     def get_account(self, username, omitSensitive=False, isClient=False):
-    
         """
         Returns 2 booleans, plus a payload.
         
@@ -70,39 +89,87 @@ class Security:
         |  False  |   False  | Exception
         """
         
-        if type(username) == str:
-            if self.files.does_item_exist("usersv0", str(username)):
-                self.log("Reading account: {0}".format(username))
-                result, accountData = self.files.load_item("usersv0", str(username))
-                
-                if omitSensitive: # Purge sensitive data and remove user settings
-                    for sensitive in [
-                        "theme",
-                        "mode",
-                        "sfx",
-                        "debug",
-                        "bgm",
-                        "bgm_song",
-                        "layout",
-                        "email",
-                        "pswd",
-                        "last_ip"
-                    ]:
-                        del accountData[sensitive]
-                
-                if isClient:
-                    if "pswd" in accountData:
-                        del accountData["pswd"]
-                    if "last_ip" in accountData:
-                        del accountData["last_ip"]
-                
-                return True, result, accountData
-            else:
-                return False, True, None
-        else:
+        if not (type(username) == str):
             self.log("Error on get_account: Expected str for username, got {0}".format(type(username)))
             return False, False, None
+        if not (self.files.does_item_exist("usersv0", str(username))):
+            return False, True, None
+        
+        self.log("Reading account: {0}".format(username))
+        FileRead, userdata = self.files.load_item("usersv0", str(username))
+        
+        if omitSensitive: # Purge sensitive data and remove user settings
+            for sensitive in [
+                "theme",
+                "mode",
+                "sfx",
+                "debug",
+                "bgm",
+                "bgm_song",
+                "layout",
+                "email",
+                "pswd",
+                "flags"
+                "last_ip"
+            ]:
+                if sensitive in userdata:
+                    del userdata[sensitive]
+            FileCheck, FileRead, userdata["flags"] = self.get_flags(username, omitSensitive=True)
+            if userdata["flags"]["deleted"]:
+                return False, True, None
+        elif isClient:
+            for sensitive in [
+                "pswd",
+                "last_ip"
+            ]:
+                if sensitive in userdata:
+                    del userdata[sensitive]
+
+        return True, FileRead, userdata
     
+    def get_flags(self, username, omitSensitive=False):
+        """
+        Returns 2 booleans, plus a payload.
+        
+        | FileCheck | FileRead | Definiton
+        |---------|----------|-----------------
+        |  True   |   True   | Account exists and read 
+        |  True   |   False  | Account exists, read error
+        |  False  |   True   | Account does not exist
+        |  False  |   False  | Exception
+        """
+        
+        if not (type(username) == str):
+            self.log("Error on get_account: Expected str for username, got {0}".format(type(username)))
+            return False, False, None
+        if not self.files.does_item_exist("usersv0", str(username)):
+            return False, True, None
+
+        FileCheck, FileRead, userdata = self.get_account(username)
+        if not (FileCheck and FileRead):
+            return False, FileRead, {}
+        else:
+            userflags = userdata["flags"]
+
+        if omitSensitive:
+            payload = {
+                "suspended": (userflags["suspended_until"] > int(time.time())),
+                "banned": (userflags["banned_until"] > int(time.time())),
+                "deleted": userflags["isDeleted"]
+            }
+        else:
+            payload = {
+                "locked": (userflags["locked_until"] > int(time.time())),
+                "perm_locked": (userflags["locked_until"] == -1),
+                "suspended": (userflags["suspended_until"] > int(time.time())),
+                "banned": (userflags["banned_until"] > int(time.time())),
+                "dormant": userflags["dormant"],
+                "pending_deletion": (userflags["delete_after"] != None),
+                "deleted": userflags["isDeleted"]
+            }
+        
+        return True, FileRead, payload
+
     def authenticate(self, username, password): 
         """
         Returns 3 booleans.
@@ -116,34 +183,28 @@ class Security:
         |  False  |   False  |  False   | Exception
         """
         
-        if type(username) == str:
-            if self.files.does_item_exist("usersv0", str(username)):
-                self.log("Authenticating account: {0}".format(username))
-                result, accountData = self.files.load_item("usersv0", str(username))
-                if result:
-                    if type(accountData) == dict:
-                        hashed_pw = accountData["pswd"]
-                        pswd_bytes = bytes(password, "utf-8")
-                        hashed_pw_bytes = bytes(hashed_pw, "utf-8")
-                        try:
-                            result = self.bc.checkpw(pswd_bytes, hashed_pw_bytes)
-                            self.log("Authenticating {0}: {1}".format(username, result))
-                            return True, True, result
-                        except Exception as e:
-                            self.log("Error on authenticate: {0}".format(e))
-                            return True, True, False
-                    else:
-                        self.log("Error on get_account: Expected str for username, got {0}".format(type(username)))
-                        return False, False, False
-                else:
-                    return True, False, False
-            else:
-                return False, True, False
-        else:
+        if not ((type(username) == str) and (type(password) == str)):
             self.log("Error on get_account: Expected str for username, got {0}".format(type(username)))
             return False, False, False
+        if not self.files.does_item_exist("usersv0", str(username)):
+            return False, True, False
+        
+        self.log("Authenticating account: {0}".format(username))
+        FileRead, userdata = self.files.load_item("usersv0", str(username))
+        if not FileRead:
+            return True, False, False
+        hashed_pw = userdata["pswd"]
+        pswd_bytes = bytes(password, "utf-8")
+        hashed_pw_bytes = bytes(hashed_pw, "utf-8")
+        try:
+            valid = bcrypt.checkpw(pswd_bytes, hashed_pw_bytes)
+            self.log("Authenticating {0}: {1}".format(username, valid))
+            return True, True, valid
+        except:
+            self.log("Error on authenticate: {0}".format(self.errorhandler()))
+            return True, True, False
     
-    def change_password(self, username, oldpassword, newpassword, strength=12):
+    def change_password(self, username, newpassword, strength=12):
         """
         Returns 3 booleans.
         
@@ -156,113 +217,80 @@ class Security:
         |  False  |   False  |  False   | Exception
         """
         
-        if (type(username) == str) and (type(oldpassword) == str) and (type(newpassword) == str):
-            if self.files.does_item_exist("usersv0", str(username)):
-                self.log("Changing {0} password".format(username))
-                result, accountData = self.files.load_item("usersv0", str(username))
-                if result:
-                    hashed_pw = accountData["pswd"]
-                    pswd_bytes = bytes(oldpassword, "utf-8")
-                    hashed_pw_bytes = bytes(hashed_pw, "utf-8")
-                    try:
-                        result = self.bc.checkpw(pswd_bytes, hashed_pw_bytes)
-                        if result:
-                            pswd_bytes = bytes(newpassword, "utf-8") # Convert password to bytes
-                            hashed_pw = self.bc.hashpw(pswd_bytes, self.bc.gensalt(strength)) # Hash and salt the password
-                            
-                            accountData["pswd"] = hashed_pw.decode()
-                            
-                            result = self.files.write_item("usersv0", str(username), accountData)
-                            self.log("Change {0} password: {1}".format(username, result))
-                            return True, True, result
-                        else:
-                            self.log("Change {0} password: invalid password".format(username))
-                            return True, True, False 
-                    except Exception as e:
-                        self.log("Error on authenticate: {0}".format(e))
-                        return True, True, False
-                else:
-                    return True, False, False
-            else:
-                return False, True, False
-        else:
-            self.log("Error on get_account: Expected str for username, oldpassword and newpassword, got {0} for username, {1} for oldpassword, and {2} for newpassword".format(type(username), type(oldpassword), type(newpassword)))
+        if not ((type(username) == str) and (type(newpassword) == str)):
+            self.log("Error on get_account: Expected str for username and newpassword, got {0} for username, and {1} for newpassword".format(type(username), type(newpassword)))
             return False, False, False
-    
-    def account_exists(self, username, ignore_case=False):
-        if type(username) == str:
-            if ignore_case:
-                payload = self.files.find_items("usersv0", {"lower_username": str(username).lower()})
-                if len(payload) == 0:
-                    return False
-                else:
-                    return True
-            else:
-                return self.files.does_item_exist("usersv0", str(username))
-        else:
-            self.log("Error on account_exists: Expected str for username, got {0}".format(type(username)))
-            return False
-    
-    def is_account_banned(self, username):
-        """
-        Returns 2 booleans, plus a payload.
+        if not (self.files.does_item_exist("usersv0", str(username))):
+            return False, True, False
         
-        | FileCheck | FileRead | Banned | Definiton
-        |---------|----------|----------|-----------------
-        |  True   |   True   |   True   | Account exists and read, account banned
-        |  True   |   True   |   False  | Account exists and read, account NOT banned
-        |  True   |   False  |   False  | Account exists, read error
-        |  False  |   True   |   False  | Account does not exist
-        |  False  |   False  |   False  |  Exception
-        """
-        
-        if type(username) == str:
-            if self.files.does_item_exist("usersv0", str(username)):
-                self.log("Reading account: {0}".format(username))
-                result, accountData = self.files.load_item("usersv0", str(username))
-                return True, result, accountData["banned"]
-            else:
-                return False, True, None
-        else:
-            self.log("Error on get_account: Expected str for username, got {0}".format(type(username)))
-            return False, False, None
+        self.log("Changing {0} password".format(username))
+        pswd_bytes = bytes(newpassword, "utf-8") # Convert password to bytes
+        hashed_pw = bcrypt.hashpw(pswd_bytes, bcrypt.gensalt(strength)) # Hash and salt the password
+        FileCheck, FileRead, FileWrite = self.update_setting(username, {"pswd": hashed_pw.decode()}, forceUpdate=True)
+    
+        return FileCheck, FileRead, FileWrite
     
     def update_setting(self, username, newdata, forceUpdate=False):
         """
-        Returns 3 booleans.
+        Returns 2 booleans.
         
-        | FileCheck | FileRead | FileWrite | Definiton
-        |---------|----------|----------|-----------------
-        |  True   |   True   |  True    | Account exists, read OK, settings changed
-        |  True   |   True   |  False   | Account exists, read OK, settings write error
-        |  True   |   False  |  False   | Account exists, read error
-        |  False  |   True   |  False   | Account does not exist
-        |  False  |   False  |  False   | Exception
+        | FileCheck | FileWrite | Definiton
+        |-----------|-----------|----------
+        | True      | True      | Account exists, read OK, settings changed
+        | True      | False     | Account exists, read OK, settings write error
+        | False     | True      | Account does not exist
+        | False     | False     | Exception
         """
         
-        if (type(username) == str) and (type(newdata) == dict):
-            if self.files.does_item_exist("usersv0", str(username)):
-                self.log("Updating account settings: {0}".format(username))
-                result, accountData = self.files.load_item("usersv0", str(username))
-                if result:
-                    for key, value in newdata.items():
-                        if forceUpdate:
-                            if key in accountData.keys():
-                                accountData[key] = value
-                        else:
-                            if not key in ["lvl", "pswd", "banned", "quote", "email", "last_ip", "lower_username"]:
-                                if key in accountData.keys():
-                                    accountData[key] = value
-                            else:
-                                self.log("Blocking attempt to modify secure key {0}".format(key))
-                    
-                    result = self.files.write_item("usersv0", str(username), accountData)
-                    self.log("Updating {0} account settings: {1}".format(username, result))
-                    return True, True, result
-                else:
-                    return True, False, False
-            else:
-                return False, True, False
-        else:
-            self.log("Error on get_account: Expected str for username and dict for newdata, got {0} for username and {1} for newdata".format(type(username), type(newdata)))
-            return False, False, False
+        if not ((type(username) == str) and (type(newdata) == dict)):
+            self.log("Error on update_setting: Expected str for username and dict for newdata, got {0} for username and {1} for newdata".format(type(username), type(newdata)))
+            return False, False
+        if not self.account_exists(username, False):
+            return False, False
+
+        self.log("Updating account settings: {0}".format(username))
+        datatypes = {
+            "theme": str,
+            "mode": bool,
+            "sfx": bool,
+            "debug": bool,
+            "bgm": bool,
+            "bgm_song": int,
+            "pfp_data": int,
+            "quote": str,
+        }
+        secure_datatypes = {
+            "layout": str, # Layout is getting deprecated in beta 6
+            "email": str,
+            "pswd": str,
+            "lvl": int,
+            "last_ip": str,
+            "last_login": int,
+            "bots": list,
+            "flags": dict
+        }
+        flags_datatypes = { # Just for documentation really
+            "dormant": bool,
+            "locked_until": int,
+            "suspended_until": int,
+            "banned_until": int,
+            "delete_after": int,
+            "isDeleted": bool
+        }
+        allowed_values = {
+            "theme": ["orange", "blue"],
+            "bgm_song": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            "layout": ["new"],
+            "pfp_data": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
+            "lvl": [1, 2, 3, 4]
+        }
+        new_userdata = {}
+
+        for key, value in newdata.items():
+            if (key in datatypes and type(value) == datatypes[key]) or (forceUpdate and key in secure_datatypes and type(value) == secure_datatypes[key]):
+                if (not key in allowed_values) or (value in allowed_values[key]):
+                    if (key != "quote") or (len(value) <= 100):
+                        new_userdata[key] = value
+        FileWrite = self.files.update_item("usersv0", str(username), new_userdata)
+
+        return True, FileWrite

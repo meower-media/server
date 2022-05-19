@@ -16,13 +16,15 @@ This keeps the main.py clean and more understandable.
 
 class Supporter:
     def __init__(self, cl=None, packet_callback=None):
-        self.filter = None
-        self.status = {"repair_mode": True, "is_deprecated": False}
         self.cl = cl
-        self.profanity = profanity
         self.packet_handler = packet_callback
         self.listener_detected = False
         self.listener_id = None
+
+        self.repair_mode = True
+        self.profanity = profanity
+        self.profanity.load_censor_words()
+        self.ratelimits = {}
         
         if not self.cl == None:
             # Add custom status codes to CloudLink
@@ -39,22 +41,27 @@ class Supporter:
             self.cl.codes["Kicked"] = "E:020 | Kicked"
             self.cl.codes["ChatExists"] = "E:021 | Chat exists"
             self.cl.codes["ChatNotFound"] = "E:022 | Chat not found"
+            self.cl.codes["Locked"] = "E:023 | Account Locked"
+            self.cl.codes["PermLocked"] = "E:024 | Account Locked"
+            self.cl.codes["Deleted"] = "E:025 | Account Deleted"
+            self.cl.codes["EmailNotVerified"] = "E:026 | Email Not Verified"
+            self.cl.codes["EmailMalformed"] = "E:027 | Email Malformed"
+            self.cl.codes["EmailInvalid"] = "E:028 | Email Invalid"
+            self.cl.codes["TokenInvalid"] = "E:029 | Token Invalid"
         
-        # Create permitted lists of characters
-        self.permitted_chars_username = []
+        # Create permitted lists of characters for posts
         self.permitted_chars_post = []
         for char in string.ascii_letters:
-            self.permitted_chars_username.append(char)
             self.permitted_chars_post.append(char)
         for char in string.digits:
-            self.permitted_chars_username.append(char)
             self.permitted_chars_post.append(char)
         for char in string.punctuation:
-            self.permitted_chars_username.append(char)
             self.permitted_chars_post.append(char)
         self.permitted_chars_post.append(" ")
 
-        # Removes bad characters for username
+        # Create permitted lists of characters for usernames
+        self.permitted_chars_username = self.permitted_chars_post
+        self.permitted_chars_username.remove(" ")
         self.permitted_chars_username.remove('"')
         self.permitted_chars_username.remove("'")
         self.permitted_chars_username.remove("*")
@@ -176,16 +183,13 @@ class Supporter:
     
     def on_connect(self, client):
         if not self.cl == None:
-            if self.status["repair_mode"]:
+            if self.repair_mode:
                 self.log("Refusing connection from {0} due to repair mode being enabled".format(client["id"]))
                 self.cl.kickClient(client)
             else:
                 self.log("{0} Connected.".format(client["id"]))
                 self.modify_client_statedata(client, "authtype", "")
                 self.modify_client_statedata(client, "authed", False)
-                
-                # Rate limiter
-                self.modify_client_statedata(client, "last_packet", 0)
     
     def on_packet(self, message):
         if not self.cl == None:
@@ -239,19 +243,16 @@ class Supporter:
     
     def ratelimit(self, client):
         # Rate limiter
-        self.modify_client_statedata(client, "last_packet", int(time.time()))
+        self.ratelimits[str(client)] = time.time()+1
     
-    def wordfilter(self, message):
+    def filter(self, message):
         # Word censor
-        if self.filter != None:
-            self.profanity.load_censor_words(whitelist_words=self.filter["whitelist"])
-            message = self.profanity.censor(message)
-            self.profanity.load_censor_words(whitelist_words=self.filter["whitelist"], custom_words=self.filter["blacklist"])
+        if self.profanity != None:
             message = self.profanity.censor(message)
         else:
             self.log("Failed loading profanity filter : Using default filter as fallback")
-            self.profanity.load_censor_words()
-            message = self.profanity.censor(message)
+            profanity.load_censor_words()
+            message = profanity.censor(message)
         return message
     
     def isAuthenticated(self, client):
@@ -264,7 +265,7 @@ class Supporter:
     
     def checkForBadCharsUsername(self, value):
         # Check for profanity in username, will return '*' if there's profanity which will be blocked as an illegal character
-        value = self.wordfilter(value)
+        value = self.filter(value)
 
         badchars = False
         for char in value:
@@ -281,10 +282,21 @@ class Supporter:
                 break
         return badchars
     
-    def autoID(self, client, username):
+    def checkForMalformedEmail(self, value):
+        tmp = value.split("@")
+        if len(tmp) == 2:
+            if len(tmp[0]) >= 1:
+                return False
+            else:
+                return True
+        else:
+            return True
+
+    def autoID(self, client, username, type):
         if not self.cl == None:
             # really janky code that automatically sets user ID
             self.modify_client_statedata(client, "username", username)
+            self.modify_client_statedata(client, "authtype", type)
             self.cl.statedata["ulist"]["usernames"][username] = client["id"]
             self.sendPacket({"cmd": "ulist", "val": self.cl._get_ulist()})
             self.log("{0} autoID given".format(username))
@@ -295,7 +307,10 @@ class Supporter:
             if username in self.cl.getUsernames():
                 self.log("Detected someone trying to use the username {0} wrongly".format(username))
                 self.cl.kickClient(username)
+                time.sleep(0.5)
     
     def check_for_spam(self, client):
-        if not self.cl == None:
-            return (((self.get_client_statedata(client)["last_packet"])+1) < (int(time.time())))
+        if str(client) in self.ratelimits:
+            return ((self.ratelimits[str(client)]) < time.time())
+        else:
+            return True
