@@ -102,7 +102,7 @@ def get_home():
     if "autoget" in args:
         autoget = True
 
-    payload = meower.getIndex(location="posts", query={"post_origin": "home", "isDeleted": False}, truncate=True, page=page)
+    payload = meower.getIndex(location="posts", query={"post_origin": "home", "isDeleted": False}, truncate=True, page=page, sort="t.e")
     if not autoget:
         payload["error"] = False
         return payload, 200

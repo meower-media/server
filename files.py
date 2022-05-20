@@ -1,4 +1,5 @@
 from pymongo import MongoClient
+import pymongo
 
 """
 
@@ -197,41 +198,51 @@ class Files:
             return False
 
     def load_item(self, collection, id):
-        if collection in self.db.list_collection_names():
-            if self.does_item_exist(collection, id):
-                return True, self.db[collection].find_one({"_id": id})
-            else:
-                return False, None
+        if not (collection in self.db.list_collection_names()):
+            return False, None
+        if self.does_item_exist(collection, id):
+            return True, self.db[collection].find_one({"_id": id})
         else:
             return False, None
 
-    def find_items(self, collection, query, sort_by_epoch=False):
-        if collection in self.db.list_collection_names():
-            payload = []
-            if sort_by_epoch:
-                tmp = {}
-            for item in self.db[collection].find(query):
-                print(item)
-                if sort_by_epoch:
-                    if "t" in item:
-                        if "e" in item["t"]:
-                            tmp[item["_id"]] = item["t"]["e"]
-                else:
-                    payload.append(item["_id"])
-            if sort_by_epoch:
-                tmp = sorted(tmp.items(), key=lambda x: x[1])
-                for i in tmp:
-                    payload.append(str(i[0]))
-            return payload
+    def pages_amount(self, collection, query, items_per_page=25):
+        if not (collection in self.db.list_collection_names()):
+            return 0
+        total_amount = self.db[collection].count_documents(query)
+        if total_amount == 0:
+            pages = 0
         else:
+            if (total_amount % items_per_page) == 0:
+                if (total_amount) < items_per_page:
+                    pages = 1
+                else:
+                    pages = (total_amount // items_per_page)
+            else:
+                pages = (total_amount // items_per_page)+1
+        return pages
+
+    def find_items(self, collection, query, sort=None, truncate=False, page=1, items_per_page=25):
+        if not (collection in self.db.list_collection_names()):
             return []
+        
+        if sort == None:
+            sort = {}
+        
+        if truncate:
+            all_items = self.db[collection].find(query).sort(sort, direction=-1).skip((page-1)*items_per_page).limit(items_per_page)
+        else:
+            all_items = self.db[collection].find(query).sort(sort, direction=-1)
+        
+        payload = []
+        for item in all_items:
+            payload.append(item["_id"])
+        
+        return payload
 
     def delete_item(self, collection, id):
-        if collection in self.db.list_collection_names():
-            if self.does_item_exist(collection, id):
-                self.db[collection].delete_one({"_id": id})
-                return True
-            else:
-                return False
+        if not (collection in self.db.list_collection_names()):
+            return False
+        if self.does_item_exist(collection, id):
+            return self.db[collection].delete_one({"_id": id})
         else:
             return False

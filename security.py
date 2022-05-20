@@ -211,7 +211,7 @@ class Security:
         | FileCheck | FileRead | FileWrite | Definiton
         |---------|----------|----------|-----------------
         |  True   |   True   |  True    | Account exists, read OK, password changed
-        |  True   |   True   |  False   | Account exists, read OK, password not changed (invalid credentials)
+        |  True   |   True   |  False   | Account exists, read OK, password not changed
         |  True   |   False  |  False   | Account exists, read error
         |  False  |   True   |  False   | Account does not exist
         |  False  |   False  |  False   | Exception
@@ -249,7 +249,7 @@ class Security:
             return False, False
 
         self.log("Updating account settings: {0}".format(username))
-        datatypes = {
+        user_datatypes = {
             "theme": str,
             "mode": bool,
             "sfx": bool,
@@ -257,25 +257,7 @@ class Security:
             "bgm": bool,
             "bgm_song": int,
             "pfp_data": int,
-            "quote": str,
-        }
-        secure_datatypes = {
-            "layout": str, # Layout is getting deprecated in beta 6
-            "email": str,
-            "pswd": str,
-            "lvl": int,
-            "last_ip": str,
-            "last_login": int,
-            "bots": list,
-            "flags": dict
-        }
-        flags_datatypes = { # Just for documentation really
-            "dormant": bool,
-            "locked_until": int,
-            "suspended_until": int,
-            "banned_until": int,
-            "delete_after": int,
-            "isDeleted": bool
+            "quote": str
         }
         allowed_values = {
             "theme": ["orange", "blue"],
@@ -287,7 +269,7 @@ class Security:
         new_userdata = {}
 
         for key, value in newdata.items():
-            if (key in datatypes and type(value) == datatypes[key]) or (forceUpdate and key in secure_datatypes and type(value) == secure_datatypes[key]):
+            if (key in user_datatypes and type(value) == user_datatypes[key]) or forceUpdate:
                 if (not key in allowed_values) or (value in allowed_values[key]):
                     if (key != "quote") or (len(value) <= 100):
                         new_userdata[key] = value
