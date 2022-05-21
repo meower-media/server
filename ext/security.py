@@ -7,10 +7,10 @@ This module provides account management and authentication services.
 """
 
 class Security:
-    def __init__(self, files, logger, errorhandler):
-        self.files = files
-        self.log = logger
-        self.errorhandler = errorhandler
+    def __init__(self, meower):
+        self.files = meower.files
+        self.log = meower.supporter.log
+        self.errorhandler = meower.supporter.full_stack
         self.log("Security initialized!")
     
     def account_exists(self, username, ignore_case=False):

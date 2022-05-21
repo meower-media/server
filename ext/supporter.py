@@ -15,13 +15,15 @@ This keeps the main.py clean and more understandable.
 """
 
 class Supporter:
-    def __init__(self, cl=None, packet_callback=None):
-        self.cl = cl
-        self.packet_handler = packet_callback
+    def __init__(self, meower):
+        self.meower = meower
+        self.cl = meower.cl
+        self.packet_handler = meower.packet_callback
         self.listener_detected = False
         self.listener_id = None
 
         self.repair_mode = True
+        self.is_deprecated = True
         self.profanity = profanity
         self.profanity.load_censor_words()
         self.ratelimits = {}
@@ -218,7 +220,7 @@ class Supporter:
                 cmd = message["cmd"]
             
             if not self.packet_handler == None:
-                self.packet_handler(cmd, ip, val, self.listener_detected, self.listener_id, client, clienttype)
+                self.packet_handler(self.meower, cmd, val, self.listener_detected, self.listener_id, client)
     
     def timestamp(self, ttype):
         today = datetime.now()
@@ -240,6 +242,10 @@ class Supporter:
             return today.strftime("%m/%d/%Y %H:%M.%S")
         elif ttype == 5:    
             return today.strftime("%d%m%Y")
+        elif ttype == 6:
+            return int(time.time())
+        elif ttype == 7:
+            return float(time.time())
     
     def ratelimit(self, client):
         # Rate limiter

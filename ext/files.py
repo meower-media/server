@@ -11,9 +11,9 @@ This file should be modified/refactored to interact with a JSON-friendly databas
 """
 
 class Files:
-    def __init__(self, logger, errorhandler):
-        self.log = logger
-        self.errorhandler = errorhandler
+    def __init__(self, meower):
+        self.log = meower.supporter.log
+        self.errorhandler = meower.supporter.full_stack
 
         mongo_ip = "mongodb://localhost:27017"
         self.log("Connecting to database '{0}'\n(If it seems like the server is stuck, it probably means it couldn't connect to the database)".format(mongo_ip))
@@ -237,7 +237,15 @@ class Files:
         for item in all_items:
             payload.append(item["_id"])
         
-        return payload
+        if truncate:
+            return {
+                "query": query,
+                "index": payload,
+                "page#": page,
+                "pages": self.pages_amount(collection, query, items_per_page)
+            }
+        else:
+            return payload
 
     def delete_item(self, collection, id):
         if not (collection in self.db.list_collection_names()):
