@@ -52,8 +52,8 @@ class Meower:
                 "get_peak_users",
                 "search_user_posts",
                 "search_home_posts",
+                "search_profiles",
                 "clear_home",
-                "clear_user_posts",
                 "alert",
                 "announce",
                 "block",
@@ -88,3 +88,8 @@ class Meower:
                 self.commands.returnCode(code = "Invalid", client = client, listener_detected = listener_detected, listener_id = listener_id)
         except:
             self.supporter.log(self.supporter.full_stack())
+
+    def restart_services(self):
+        self.cl_server.stop()
+        self.rest_api_app.stop()
+        self.__init__()

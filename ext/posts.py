@@ -21,7 +21,7 @@ class Posts:
         self.log("Posts initialized!")
     
     def get_post(self, post_id, requested_by="Server", ignore_deletion=False):
-        FileRead, postdata = self.files.get_item("posts", post_id)
+        FileRead, postdata = self.files.load_item("posts", post_id)
         if not FileRead:
             return False, False, None
 
@@ -34,7 +34,7 @@ class Posts:
                 has_permission = True
         else:
             # Get chat data
-            FileRead, chatdata = self.files.get_item("chats", postdata["post_origin"])
+            FileRead, chatdata = self.files.load_item("chats", postdata["post_origin"])
             if not FileRead:
                 return False, False, None
             if (requested_by in chatdata["members"]) or (requested_by == "Server"):

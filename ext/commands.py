@@ -1,4 +1,3 @@
-from os import truncate
 import time
 import uuid
 
@@ -263,7 +262,7 @@ class WSCommands:
                 page = val["page"]
             else:
                 page = 1
-            home_index = self.getIndex("posts", {"post_origin": "home", "isDeleted": False}, truncate=True, page=page, sort="t.e")
+            home_index = self.filesystem.find_items("posts", {"post_origin": "home", "isDeleted": False}, sort="t.e", truncate=True, page=page)
             payload = {
                 "mode": "home",
                 "payload": home_index
@@ -397,7 +396,7 @@ class WSCommands:
         try:
             if not (("page" in val) and (type(val["page"]) == int)):
                 val["page"] = 1
-            index = self.getIndex(location="posts", query={"post_origin": "home", "p": {"$regex": val["query"]}, "isDeleted": False}, truncate=True, page=val["page"], sort="t.e")
+            index = self.filesystem.find_items("posts", {"post_origin": "home", "p": {"$regex": val["query"]}, "isDeleted": False}, sort="t.e", truncate=True, page=val["page"])
         except:
             self.log("{0}".format(self.errorhandler()))
             return self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
@@ -425,7 +424,7 @@ class WSCommands:
         try:
             if not (("page" in val) and (type(val["page"]) == int)):
                 val["page"] = 1
-            index = self.getIndex(location="posts", query={"post_origin": "home", "u": val["query"], "isDeleted": False}, truncate=True, page=val["page"], sort="t.e")
+            index = self.filesystem.find_items("posts", {"post_origin": "home", "u": val["query"], "isDeleted": False}, sort="t.e", truncate=True, page=val["page"])
         except:
             self.log("{0}".format(self.errorhandler()))
             return self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
@@ -453,7 +452,7 @@ class WSCommands:
         try:
             if not (("page" in val) and (type(val["page"]) == int)):
                 val["page"] = 1
-            index = self.getIndex(location="usersv0", query={"lower_username": {"$regex": val["query"].lower()}, "flags.isDeleted": False}, truncate=True, page=val["page"], sort="lower_username")
+            index = self.filesystem.find_items("usersv0", {"lower_username": {"$regex": val["query"].lower()}, "flags.isDeleted": False}, sort="lower_username", truncate=True, page=val["page"])
         except:
             self.log("{0}".format(self.errorhandler()))
             return self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
@@ -478,7 +477,7 @@ class WSCommands:
                         page = val["page"]
                     else:
                         page = 1
-                    home_index = self.getIndex("posts", {"post_origin": "home", "isDeleted": False}, truncate=True, page=page, sort_by_epoch=True)
+                    home_index = self.filesystem.find_items("posts", {"post_origin": "home", "isDeleted": False}, sort="t.e", truncate=True, page=page)
                     for post_id in home_index["index"]:
                         result, payload = self.filesystem.load_item("posts", post_id)
                         if result:
@@ -495,39 +494,6 @@ class WSCommands:
                 else:
                     # Some other error, raise an internal error.
                     self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-        else:
-            # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-    
-    def clear_user_posts(self, client, val, listener_detected, listener_id):
-        # Check if the client is authenticated
-        if self.supporter.isAuthenticated(client):
-            if type(val) == str:
-                FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
-                if FileCheck and FileRead:
-                    if accountData["lvl"] >= 2:
-                        post_index = self.getIndex("posts", {"type": 1, "u": str(val), "isDeleted": False}, truncate=False, sort_by_epoch=True)
-                        for post_id in post_index["index"]:
-                            result, payload = self.filesystem.load_item("posts", post_id)
-                            if result:
-                                payload["isDeleted"] = True
-                                result = self.filesystem.write_item("posts", post_id, payload)
-                        # Send alert to user
-                        self.createPost(post_origin="inbox", user=str(val), content={"h": "Moderator Alert", "p": "All your posts have been deleted by a moderator. If you think this is a mistake please contact the Meower Team."})
-                        # Return to the client it's data
-                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                    else:
-                        self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    if ((not FileCheck) and FileRead):
-                        # Account not found
-                        self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-                    else:
-                        # Some other error, raise an internal error.
-                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-            else:
-                # Bad datatype
-                self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
         else:
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
@@ -926,7 +892,7 @@ class WSCommands:
                 if FileCheck and FileRead:
                     if accountData["lvl"] >= 4:
                         if self.filesystem.does_item_exist("usersv0", val):
-                            all_posts = self.getIndex(location="posts", query={"u": val}, truncate=False)["index"]
+                            all_posts = self.filesystem.find_items("posts", {"u": val}, truncate=False)
                             for post_id in all_posts:
                                 result, payload = self.filesystem.load_item("posts", post_id)
                                 if result:
@@ -1258,7 +1224,7 @@ class WSCommands:
     def get_chat_list(self, client, val, listener_detected, listener_id):
         # Check if the client is already authenticated
         if self.supporter.isAuthenticated(client):
-            chat_index = self.getIndex(location="chats", query={"members": {"$all": [client]}}, truncate=True, page=1, sort="nickname")
+            chat_index = self.filesystem.find_items("chats", {"members": {"$all": [client]}}, sort="nickname", truncate=True, page=1)
             chat_index["all_chats"] = []
             for item in chat_index["index"]:
                 FileRead, chatdata = self.filesystem.load_item("chats", item)
@@ -1317,7 +1283,7 @@ class WSCommands:
                         result, chatdata = self.filesystem.load_item("chats", val)
                         if result:
                             if client in chatdata["members"]:
-                                posts_index = self.getIndex(location="posts", query={"post_origin": val, "isDeleted": False}, truncate=True, page=1, sort="t.e")
+                                posts_index = self.filesystem.find_items("posts", {"post_origin": val, "isDeleted": False}, sort="t.e", truncate=True, page=1)
                                 payload = {
                                     "mode": "chat_posts",
                                     "payload": posts_index
@@ -1586,7 +1552,7 @@ class WSCommands:
             page = 1
 
         # Get inbox messages
-        inbox_index = self.getIndex(location="posts", query={"post_origin": "inbox", "u": {"$in": ["Server", client]}, "isDeleted": False}, truncate=True, page=page, sort="t.e")
+        inbox_index = self.filesystem.find_items("posts", {"post_origin": "inbox", "u": {"$in": ["Server", client]}, "isDeleted": False}, sort="t.e", truncate=True, page=page)
         print(inbox_index)
         payload = {
             "mode": "inbox",
@@ -1598,54 +1564,3 @@ class WSCommands:
 
         # Tell user payload was sent
         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-
-    def del_account(self, client, val, listener_detected, listener_id):
-        # Check if the client is authenticated
-        if self.supporter.isAuthenticated(client):
-            FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
-            if FileCheck and FileRead:
-                if accountData["lvl"] < 1:
-                    all_posts = self.getIndex(location="posts", query={"u": client}, truncate=False)["index"]
-                    for post_id in all_posts:
-                        result, payload = self.filesystem.load_item("posts", post_id)
-                        if result:
-                            payload["u"] = "Deleted"
-                            payload["p"] = "[This user was deleted - GDPR]"
-                            payload["isDeleted"] = True
-                            self.filesystem.write_item("posts", post_id, payload)
-                    chat_index = self.getIndex(location="chats", query={"members": {"$all": [client]}}, truncate=False)["index"]
-                    for chat_id in chat_index:
-                        result, payload = self.filesystem.load_item("chats", chat_id)
-                        if result:
-                            if payload["owner"] == client:
-                                self.filesystem.delete_item("chats", chat_id)
-                            else:
-                                payload["members"].remove(client)
-                                self.filesystem.write_item("chats", chat_id, payload)
-                    netlog_index = self.getIndex(location="netlog", query={"users": {"$all": [client]}}, truncate=False)["index"]
-                    for ip in netlog_index:
-                        result, payload = self.filesystem.load_item("netlog", ip)
-                        if result:
-                            payload["users"].remove(client)
-                            if payload["last_user"] == client:
-                                payload["last_user"] = "Deleted"
-                            self.filesystem.write_item("netlog", ip, payload)
-                    result = self.filesystem.delete_item("usersv0", client)
-                    if result:
-                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                        time.sleep(1)
-                        self.cl.kickClient(client)
-                    else:
-                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
-            else:
-                if ((not FileCheck) and FileRead):
-                    # Account not found
-                    self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    # Some other error, raise an internal error.
-                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-        else:
-            # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)

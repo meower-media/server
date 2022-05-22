@@ -1,29 +1,16 @@
-from flask import request
+from flask import Blueprint, request
+from flask import current_app as app
 
-class Errors:
-    def __init__(self, app):
-        self.app = app
-        self.respond = self.app.respond
-        self.all_errors = [
-            {
-                "error_status": 404,
-                "error_function": self.not_found
-            },
-            {
-                "error_status": 405,
-                "error_function": self.method_not_allowed
-            },
-            {
-                "error_status": 500,
-                "error_function": self.internal
-            }
-        ]
-    
-    def not_found(self, e):
-        return self.respond({"type": "notFound"}, 404, error=True)
-    
-    def method_not_allowed(self, e):
-        return self.respond({"type": "methodNotAllowed"}, 405, error=True)
-    
-    def internal(self, e):
-        return self.respond({"type": "internal"}, 500, error=True)
+errors = Blueprint("errors_blueprint", __name__)
+
+@errors.app_errorhandler(404)
+def not_found(e):
+    return app.respond({"type": "notFound"}, 404, error=True)
+
+@errors.app_errorhandler(405)
+def method_not_allowed(e):
+    return app.respond({"type": "methodNotAllowed"}, 405, error=True)
+
+@errors.app_errorhandler(500)
+def internal(e):
+    return app.respond({"type": "internal"}, 500, error=True)
