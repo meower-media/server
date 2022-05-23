@@ -3,6 +3,10 @@ from flask import current_app as app
 
 errors = Blueprint("errors_blueprint", __name__)
 
+@errors.app_errorhandler(400)
+def bad_request(e):
+    return app.respond({"type": "badRequest"}, 400, error=True)
+
 @errors.app_errorhandler(404)
 def not_found(e):
     return app.respond({"type": "notFound"}, 404, error=True)

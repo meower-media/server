@@ -13,6 +13,57 @@ class Security:
         self.errorhandler = meower.supporter.full_stack
         self.log("Security initialized!")
     
+    class Config:
+        def __init__(self, username):
+            file_check, file_read, userdata = self.files.load_item("usersv0", username)
+    
+            if file_check and file_read:
+                self.theme = userdata["theme"]
+                self.mode = userdata["mode"]
+                self.sfx = userdata["sfx"]
+                self.debug = userdata["debug"]
+                self.bgm = userdata["bgm"]
+                self.bgm_song = userdata["bgm_song"]
+                self.pfp_data = userdata["pfp_data"]
+                self.quote = userdata["quote"]
+            else:
+                self.theme = "orange"
+                self.mode = True
+                self.sfx = True
+                self.debug = False
+                self.bgm = True
+                self.bgm_song = 2
+                self.pfp_data = 1
+                self.quote = ""
+
+            self.json = {
+                "theme": self.theme,
+                "mode": self.mode,
+                "sfx": self.sfx,
+                "debug": self.debug,
+                "bgm": self.bgm,
+                "bgm_song": self.bgm_song,
+                "pfp_data": self.pfp_data,
+                "quote": self.quote
+            }
+
+    class User:
+        def __init__(self, username):
+            file_check, file_read, userdata = self.files.load_item("usersv0", username)
+            if file_check and file_read:
+                self.username = userdata["_id"]
+                self.lower_username = userdata["lower_username"]
+                self.config = {
+                    "theme": userdata["theme"],
+                    "mode": userdata["mode"],
+                    "sfx": userdata["sfx"],
+                    "debug": userdata["debug"],
+                    "bgm": userdata["bgm"],
+                    "bgm_song": userdata["bgm_song"],
+                    "pfp_data": userdata["pfp_data"],
+                    "quote": userdata["quote"]
+                }
+
     def account_exists(self, username, ignore_case=False):
         if not (type(username) == str):
             self.log("Error on account_exists: Expected str for username, got {0}".format(type(username)))
