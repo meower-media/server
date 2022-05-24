@@ -18,6 +18,7 @@ class REST_API:
 
         # Register blueprints
         self.app.register_blueprint(errors)
+        self.app.register_blueprint(general, url_prefix="/", name="compatibility_general") # Keep general endpoints as root for compatibility
         self.app.register_blueprint(general, url_prefix="/v0")
         self.app.register_blueprint(posts, url_prefix="/v0/posts")
 

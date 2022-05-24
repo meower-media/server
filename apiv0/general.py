@@ -5,11 +5,11 @@ general = Blueprint("general_blueprint", __name__)
 
 @general.route("/", methods=["GET"])
 def index():
-    return app.respond({"supported_versions": ["v0"], "version_endpoints": {"v0": "/v0"}}, 200)
+    return app.respond("Welcome to the Meower API!", 200)
 
 @general.route("/status", methods=["GET"])
 def get_status():
-    return app.respond({"isRepairMode": app.meower.supporter.repair_mode, "scratchDeprecated": app.meower.supporter.is_deprecated}, 200)
+    return app.respond({"isRepairMode": app.meower.supporter.repair_mode, "scratchDeprecated": app.meower.supporter.is_deprecated, "supported": {"0": True}}, 200)
 
 @general.route("/ip", methods=["GET"])
 def ip_fetcher():

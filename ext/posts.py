@@ -58,7 +58,7 @@ class Posts:
             "parent": parent_post,
             "isDeleted": False
         }
-        FileWrite = self.files.write_item("posts", str(uuid4()), chatdata)
+        FileWrite = self.files.create_item("posts", str(uuid4()), chatdata)
         if not FileWrite:
             return False, chatdata
         

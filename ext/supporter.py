@@ -4,6 +4,7 @@ import time
 import traceback
 import sys
 import string
+from uuid import uuid4
 
 """
 
@@ -320,3 +321,6 @@ class Supporter:
             return ((self.ratelimits[str(client)]) < time.time())
         else:
             return True
+        
+    def uuid(self):
+        return str(uuid4())

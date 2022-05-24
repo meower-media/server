@@ -35,6 +35,10 @@ class Meower:
         self.rest_api_app = Thread(target=self.rest_api, args=(self,), kwargs={"ip": "0.0.0.0", "port": 3001})
         self.rest_api_app.start()
 
+        test = self.accounts.User("sdgn")
+        print(dir(test))
+        test.authenticate("abc")
+
     def run_ws_command(self, cmd, val, listener_detected, listener_id, client):
         try:
             commands = [

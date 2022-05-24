@@ -11,6 +11,7 @@ This file should be modified/refactored to interact with a JSON-friendly databas
 """
 
 class Files:
+
     def __init__(self, meower):
         self.log = meower.supporter.log
         self.errorhandler = meower.supporter.full_stack
