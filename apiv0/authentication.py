@@ -16,15 +16,8 @@ def check_auth():
     request.auth = None
     request.authed = False
 
-    if "Authentication" in request.headers:
-        if "Bearer" in request.headers.get("Authentication"):
-            token = request.headers.get("Authentication").replace("Bearer ", "")
-        else:
-            token = request.headers.get("Authentication")
-    elif "Token" in request.headers:
-        token = request.headers.get("Token")
-    elif "Auth" in request.headers:
-        token = request.headers.get("Auth")
+    if "token" in request.headers:
+        token = request.headers.get("token")
     
     tokendata = app.meower.files.find_items("keys", {"key": token})
 

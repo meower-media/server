@@ -48,21 +48,73 @@ class Security:
             }
 
     class User:
-        def __init__(self, username):
-            file_check, file_read, userdata = self.files.load_item("usersv0", username)
-            if file_check and file_read:
-                self.username = userdata["_id"]
-                self.lower_username = userdata["lower_username"]
-                self.config = {
-                    "theme": userdata["theme"],
-                    "mode": userdata["mode"],
-                    "sfx": userdata["sfx"],
-                    "debug": userdata["debug"],
-                    "bgm": userdata["bgm"],
-                    "bgm_song": userdata["bgm_song"],
-                    "pfp_data": userdata["pfp_data"],
-                    "quote": userdata["quote"]
+        def __init__(self, username: str):
+            file_check, file_read, self.userdata = self.files.load_item("usersv0", username)
+            self.exists = (self.userdata != None)
+
+            if self.exists:
+                # Store username in a seperate object
+                self.username = self.userdata["_id"]
+
+                # Store password in a seperate object and delete it from userdata
+                self.pswd = self.userdata["pswd"]
+                del self.userdata["pswd"]
+
+                # Store flags in a seperate objects
+                self.dormant = self.userdata["flags"]["dormant"]
+                self.temp_locked = ((self.userdata["flags"]["locked_until"] > time.time()) or (self.userdata["flags"]["locked_until"] == -1))
+                self.perm_locked = (self.userdata["flags"]["locked_until"] == -1)
+                self.suspended = ((self.userdata["flags"]["suspended_until"] > time.time()) or (self.userdata["flags"]["suspended_until"] == -1))
+                self.banned = ((self.userdata["flags"]["banned_until"] > time.time()) or (self.userdata["flags"]["banned_until"] == -1))
+                self.pending_deletion = (self.userdata["flags"]["delete_after"] > time.time())
+
+                # Store account level in different object
+                self.lvl = self.userdata["lvl"]
+
+                # Store non-sensitive data we can send to clients in a seperate object
+                self.profile = {
+                    "username": self.userdata["_id"],
+                    "lower_username": self.userdata["lower_username"],
+                    "pfp_data": self.userdata["pfp_data"],
+                    "quote": self.userdata["quote"],
+                    "lvl": self.userdata["lvl"],
+                    "isDeleted": self.userdata["flags"]["isDeleted"]
                 }
+
+        def check_pswd(self, password: str):
+            pswd_bytes = bytes(password, "utf-8")
+            hashed_pswd_bytes = bytes(self.password, "utf-8")
+            return bcrypt.checkpw(pswd_bytes, hashed_pswd_bytes)
+
+        def update_config(self, newdata: dict, forceUpdate: bool):
+            self.log("Updating account settings: {0}".format(self.username))
+            user_datatypes = {
+                "theme": str,
+                "mode": bool,
+                "sfx": bool,
+                "debug": bool,
+                "bgm": bool,
+                "bgm_song": int,
+                "pfp_data": int,
+                "quote": str
+            }
+            allowed_values = {
+                "theme": ["orange", "blue"],
+                "bgm_song": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                "layout": ["new"],
+                "pfp_data": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
+                "lvl": [1, 2, 3, 4]
+            }
+            new_userdata = {}
+
+            for key, value in newdata.items():
+                if (key in user_datatypes and type(value) == user_datatypes[key]) or forceUpdate:
+                    if (not key in allowed_values) or (value in allowed_values[key]):
+                        if (key != "quote") or (len(value) <= 100):
+                            new_userdata[key] = value
+            FileWrite = self.files.update_item("usersv0", str(self.username), new_userdata)
+
+            return True, FileWrite
 
     def account_exists(self, username, ignore_case=False):
         if not (type(username) == str):
@@ -107,7 +159,7 @@ class Security:
                 "debug": False,
                 "bgm": True,
                 "bgm_song": 2,
-                "layout": "new", # Remove once beta 6 happens
+                "layout": "new", # Remove "layout" in beta 6 server
                 "pfp_data": 1,
                 "quote": "",
                 "email": "",
