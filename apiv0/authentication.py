@@ -3,36 +3,27 @@ from flask import current_app as app
 
 auth = Blueprint("authentication_blueprint", __name__)
 
-class User:
-    def __init__(self, username):
-        file_check, file_read, userdata = app.meower.accounts.get_account(username)
-        if file_check and file_read:
-            self.id = username
-            self.username = username
-
 @auth.before_app_request
 def check_auth():
-    request.session_data = None
     request.auth = None
     request.authed = False
+    request.session_data = None
 
     if "token" in request.headers:
         token = request.headers.get("token")
     
-    tokendata = app.meower.files.find_items("keys", {"key": token})
+    try:
+        token_data = app.meower.accounts.get_token(token)
 
-    if (tokendata["expires"] == None) or (not (tokendata["expires"] > app.meower.supporter.timestamp(7))):
-        file_check, file_read, Flags = app.meower.accounts.get_flags(tokendata["u"])
-        if file_check and file_read:
-            if not (Flags["locked"] or Flags["perm_locked"] or Flags["banned"] or Flags["dormant"] or Flags["pending_deletion"] or Flags["deleted"]):
-                request.session_data = {
-                    "id": tokendata["_id"],
-                    "expires": tokendata["expires"],
-                    "username": tokendata["u"],
-                    "flags": Flags
-                }
-                request.auth = tokendata["u"]
-                request.authed = True
+        request.auth = token_data["u"]
+        request.authed = True
+        request.session_data = {
+            "id": token_data["_id"],
+            "expires": token_data["expires"],
+            "u": token_data["u"]
+        }
+    except:
+        pass
 
 @auth.route("/login", methods=["POST"])
 def login():

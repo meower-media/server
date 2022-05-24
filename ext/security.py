@@ -147,9 +147,16 @@ class Security:
     def create_token(self, username: str, expiry: float=None, type: int=1):
         token = secrets.token_urlsafe(64)
         expires = self.meower.supporter.timestamp(7)+expiry
-        self.meower.files.create_item("keys", self.meower.supporter.uuid(), {"token": token, "created": self.meower.supporter.timestamp(6), "expires": expires, "renew_time": expiry, "type": type})
+        self.meower.files.create_item("keys", self.meower.supporter.uuid(), {"token": token, "u": username, "created": self.meower.supporter.timestamp(6), "expires": expires, "renew_time": expiry, "type": type})
         return token
     
+    def get_token(self, token: str):
+        token_data = self.meower.files.load_item("keys", token)
+        if ((token_data["created"] < self.meower.supporter.timestamp(6)+31536000) and (token_data["expires"] < self.meower.supporter.timestamp(7))) or (token_data["expires"] == -1):
+            return token_data
+        else:
+            raise self.err.TokenExpired
+
     def renew_token(self, token: str):
         token_data = self.meower.files.load_item("keys", token)
         if (token_data["created"] < self.meower.supporter.timestamp(6)+31536000) and (token_data["renew_time"] != None):
