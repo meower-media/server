@@ -7,7 +7,7 @@ Use this code to develop forks of Meower for Scratch clients.
 
 APIv0 will be upgraded automatically to APIv1 when New Meower is released. The API can be found at https://api.meower.org/
 
-## Dependencies
+## Installing Dependencies
 * Run `pip3 install -r requirements.txt` in the downloaded and unzipped directory
 
 ## Running the server
@@ -21,13 +21,13 @@ This rest api is configured to use CF Argo Tunnels for getting client IPs, but o
 
 Currently supported functions of the API:
 
-/home - Gets the current homepage index.
+* /home - Gets the current homepage index.
 * /home?page=# - Lets you get a certain page # of the homepage.
 * /home?autoget - Automatically fetches all posts currently present on the page.
 
-/ip - Gets the client's IP address and returns with plaintext. Only works if the server is communicating with a client over CF Argo Tunnels.
+* /ip - Gets the client's IP address and returns with plaintext. Only works if the server is communicating with a client over CF Argo Tunnels.
 
-/posts?id=(Post ID) - Gets a Post ID, use /home to get an index of posts. 
+* /posts?id=(Post ID) - Gets a Post ID, use /home to get an index of posts. 
 
 ### Trust keys and access control
 
@@ -41,6 +41,6 @@ Meower is configured to use CloudLink's Trusted Access feature, which implements
 
 ## Contributing to the source
 
-1. Make a fork of the repo.
-2. Modify your source.
-3. Make a PR request.
+1. Make a fork of the repo
+2. Modify your source
+3. Open a PR
