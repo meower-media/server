@@ -38,6 +38,42 @@ class WSCommands:
     
     # Accounts and security
     
+    def auth(self, client, val, listener_detected, listener_id):
+        if self.supporter.isAuthenticated(client):
+            # Already authenticated
+            return self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+        elif not (type(val) == str):
+            # Bad datatype
+            return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
+        elif len(val) > 100:
+            # Token too large
+            return self.returnCode(client = client, code = "TooLarge", listener_detected = listener_detected, listener_id = listener_id)
+
+        file_read, token_data = self.accounts.get_token(val)
+        if not file_read:
+            # Bad characters being used
+            return self.returnCode(client = client, code = "PasswordInvalid", listener_detected = listener_detected, listener_id = listener_id)
+
+        # Authenticate client
+        self.supporter.kickBadUsers(token_data["u"]) # Kick bad clients missusing the username
+        self.supporter.autoID(client, token_data["u"], "token") # Set ID for the client
+        self.supporter.setAuthenticatedState(client, True) # Make the server know that the client is authed
+
+        # Return info to sender
+        payload = {
+            "mode": "auth",
+            "payload": {
+                "username": token_data["u"]
+            }
+        }
+        self.sendPacket({"cmd": "direct", "val": payload, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
+        
+        # Tell the client it is authenticated
+        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+        
+        # Log peak users
+        self.supporter.log_peak_users()
+
     def authpswd(self, client, val, listener_detected, listener_id):
         if self.supporter.isAuthenticated(client):
             # Already authenticated
@@ -124,7 +160,7 @@ class WSCommands:
         
         # Log peak users
         self.supporter.log_peak_users()
-    
+
     def gen_account(self, client, val, listener_detected, listener_id):
         if self.supporter.isAuthenticated(client):
             # Already authenticated
@@ -197,12 +233,12 @@ class WSCommands:
         # Check if the client is authenticated
         if self.supporter.isAuthenticated(client):
             if type(val) == str:
-                FileCheck, FileRead, Payload = self.accounts.get_account(val, (val != client), True)
+                FileRead, Payload = self.accounts.get_account(val)
                 
-                if FileCheck and FileRead:
+                if FileRead:
                     payload = {
                         "mode": "profile",
-                        "payload": Payload,
+                        "payload": Payload["userdata"],
                         "user_id": val
                     }
                     
@@ -212,7 +248,7 @@ class WSCommands:
                     # Return to the client it's data
                     self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                 else:
-                    if ((not FileCheck) and FileRead):
+                    if not FileRead:
                         # Account not found
                         self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
                     else:
@@ -229,18 +265,18 @@ class WSCommands:
         # Check if the client is authenticated
         if self.supporter.isAuthenticated(client):
             if type(val) == dict:
-                FileCheck, FileRead, Payload = self.accounts.get_account(client, True, True)
-                if FileCheck and FileRead:
+                FileRead, Payload = self.accounts.get_account(client)
+                if FileRead:
                     self.log("{0} updating config".format(client))
-                    FileCheck, FileWrite = self.accounts.update_setting(client, val)
-                    if FileCheck and FileRead and FileWrite:
+                    FileWrite = self.accounts.update_config(client, val)
+                    if FileRead and FileWrite:
                         # OK
                         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                     else:
                         # raise an internal error.
                         self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                 else:
-                    if ((not FileCheck) and FileRead):
+                    if not FileRead:
                         # Account not found
                         self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
                     else:

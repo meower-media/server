@@ -44,6 +44,7 @@ class Meower:
             commands = [
                 "ping",
                 "version_chk",
+                "auth",
                 "authpswd",
                 "gen_account",
                 "get_profile",

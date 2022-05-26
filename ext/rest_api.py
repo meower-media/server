@@ -5,6 +5,7 @@ from flask_cors import CORS
 from apiv0.respond import respond
 from apiv0.errors import errors
 from apiv0.general import general
+from apiv0.authentication import auth
 from apiv0.posts import posts
 
 class REST_API:
@@ -20,6 +21,7 @@ class REST_API:
         self.app.register_blueprint(errors)
         self.app.register_blueprint(general, url_prefix="/", name="compatibility_general") # Keep general endpoints as root for compatibility
         self.app.register_blueprint(general, url_prefix="/v0")
+        self.app.register_blueprint(auth, url_prefix="/v0/auth")
         self.app.register_blueprint(posts, url_prefix="/v0/posts")
 
         # Run Flask app

@@ -1,5 +1,4 @@
 from meower import Meower
-import ext.errors as err
 from ext.cloudlink import CloudLink
 from ext.commands import WSCommands
 from ext.supporter import Supporter
@@ -37,7 +36,6 @@ class Main:
         self.meower.packet_callback = self.meower.run_ws_command
 
         # Add modules to Meower class
-        self.meower.err = err
         self.meower.cl = CloudLink(debug=debug)
         self.meower.supporter = Supporter(self.meower)
         self.meower.files = Files(self.meower)

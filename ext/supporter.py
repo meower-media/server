@@ -44,13 +44,14 @@ class Supporter:
             self.cl.codes["Kicked"] = "E:020 | Kicked"
             self.cl.codes["ChatExists"] = "E:021 | Chat exists"
             self.cl.codes["ChatNotFound"] = "E:022 | Chat not found"
-            self.cl.codes["Locked"] = "E:023 | Account Locked"
-            self.cl.codes["PermLocked"] = "E:024 | Account Locked"
-            self.cl.codes["Deleted"] = "E:025 | Account Deleted"
-            self.cl.codes["EmailNotVerified"] = "E:026 | Email Not Verified"
-            self.cl.codes["EmailMalformed"] = "E:027 | Email Malformed"
-            self.cl.codes["EmailInvalid"] = "E:028 | Email Invalid"
-            self.cl.codes["TokenInvalid"] = "E:029 | Token Invalid"
+            self.cl.codes["Dormant"] = "E:023 | Account Dormant"
+            self.cl.codes["Locked"] = "E:024 | Account Locked"
+            self.cl.codes["PermLocked"] = "E:025 | Account Locked"
+            self.cl.codes["Deleted"] = "E:026 | Account Deleted"
+            self.cl.codes["EmailNotVerified"] = "E:027 | Email Not Verified"
+            self.cl.codes["EmailMalformed"] = "E:028 | Email Malformed"
+            self.cl.codes["EmailInvalid"] = "E:029 | Email Invalid"
+            self.cl.codes["TokenInvalid"] = "E:030 | Token Invalid"
         
         # Create permitted lists of characters for posts
         self.permitted_chars_post = []
@@ -312,9 +313,12 @@ class Supporter:
         if not self.cl == None:
             # Check for clients that are trying to steal the ID and kick em' / Disconnect other sessions
             if username in self.cl.getUsernames():
-                self.log("Detected someone trying to use the username {0} wrongly".format(username))
-                self.cl.kickClient(username)
+                self.log("{0} logged in from another location".format(username))
+                self.sendPacket({"cmd": "direct", "val": self.cl.codes["IDConflict"], "id": username})
+                client_id = self.cl.statedata["ulist"]["usernames"][username]
+                del self.cl.statedata["ulist"]["usernames"][username]
                 time.sleep(0.5)
+                self.cl.kickClient(client_id)
     
     def check_for_spam(self, client):
         if str(client) in self.ratelimits:

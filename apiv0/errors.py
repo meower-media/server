@@ -7,6 +7,10 @@ errors = Blueprint("errors_blueprint", __name__)
 def bad_request(e):
     return app.respond({"type": "badRequest"}, 400, error=True)
 
+@errors.app_errorhandler(401)
+def not_authenticated(e):
+    return app.respond({"type": "notAuthenticated"}, 401, error=True)
+
 @errors.app_errorhandler(404)
 def not_found(e):
     return app.respond({"type": "notFound"}, 404, error=True)

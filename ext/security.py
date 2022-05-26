@@ -1,5 +1,6 @@
 import bcrypt
 import secrets
+from pytonik_ip_vpn_checker.ip import ip as ip_check
 
 """
 Meower Security Module
@@ -9,27 +10,28 @@ This module provides account management and authentication services.
 class Security:
     def __init__(self, meower):
         self.meower = meower
-        self.err = meower.err
         self.log = meower.supporter.log
         self.errorhandler = meower.supporter.full_stack
         self.log("Security initialized!")
 
     def get_account(self, username: str):
         self.log("Getting account: {0}".format(username))
-        userdata = self.meower.files.load_item("usersv0", username)
+        file_read, userdata = self.meower.files.load_item("usersv0", username)
         
-        client_userdata = userdata
+        if not file_read:
+            return False, None
+
+        client_userdata = userdata.copy()
         del client_userdata["pswd"]
         del client_userdata["last_ip"]
 
         current_time = self.meower.supporter.timestamp(7)
         flags = {
             "dormant": userdata["flags"]["dormant"],
-            "temp_locked": (userdata["flags"]["locked_until"] > current_time),
-            "perm_locked": (userdata["flags"]["locked_until"] == -1),
+            "locked": ((userdata["flags"]["locked_until"] > current_time) or (userdata["flags"]["locked_until"] == -1)),
             "suspended": ((userdata["flags"]["suspended_until"] > current_time) or (userdata["flags"]["suspended_until"] == -1)),
             "banned": ((userdata["flags"]["banned_until"] > current_time) or (userdata["flags"]["banned_until"] == -1)),
-            "pending_deletion": (userdata["flags"]["delete_after"] > current_time),
+            "pending_deletion": (userdata["flags"]["delete_after"] != None),
             "deleted": userdata["flags"]["isDeleted"]
         }
 
@@ -47,7 +49,7 @@ class Security:
             "online": (userdata["_id"] in self.meower.cl.getUsernames())
         }
 
-        return {
+        return file_read, {
             "userdata": userdata,
             "client_userdata": client_userdata,
             "flags": flags,
@@ -58,9 +60,11 @@ class Security:
         self.log("Creating account: {0}".format(username))
         pswd_bytes = bytes(password, "utf-8") # Convert password to bytes
         hashed_pw = bcrypt.hashpw(pswd_bytes, bcrypt.gensalt(12)) # Hash and salt the password
-        self.meower.files.create_item("usersv0", username, { # Default account data
-            "created": self.meower.supporter.timestamp(6),
+        file_write = self.meower.files.create_item("usersv0", username, { # Default account data
+            "username": username,
             "lower_username": username.lower(),
+            "created": self.meower.supporter.timestamp(6),
+            "unread_inbox": False,
             "theme": "orange",
             "mode": True,
             "sfx": True,
@@ -80,33 +84,30 @@ class Security:
                 "delete_after": None,
                 "isDeleted": False
             },
+            "ratelimits": {
+                "authentication": 0,
+                "email_verification": 0,
+                "reset_password": 0,
+                "data_export": 0,
+                "change_username": 0,
+                "change_password": 0
+            },
             "last_login": None,
             "last_ip": None
         })
-        token = self.create_token(username, expiry=2592000, type=1)
-        return token
 
-    def authenticate(self, username: str, password: str):
-        userdata = self.get_account(username)
-        flags = userdata["flags"]
-        userdata = userdata["userdata"]
-        if flags["dormant"]:
-            raise self.err.AccDormant
-        elif flags["temp_locked"]:
-            raise self.err.AccTempLocked
-        elif flags["perm_locked"]:
-            raise self.err.AccPermLocked
-        elif not bcrypt.checkpw(bytes(password, "utf-8"), bytes(userdata["pswd"], "utf-8")):
-            raise self.err.InvalidPassword
-        elif flags["banned"]:
-            raise self.err.AccBanned
-        elif flags["deleted"]:
-            raise self.err.AccDeleted
-        else:
-            token = self.create_token(username, expiry=2592000, type=1)
-            return token
+        return file_write
 
-    def update_config(self, username: str, newdata: dict, forceUpdate: bool):
+    def check_password(self, username: str, password: str):
+        file_read, userdata = self.get_account(username)
+        if not file_read:
+            return file_read, False
+        password_bytes = bytes(password, "utf-8")
+        stored_password_bytes = bytes(userdata["userdata"]["pswd"], "utf-8")
+        valid = bcrypt.checkpw(password_bytes, stored_password_bytes)
+        return file_read, valid
+
+    def update_config(self, username: str, newdata: dict, forceUpdate: bool=False):
         self.log("Updating account settings: {0}".format(username))
 
         user_datatypes = { # Valid datatypes for each key
@@ -117,7 +118,8 @@ class Security:
             "bgm": bool,
             "bgm_song": int,
             "pfp_data": int,
-            "quote": str
+            "quote": str,
+            "unread_inbox": bool
         }
 
         allowed_values = { # Allowed values for each key
@@ -137,29 +139,48 @@ class Security:
                         new_userdata[key] = value
         
         # Write userdata to db
-        self.meower.files.update_item("usersv0", username, new_userdata)
+        return self.meower.files.update_item("usersv0", username, new_userdata)
 
     def change_pswd(self, username: str, password: str):
         userdata = self.meower.files.load_item("usersv0", username)
         hashed_pswd = bcrypt.hashpw(bytes(password, "utf-8"), bcrypt.gensalt(12))
-        self.update_config(username, {"pswd": hashed_pswd}, forceUpdate=True)
+        return self.update_config(username, {"pswd": hashed_pswd}, forceUpdate=True)
     
     def create_token(self, username: str, expiry: float=None, type: int=1):
-        token = secrets.token_urlsafe(64)
-        expires = self.meower.supporter.timestamp(7)+expiry
-        self.meower.files.create_item("keys", self.meower.supporter.uuid(), {"token": token, "u": username, "created": self.meower.supporter.timestamp(6), "expires": expires, "renew_time": expiry, "type": type})
-        return token
+        token = "Bearer {0}".format(secrets.token_urlsafe(64))
+        expires = self.meower.supporter.timestamp(6)+expiry
+        file_write = self.meower.files.create_item("keys", self.meower.supporter.uuid(), {"token": token, "u": username, "created": self.meower.supporter.timestamp(6), "expires": expires, "renew_time": expiry, "type": type})
+        return file_write, token
     
     def get_token(self, token: str):
-        token_data = self.meower.files.load_item("keys", token)
-        if ((token_data["created"] < self.meower.supporter.timestamp(6)+31536000) and (token_data["expires"] < self.meower.supporter.timestamp(7))) or (token_data["expires"] == -1):
-            return token_data
+        session_id = self.meower.files.find_items("keys", {"token": token})
+        if len(session_id) > 0:
+            file_read, token_data = self.meower.files.load_item("keys", session_id[0])
+            if file_read and (((token_data["created"] < self.meower.supporter.timestamp(6)+31536000) and (token_data["expires"] > self.meower.supporter.timestamp(6))) or (token_data["expires"] == -1)):
+                return file_read, token_data
+            else:
+                return False, None
         else:
-            raise self.err.TokenExpired
+            return False, None
 
     def renew_token(self, token: str):
-        token_data = self.meower.files.load_item("keys", token)
-        if (token_data["created"] < self.meower.supporter.timestamp(6)+31536000) and (token_data["renew_time"] != None):
-            self.meower.files.update_item("keys", token, {"expires": self.meower.supporter.timestamp(7)+token_data["renew_time"]})
+        file_read, token_data = self.meower.files.load_item("keys", token)
+        if file_read and (token_data["created"] < self.meower.supporter.timestamp(6)+31536000) and (token_data["renew_time"] != None):
+            return file_read, self.meower.files.update_item("keys", token, {"expires": self.meower.supporter.timestamp(6)+token_data["renew_time"]})
         else:
-            raise self.err.TokenExpired
+            return file_read, False
+    
+    def get_ip(self, ip: str):
+        try:
+            file_read, ip_data = self.meower.files.load_item("netlog", ip)
+        except:
+            ip_data = {
+                "users": [],
+                "last_user": None,
+                "poisoned": False,
+                "creation_blocked": False,
+                "blocked": False
+            }
+            if ip_check.check(ip):
+                ip_data["creation_blocked"] = True
+            self.meower.files.create_item("netlog", ip, ip_data)

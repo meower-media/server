@@ -186,6 +186,13 @@ class Files:
                 return False
         else:
             return False
+        
+    def update_all(self, collection, query, data):
+        if collection in self.db.list_collection_names():
+            self.db[collection].update_many(query, {"$set": data})
+            return True
+        else:
+            return False
 
     def write_item(self, collection, id, data):
         if collection in self.db.list_collection_names():
@@ -230,9 +237,15 @@ class Files:
             sort = {}
         
         if truncate:
-            all_items = self.db[collection].find(query).sort(sort, direction=-1).skip((page-1)*items_per_page).limit(items_per_page)
+            if sort == None:
+                all_items = self.db[collection].find(query).sort(sort, direction=-1).skip((page-1)*items_per_page).limit(items_per_page)
+            else:
+                all_items = self.db[collection].find(query).skip((page-1)*items_per_page).limit(items_per_page)
         else:
-            all_items = self.db[collection].find(query).sort(sort, direction=-1)
+            if sort == None:
+                all_items = self.db[collection].find(query).sort(sort, direction=-1)
+            else:
+                all_items = self.db[collection].find(query)
         
         payload = []
         for item in all_items:

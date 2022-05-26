@@ -12,6 +12,7 @@ This keeps other files clean and allows both the API and WSS to use the same fun
 
 class Posts:
     def __init__(self, meower):
+        self.meower = meower
         self.cl = meower.cl
         self.log = meower.supporter.log
         self.errorhandler = meower.supporter.full_stack
@@ -49,7 +50,7 @@ class Posts:
         return True, has_permission, postdata
 
     def create_post(self, origin, author, content, link_to=None, parent_post=None):
-        chatdata = {
+        postdata = {
             "post_origin": origin,
             "u": author,
             "t": self.timestamp(1),
@@ -58,25 +59,39 @@ class Posts:
             "parent": parent_post,
             "isDeleted": False
         }
-        FileWrite = self.files.create_item("posts", str(uuid4()), chatdata)
+        FileWrite = self.files.create_item("posts", str(uuid4()), postdata)
         if not FileWrite:
-            return False, chatdata
+            return False, None
         
-        if (chatdata["post_origin"] == "home") or (chatdata["post_origin"] == "livechat") or ((chatdata["post_origin"] == "inbox") and (chatdata["u"] == "Server")):
-            payload = {
-                "mode": "post",
-                "payload": chatdata
-            }
-            self.sendPacket({"cmd": "direct", "val": payload})
-    
-    def update_statedata(self, chat, user, state):
+        if postdata["post_origin"] == "inbox":
+            if postdata["u"] == "Server":
+                self.meower.files.update_all("usersv0", {"unread_inbox": False}, {"unread_inbox": True})
+            else:
+                self.meower.accounts.update_config(postdata["u"], {"unread_inbox": True})
+
         payload = {
-            "mode": "statedata",
-            "payload": {
-                "u": user,
-                "state": state
-            }
+            "mode": "post",
+            "payload": postdata
         }
 
-        self.sendPacket({"cmd": "direct", "val": payload})
-        return True
+        if (postdata["post_origin"] == "home") or (postdata["post_origin"] == "livechat") or ((postdata["post_origin"] == "inbox") and (postdata["u"] == "Server")):
+            self.sendPacket({"cmd": "direct", "val": payload})
+        elif (postdata["post_origin"] == "inbox") and (postdata["u"] in self.meower.cl.getUsernames()):
+            self.sendPacket({"cmd": "direct", "val": payload, "id": postdata["u"]})
+        else:
+            pass # group chats
+    
+    def update_statedata(self, chat, user, state):
+        postdata = {
+            "u": user,
+            "state": state
+        }
+
+        payload = {
+            "mode": "state",
+            "payload": postdata
+        }
+
+        if postdata["post_origin"] == "livechat":
+            self.sendPacket({"cmd": "direct", "val": payload})
+            return True
