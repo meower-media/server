@@ -11,6 +11,10 @@ def bad_request(e):
 def not_authenticated(e):
     return app.respond({"type": "notAuthenticated"}, 401, error=True)
 
+@errors.app_errorhandler(403)
+def forbidden(e):
+    return app.respond({"type": "missingPermissions"}, 403, error=True)
+
 @errors.app_errorhandler(404)
 def not_found(e):
     return app.respond({"type": "notFound"}, 404, error=True)

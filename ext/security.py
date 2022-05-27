@@ -154,14 +154,21 @@ class Security:
     
     def get_token(self, token: str):
         session_id = self.meower.files.find_items("keys", {"token": token})
-        if len(session_id) > 0:
-            file_read, token_data = self.meower.files.load_item("keys", session_id[0])
-            if file_read and (((token_data["created"] < self.meower.supporter.timestamp(6)+31536000) and (token_data["expires"] > self.meower.supporter.timestamp(6))) or (token_data["expires"] == -1)):
-                return file_read, token_data
-            else:
-                return False, None
-        else:
+        if len(session_id) == 0:
             return False, None
+            
+        file_read, token_data = self.meower.files.load_item("keys", session_id[0])
+        if not (file_read and (((token_data["created"] < self.meower.supporter.timestamp(6)+31536000) and (token_data["expires"] > self.meower.supporter.timestamp(6))) or (token_data["expires"] == -1))):
+            return False, None
+
+        file_read, userdata = self.get_account(token_data["u"])
+        if not file_read:
+            return False, None
+
+        if (userdata["userdata"]["flags"]["locked_until"] == -1) or userdata["flags"]["dormant"] or userdata["flags"]["deleted"] or userdata["flags"]["banned"] or userdata["flags"]["pending_deletion"] or userdata["flags"]["deleted"]:
+            return False, None
+
+        return file_read, token_data
 
     def renew_token(self, token: str):
         file_read, token_data = self.meower.files.load_item("keys", token)

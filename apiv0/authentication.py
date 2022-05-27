@@ -18,10 +18,19 @@ def check_auth():
             request.session_data = token_data.copy()
             del request.session_data["token"]
 
+@auth.route("/", methods=["GET"])
+def get_me():
+    if not request.authed:
+        abort(401)
+    
+    file_read, userdata = app.meower.accounts.get_account(request.auth)
+    if not file_read:
+        abort(500)
+
+    return app.respond(userdata["client_userdata"], 200, error=False)
+
 @auth.route("/login", methods=["POST"])
 def login():
-    for item in request.form.items():
-        print(item)
     if not (("username" in request.form) and ("password" in request.form)):
         return app.respond({"type": "missingField"}, 400, error=True)
 
@@ -42,7 +51,7 @@ def login():
     if not file_read:
         return app.respond({"type": "accountDoesNotExist"}, 401, error=True)
     elif userdata["flags"]["locked"]:
-        return app.respond({"type": "accountLocked", "expires": None}, 401, error=True)
+        return app.respond({"type": "accountLocked", "expires": userdata["userdata"]["flags"]["locked_until"]-app.meower.supporter.timestamp(6)}, 401, error=True)
     elif userdata["flags"]["dormant"]:
         return app.respond({"type": "accountDormant"}, 401, error=True)
     elif (app.meower.accounts.check_password(username, password) != (True, True)):
@@ -50,7 +59,7 @@ def login():
     elif userdata["flags"]["deleted"]:
         return app.respond({"type": "accountDeleted"}, 401, error=True)
     elif userdata["flags"]["banned"]:
-        return app.respond({"type": "accountBanned", "expires": None}, 401, error=True)
+        return app.respond({"type": "accountBanned", "expires": userdata["userdata"]["flags"]["banned_until"]-app.meower.supporter.timestamp(6)}, 401, error=True)
     
     # Restore account if it's pending deletion
     if userdata["flags"]["pending_deletion"]:
