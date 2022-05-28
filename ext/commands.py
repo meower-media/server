@@ -1,3 +1,4 @@
+import secrets
 import time
 import uuid
 
@@ -12,9 +13,21 @@ class WSCommands:
         self.sendPacket = meower.supporter.sendPacket
         self.log("Meower initialized!")
     
+    def sendLivePayload(self, client, mode, payload):
+        self.sendPacket({"cmd": "direct", "val": {"mode": mode, "payload": payload}, "id": client}, listener_detected = False, listener_id = None)
+
     def returnCode(self, client, code, listener_detected, listener_id):
         self.sendPacket({"cmd": "statuscode", "val": self.cl.codes[str(code)], "id": client}, listener_detected = listener_detected, listener_id = listener_id)
     
+    def abruptLogout(self, username, payload):
+        if username in self.cl.getUsernames():
+            self.sendLivePayload(username, "abrupt_logout", payload)
+            client_id = self.cl.statedata["ulist"]["usernames"][username]
+            del self.cl.statedata["ulist"]["usernames"][username]
+            self.supporter.modify_client_statedata(username, "authed", False)
+            time.sleep(0.5)
+            self.cl.kickClient(username)
+
     # Networking/client utilities
     
     def ping(self, client, val, listener_detected, listener_id):
@@ -37,8 +50,29 @@ class WSCommands:
             return self.returnCode(client = client, code = "ObsoleteClient", listener_detected = listener_detected, listener_id = listener_id)  
     
     # Accounts and security
-    
+
+    def gen_code(self, client, val, listener_detected, listener_id):
+        client_statedata = self.supporter.get_client_statedata(client)
+        if client_statedata["login_code"] != None:
+            del self.cl.statedata["ulist"]["login_codes"][client_statedata["login_code"]]
+
+        # Generate a random code
+        code = str(secrets.SystemRandom().randint(111111,999999))
+
+        # Store the code
+        self.supporter.modify_client_statedata(client, "login_code", code)
+        self.cl.statedata["ulist"]["login_codes"][code] = client
+
+        # Return the code to the client
+        self.sendPacket({"cmd": "direct", "val": code, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
+
+        # Tell the client that the code was sent
+        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+
     def auth(self, client, val, listener_detected, listener_id):
+        client_statedata = self.supporter.get_client_statedata(client)
+        if client_statedata["login_code"] != None:
+            del self.cl.statedata["ulist"]["login_codes"][client_statedata["login_code"]]
         if self.supporter.isAuthenticated(client):
             # Already authenticated
             return self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)

@@ -18,16 +18,30 @@ def check_auth():
             request.session_data = token_data.copy()
             del request.session_data["token"]
 
-@auth.route("/", methods=["GET"])
+@auth.route("/", methods=["GET", "PATCH"])
 def get_me():
     if not request.authed:
         abort(401)
     
-    file_read, userdata = app.meower.accounts.get_account(request.auth)
-    if not file_read:
-        abort(500)
+    if request.method == "GET":
+        file_read, userdata = app.meower.accounts.get_account(request.auth)
+        if not file_read:
+            abort(500)
 
-    return app.respond(userdata["client_userdata"], 200, error=False)
+        return app.respond(userdata["client_userdata"], 200, error=False)
+    elif request.method == "PATCH":
+        newdata = {}
+        for key, value in request.form.items():
+            newdata[key] = value
+        
+        file_write = app.meower.accounts.update_config(request.auth, newdata)
+        if not file_write:
+            abort(500)
+
+        if request.auth in app.meower.cl.getUsernames():
+            app.meower.commands.sendLivePayload(request.auth, "update_config", "")
+        
+        return app.respond({}, 200, error=False)
 
 @auth.route("/login", methods=["POST"])
 def login():
@@ -105,10 +119,93 @@ def create_account():
     else:
         abort(500)
 
-@auth.route("/session", methods=["GET"])
-def get_session():
+@auth.route("/login_code", methods=["POST"])
+def auth_login_code():
     if not request.authed:
         abort(401)
+    
+    if not ("code" in request.form):
+        return app.respond({"type": "missingField"}, 400, error=True)
+    
+    # Extract code for simplicity
+    code = request.form.get("code")
+
+    # Check for bad datatypes and syntax
+    if not (type(code) == str):
+        return app.respond({"type": "badDatatype"}, 400, error=True)
+    elif len(code) > 6:
+        return app.respond({"type": "fieldTooLarge"}, 400, error=True)
+    elif app.meower.supporter.checkForBadCharsPost(code):
+        return app.respond({"type": "illegalCharacters"}, 400, error=True)
+    
+    # Check if code exists
+    if not (code in app.meower.cl.statedata["ulist"]["login_codes"]):
+        return app.respond({"type": "codeDoesNotExist"}, 400, error=True)
+    
+    # Create new token
+    file_write, token = app.meower.accounts.create_token(request.auth, expiry=2592000, type=1)
+    if not file_write:
+        abort(500)
+
+    # Send token to client
+    app.meower.commands.sendLivePayload(app.meower.cl.statedata["ulist"]["login_codes"][code], "login_code", token)
+
+    # Delete login code
+    app.meower.supporter.modify_client_statedata(app.meower.cl.statedata["ulist"]["login_codes"][code], "login_code", None)
+    del app.meower.cl.statedata["ulist"]["login_codes"][code]
+
+    return app.respond({}, 200, error=False)
+
+@auth.route("/session", methods=["GET", "DELETE"])
+def current_session():
+    if not request.authed:
+        abort(401)
+    
     session_data = request.session_data.copy()
     session_data["authed"] = request.authed
+
     return app.respond(session_data, 200, error=False)
+
+@auth.route("/all_sessions", methods=["DELETE"])
+def all_sessions():
+    if not request.authed:
+        abort(401)
+    
+    if request.method == "DELETE":
+        app.meower.files.delete_all("keys", {"u": request.auth, "type": 1})
+
+        if request.auth in app.meower.cl.getUsernames():
+            app.meower.commands.abruptLogout(request.auth, "session_expired")
+
+        return app.respond({}, 200, error=False)
+
+@auth.route("/mfa_setup", methods=["GET", "POST"])
+def mfa_setup():
+
+    ## TO BE CONTINUED
+
+    if not request.authed:
+        abort(401)
+
+    if request.method == "GET":
+        # Generate new token and return to user
+        file_write, token = app.meower.accounts.create_token(request.auth, expiry=600, type=2)
+        if file_write:
+            return app.respond({"token": token, "type": "Bearer"}, 200, error=False)
+        else:
+            abort(500)
+    elif request.method == "POST":
+        if not (("token" in request.form) and ("code" in request.form)):
+            return app.respond({"type": "missingField"}, 400, error=True)
+        
+        # Extract token and code for simplicity
+        token = request.form.get("token")
+        code = request.form.get("code")
+
+        # Check for bad datatypes and syntax
+        if not ((type(token) == str) and (type(code) == str)):
+            return app.respond({"type": "badDatatype"}, 400, error=True)
+        elif (len(token) > 100) or (len(code) > 6):
+            return app.respond({"type": "fieldTooLarge"}, 400, error=True)
+        elif app.meower.supporter.checkForBadCharsPost(code):
+            return app.respond({"type": "illegalCharacters"}, 400, error=True)

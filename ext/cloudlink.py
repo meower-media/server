@@ -77,7 +77,8 @@ class API:
                 self.statedata = {
                     "ulist": {
                         "usernames": {},
-                        "objs": {}
+                        "objs": {},
+                        "login_codes": {}
                     }, # Username list for the "Usernames" block
                     "secure_enable": False, # Trusted Access enabler
                     "secure_keys": [], # Trusted Access keys

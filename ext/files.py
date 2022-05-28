@@ -268,3 +268,8 @@ class Files:
             return self.db[collection].delete_one({"_id": id})
         else:
             return False
+
+    def delete_all(self, collection, query):
+        if not (collection in self.db.list_collection_names()):
+            return False
+        return self.db[collection].delete_many(query)

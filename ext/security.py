@@ -133,10 +133,22 @@ class Security:
         # Check if value is valid and store it
         new_userdata = {}
         for key, value in newdata.items():
-            if (key in user_datatypes and type(value) == user_datatypes[key]) or forceUpdate:
+            if ((key in user_datatypes) and (type(value) == user_datatypes[key])) or forceUpdate:
                 if (not key in allowed_values) or (value in allowed_values[key]):
-                    if (key != "quote") or (len(value) <= 100):
+                    if (key != "quote") and (len(str(value)) <= 100):
                         new_userdata[key] = value
+                    elif len(str(value)) < 6:
+                        new_userdata[key] = value
+            else:
+                try:
+                    new_userdata[key] = user_datatypes[key](value)
+                    if (not key in allowed_values) or (value in allowed_values[key]):
+                        if (key != "quote") and (len(str(value)) <= 100):
+                            new_userdata[key] = value
+                        elif len(str(value)) < 6:
+                            new_userdata[key] = value
+                except:
+                    pass
         
         # Write userdata to db
         return self.meower.files.update_item("usersv0", username, new_userdata)

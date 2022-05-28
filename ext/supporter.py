@@ -179,6 +179,10 @@ class Supporter:
     
     def on_close(self, client):
         if not self.cl == None:
+            client_statedata = self.get_client_statedata(client)
+            if client_statedata["login_code"] != None:
+                del self.cl.statedata["ulist"]["login_codes"][client_statedata["login_code"]]
+
             if type(client) == dict:
                 self.log("{0} Disconnected.".format(client["id"]))
             elif type(client) == str:
@@ -192,6 +196,16 @@ class Supporter:
                 self.cl.kickClient(client)
             else:
                 self.log("{0} Connected.".format(client["id"]))
+
+                # Auto trusted access
+                print("Trusting {0}".format(client["id"]))
+                self.modify_client_statedata(client, "ip", "no more trusted access")
+                self.modify_client_statedata(client, "type", "js")
+                self.cl.statedata["trusted"].append(client)
+                self.sendPacket({"cmd": "ulist", "val": self.cl._get_ulist(), "id": client}, listener_detected = False, listener_id = None)
+
+                # Non authenticated statedata
+                self.modify_client_statedata(client, "login_code", None)
                 self.modify_client_statedata(client, "authtype", "")
                 self.modify_client_statedata(client, "authed", False)
     
@@ -302,6 +316,7 @@ class Supporter:
 
     def autoID(self, client, username, type):
         if not self.cl == None:
+            print(self.cl.statedata["ulist"]["usernames"])
             # really janky code that automatically sets user ID
             self.modify_client_statedata(client, "username", username)
             self.modify_client_statedata(client, "authtype", type)
