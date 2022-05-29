@@ -64,7 +64,7 @@ class Supporter:
         self.permitted_chars_post.append(" ")
 
         # Create permitted lists of characters for usernames
-        self.permitted_chars_username = self.permitted_chars_post
+        self.permitted_chars_username = self.permitted_chars_post.copy()
         self.permitted_chars_username.remove(" ")
         self.permitted_chars_username.remove('"')
         self.permitted_chars_username.remove("'")
@@ -263,9 +263,9 @@ class Supporter:
         elif ttype == 7:
             return float(time.time())
     
-    def ratelimit(self, client):
+    def ratelimit(self, username):
         # Rate limiter
-        self.ratelimits[str(client)] = time.time()+1
+        self.ratelimits[str(username)] = time.time()+1
     
     def filter(self, message):
         # Word censor
@@ -335,11 +335,11 @@ class Supporter:
                 time.sleep(0.5)
                 self.cl.kickClient(client_id)
     
-    def check_for_spam(self, client):
-        if str(client) in self.ratelimits:
-            return ((self.ratelimits[str(client)]) < time.time())
+    def check_for_spam(self, username):
+        if str(username) in self.ratelimits:
+            return ((self.ratelimits[str(username)]) > self.timestamp(7))
         else:
-            return True
+            return False
         
     def uuid(self):
         return str(uuid4())

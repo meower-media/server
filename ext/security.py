@@ -1,6 +1,6 @@
 import bcrypt
 import secrets
-from pytonik_ip_vpn_checker.ip import ip as ip_check
+import pyotp
 
 """
 Meower Security Module
@@ -22,6 +22,9 @@ class Security:
             return False, None
 
         client_userdata = userdata.copy()
+        client_userdata["mfa"] = (client_userdata["mfa_secret"] != None)
+        del client_userdata["mfa_secret"]
+        del client_userdata["mfa_recovery"]
         del client_userdata["pswd"]
         del client_userdata["last_ip"]
 
@@ -107,6 +110,14 @@ class Security:
         valid = bcrypt.checkpw(password_bytes, stored_password_bytes)
         return file_read, valid
 
+    def check_mfa(self, username: str, code: str):
+        file_read, userdata = self.get_account(username)
+        if not file_read:
+            return file_read, False
+        totp = pyotp.TOTP(userdata["userdata"]["mfa_secret"])
+        valid = totp.verify(code)
+        return file_read, valid
+
     def update_config(self, username: str, newdata: dict, forceUpdate: bool=False):
         self.log("Updating account settings: {0}".format(username))
 
@@ -158,10 +169,10 @@ class Security:
         hashed_pswd = bcrypt.hashpw(bytes(password, "utf-8"), bcrypt.gensalt(12))
         return self.update_config(username, {"pswd": hashed_pswd}, forceUpdate=True)
     
-    def create_token(self, username: str, expiry: float=None, type: int=1):
+    def create_token(self, username: str, expiry: float=None, type: int=1, device: str=None):
         token = "Bearer {0}".format(secrets.token_urlsafe(64))
         expires = self.meower.supporter.timestamp(6)+expiry
-        file_write = self.meower.files.create_item("keys", self.meower.supporter.uuid(), {"token": token, "u": username, "created": self.meower.supporter.timestamp(6), "expires": expires, "renew_time": expiry, "type": type})
+        file_write = self.meower.files.create_item("keys", self.meower.supporter.uuid(), {"token": token, "u": username, "created": self.meower.supporter.timestamp(6), "expires": expires, "renew_time": expiry, "type": type, "device": device})
         return file_write, token
     
     def get_token(self, token: str):
@@ -182,10 +193,10 @@ class Security:
 
         return file_read, token_data
 
-    def renew_token(self, token: str):
-        file_read, token_data = self.meower.files.load_item("keys", token)
+    def renew_token(self, token: str, device: str="Unknown"):
+        file_read, token_data = self.get_token(token)
         if file_read and (token_data["created"] < self.meower.supporter.timestamp(6)+31536000) and (token_data["renew_time"] != None):
-            return file_read, self.meower.files.update_item("keys", token, {"expires": self.meower.supporter.timestamp(6)+token_data["renew_time"]})
+            return file_read, self.meower.files.update_item("keys", token_data["_id"], {"expires": self.meower.supporter.timestamp(6)+token_data["renew_time"], "device": device})
         else:
             return file_read, False
     
@@ -193,6 +204,7 @@ class Security:
         try:
             file_read, ip_data = self.meower.files.load_item("netlog", ip)
         except:
+            file_read = True
             ip_data = {
                 "users": [],
                 "last_user": None,
@@ -200,6 +212,6 @@ class Security:
                 "creation_blocked": False,
                 "blocked": False
             }
-            if ip_check.check(ip):
-                ip_data["creation_blocked"] = True
             self.meower.files.create_item("netlog", ip, ip_data)
+        
+        return file_read, ip_data

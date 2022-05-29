@@ -14,7 +14,10 @@ class WSCommands:
         self.log("Meower initialized!")
     
     def sendLivePayload(self, client, mode, payload):
-        self.sendPacket({"cmd": "direct", "val": {"mode": mode, "payload": payload}, "id": client}, listener_detected = False, listener_id = None)
+        if client == None:
+            self.sendPacket({"cmd": "direct", "val": {"mode": mode, "payload": payload}}, listener_detected = False, listener_id = None)
+        else:
+            self.sendPacket({"cmd": "direct", "val": {"mode": mode, "payload": payload}, "id": client}, listener_detected = False, listener_id = None)
 
     def returnCode(self, client, code, listener_detected, listener_id):
         self.sendPacket({"cmd": "statuscode", "val": self.cl.codes[str(code)], "id": client}, listener_detected = listener_detected, listener_id = listener_id)

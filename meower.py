@@ -5,10 +5,8 @@ class Meower:
         # Set server MOTD
         self.cl.setMOTD("Meower Social Media Platform Server - v{0}".format(self.version), True)
 
-        # Load trust keys
-        FileRead, payload = self.files.load_item("config", "trust_keys")
-        if FileRead:
-            self.cl.trustedAccess(True, payload["index"])
+        # Enable trusted access for kicking and legacy IP banning
+        self.cl.trustedAccess(True, [])
         
         # Load IP Banlist
         FileRead, payload = self.files.load_item("config", "IPBanlist")

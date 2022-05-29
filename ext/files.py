@@ -234,18 +234,12 @@ class Files:
             return []
         
         if sort == None:
-            sort = {}
+            sort = "_id"
         
         if truncate:
-            if sort == None:
-                all_items = self.db[collection].find(query).sort(sort, direction=-1).skip((page-1)*items_per_page).limit(items_per_page)
-            else:
-                all_items = self.db[collection].find(query).skip((page-1)*items_per_page).limit(items_per_page)
+            all_items = self.db[collection].find(query).sort(sort, pymongo.DESCENDING).skip((page-1)*items_per_page).limit(items_per_page)
         else:
-            if sort == None:
-                all_items = self.db[collection].find(query).sort(sort, direction=-1)
-            else:
-                all_items = self.db[collection].find(query)
+            all_items = self.db[collection].find(query).sort(sort, pymongo.DESCENDING)
         
         payload = []
         for item in all_items:
