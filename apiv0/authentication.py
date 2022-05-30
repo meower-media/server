@@ -1,6 +1,7 @@
 from flask import Blueprint, request, abort
 from flask import current_app as app
 from user_agents import parse as parse_ua
+import secrets
 
 auth = Blueprint("authentication_blueprint", __name__)
 
@@ -263,17 +264,28 @@ def mfa_setup():
         else:
             abort(500)
     elif request.method == "POST":
-        if not (("token" in request.form) and ("code" in request.form)):
+        if not (("secret" in request.form) and ("code" in request.form)):
             return app.respond({"type": "missingField"}, 400, error=True)
         
-        # Extract token and code for simplicity
-        token = request.form.get("token")
+        # Extract secret and code for simplicity
+        secret = request.form.get("secret")
         code = request.form.get("code")
 
         # Check for bad datatypes and syntax
-        if not ((type(token) == str) and (type(code) == str)):
+        if not ((type(secret) == str) and (type(code) == str)):
             return app.respond({"type": "badDatatype"}, 400, error=True)
-        elif (len(token) > 100) or (len(code) > 6):
+        elif (len(secret) > 100) or (len(code) > 6):
             return app.respond({"type": "fieldTooLarge"}, 400, error=True)
-        elif app.meower.supporter.checkForBadCharsPost(code):
+        elif app.meower.supporter.checkForBadCharsPost(secret) or app.meower.supporter.checkForBadCharsPost(code):
             return app.respond({"type": "illegalCharacters"}, 400, error=True)
+        
+        if not (app.meower.accounts.check_mfa(request.auth, code, custom_secret=secret)):
+            return app.respond({"type": "mfaCodeInvalid"}, 401, error=True)
+        
+        # Generate recovery codes
+        recovery_codes = []
+        for i in range(6):
+            tmp_recovery_code = ""
+            for i in range(6):
+                tmp_recovery_code = tmp_recovery_code+secrets.choice(string.ascii_letters)
+            recovery_codes.append(tmp_recovery_code.lower())

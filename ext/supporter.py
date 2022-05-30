@@ -55,21 +55,21 @@ class Supporter:
         
         # Create permitted lists of characters for posts
         self.permitted_chars_post = []
-        for char in string.ascii_letters:
-            self.permitted_chars_post.append(char)
-        for char in string.digits:
-            self.permitted_chars_post.append(char)
-        for char in string.punctuation:
-            self.permitted_chars_post.append(char)
+        self.permitted_chars_post.extend(string.ascii_letters)
+        self.permitted_chars_post.extend(string.digits)
+        self.permitted_chars_post.extend(string.punctuation)
         self.permitted_chars_post.append(" ")
 
         # Create permitted lists of characters for usernames
         self.permitted_chars_username = self.permitted_chars_post.copy()
-        self.permitted_chars_username.remove(" ")
-        self.permitted_chars_username.remove('"')
-        self.permitted_chars_username.remove("'")
-        self.permitted_chars_username.remove("*")
-        self.permitted_chars_username.remove(";")
+        for item in [
+            " ",
+            '"',
+            "'",
+            "*",
+            ";"
+        ]:
+            self.permitted_chars_username.remove(item)
         
         # Peak number of users logger
         self.peak_users_logger = {
