@@ -60,7 +60,9 @@ class WSCommands:
             del self.cl.statedata["ulist"]["login_codes"][client_statedata["login_code"]]
 
         # Generate a random code
-        code = str(secrets.SystemRandom().randint(111111,999999))
+        code = None
+        while not ((code in self.cl.statedata["ulist"]["login_codes"]) or (code == None)):
+            code = str(secrets.SystemRandom().randint(111111,999999))
 
         # Store the code
         self.supporter.modify_client_statedata(client, "login_code", code)

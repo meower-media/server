@@ -110,16 +110,20 @@ class Security:
         valid = bcrypt.checkpw(password_bytes, stored_password_bytes)
         return file_read, valid
 
+    def new_mfa_secret(self):
+        return str(pyotp.random_base32())
+
     def check_mfa(self, username: str, code: str, custom_secret: str=None):
         if custom_secret != None:
+            totp = pyotp.TOTP(custom_secret)
+            return True, totp.verify(code)
+        else:
             file_read, userdata = self.get_account(username)
             if not file_read:
                 return file_read, False
             totp = pyotp.TOTP(userdata["userdata"]["mfa_secret"])
-        else:
-            totp = pyotp.TOTP(custom_secret)
-
-        return file_read, totp.verify(code)
+            
+            return file_read, totp.verify(code)
 
     def update_config(self, username: str, newdata: dict, forceUpdate: bool=False):
         self.log("Updating account settings: {0}".format(username))

@@ -2,6 +2,7 @@ from flask import Blueprint, request, abort
 from flask import current_app as app
 from user_agents import parse as parse_ua
 import secrets
+import string
 
 auth = Blueprint("authentication_blueprint", __name__)
 
@@ -250,19 +251,12 @@ def all_sessions():
 
 @auth.route("/mfa_setup", methods=["GET", "POST"])
 def mfa_setup():
-
-    ## TO BE CONTINUED
-
     if not request.authed:
         abort(401)
 
     if request.method == "GET":
-        # Generate new token and return to user
-        file_write, token = app.meower.accounts.create_token(request.auth, expiry=600, type=2)
-        if file_write:
-            return app.respond({"token": token, "type": "Bearer"}, 200, error=False)
-        else:
-            abort(500)
+        mfa_secret = app.meower.accounts.new_mfa_secret()
+        return app.respond({"secret": mfa_secret, "totp_app": "otpauth://totp/Meower: {0}?secret={1}&issuer=Meower".format(request.auth, mfa_secret)}, 200, error=False)
     elif request.method == "POST":
         if not (("secret" in request.form) and ("code" in request.form)):
             return app.respond({"type": "missingField"}, 400, error=True)
@@ -274,18 +268,21 @@ def mfa_setup():
         # Check for bad datatypes and syntax
         if not ((type(secret) == str) and (type(code) == str)):
             return app.respond({"type": "badDatatype"}, 400, error=True)
-        elif (len(secret) > 100) or (len(code) > 6):
-            return app.respond({"type": "fieldTooLarge"}, 400, error=True)
+        elif (len(secret) != 32) or (len(code) != 6):
+            return app.respond({"type": "fieldNotCorrectSize"}, 400, error=True)
         elif app.meower.supporter.checkForBadCharsPost(secret) or app.meower.supporter.checkForBadCharsPost(code):
             return app.respond({"type": "illegalCharacters"}, 400, error=True)
         
-        if not (app.meower.accounts.check_mfa(request.auth, code, custom_secret=secret)):
+        # Check if code matches secret
+        if app.meower.accounts.check_mfa(request.auth, code, custom_secret=secret) != (True, True):
             return app.respond({"type": "mfaCodeInvalid"}, 401, error=True)
         
         # Generate recovery codes
         recovery_codes = []
         for i in range(6):
             tmp_recovery_code = ""
-            for i in range(6):
-                tmp_recovery_code = tmp_recovery_code+secrets.choice(string.ascii_letters)
+            for i in range(8):
+                tmp_recovery_code = tmp_recovery_code+secrets.choice(string.ascii_letters+string.digits)
             recovery_codes.append(tmp_recovery_code.lower())
+
+        return app.respond({"recovery": recovery_codes}, 200, error=False)
