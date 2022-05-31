@@ -1,4 +1,4 @@
-# Meower-server
+# Meower-Server
 Official source code of the Meower server, written in Python. Powered by CloudLink. 
 
 ## NOTICE OF END-OF-LIFE
@@ -17,7 +17,7 @@ To connect to the server, change the IP settings of your client to connect to ws
 
 ### Rest API
 
-This rest api is configured to use CF Argo Tunnels for getting client IPs, but otherwise everything will function.
+This Rest API is configured to use CF Argo Tunnels for getting client IPs, but otherwise everything will function.
 
 Currently supported functions of the API:
 
