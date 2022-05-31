@@ -78,6 +78,8 @@ class Security:
             "quote": "",
             "email": "",
             "pswd": hashed_pw.decode(),
+            "mfa_secret": None,
+            "mfa_recovery": None,
             "lvl": 0,
             "flags": {
                 "dormant": False,
@@ -177,7 +179,11 @@ class Security:
         return self.update_config(username, {"pswd": hashed_pswd}, forceUpdate=True)
     
     def create_token(self, username: str, expiry: float=None, type: int=1, device: str=None):
-        token = "Bearer {0}".format(secrets.token_urlsafe(64))
+        token = str(secrets.token_urlsafe(64))
+        if type == 1:
+            token = "Bearer "+token
+        elif type == 2:
+            token = "MFA "+token
         expires = self.meower.supporter.timestamp(6)+expiry
         file_write = self.meower.files.create_item("keys", self.meower.supporter.uuid(), {"token": token, "u": username, "created": self.meower.supporter.timestamp(6), "expires": expires, "renew_time": expiry, "type": type, "device": device})
         return file_write, token
@@ -207,10 +213,15 @@ class Security:
         else:
             return file_read, False
     
+    def delete_token(self, token: str):
+        file_read, token_data = self.get_token(token)
+        if file_read:
+            return file_read, self.meower.files.delete_item("keys", token_data["_id"])
+        return file_read, False
+
     def get_ip(self, ip: str):
-        try:
-            file_read, ip_data = self.meower.files.load_item("netlog", ip)
-        except:
+        file_read, ip_data = self.meower.files.load_item("netlog", ip)
+        if not file_read:
             file_read = True
             ip_data = {
                 "users": [],

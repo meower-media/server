@@ -8,21 +8,40 @@ auth = Blueprint("authentication_blueprint", __name__)
 
 @auth.before_app_request
 def check_auth():
-    request.auth = None
-    request.authed = False
-    request.session_data = None
+    # Extract the user's IP address from the request
+    if "Cf-Connecting-Ip" in request.headers:
+        request.ip = request.headers["Cf-Connecting-Ip"]
+    else:
+        request.ip = request.remote_addr
 
+    # Check if IP is banned
+    file_read, ip_data = app.meower.accounts.get_ip(request.ip)
+    if not file_read:
+        abort(500)
+    elif (ip_data["blocked"] or ip_data["poisoned"]) and (not request.path in ["/v0/status", "/status"]):
+        return app.respond({"type": "IPBlocked"}, 403)
+    else:
+        request.ip_data = ip_data
+
+    # Parse user agent and client name
     request.parsed_user_agent = parse_ua(request.headers.get("user-agent"))
     if "client" in request.headers:
         if len(request.headers.get("client")) <= 32:
             request.parsed_user_agent.client = request.headers.get("client")
-    else:
-        request.parsed_user_agent.client = "Unknown"
+        else:
+            return app.respond({"type": "clientNameTooLarge"}, 400, error=True)
+    elif request.method != "OPTIONS":
+        return app.respond({"type": "clientNameMissing"}, 400, error=True)
 
+    # Check for account authentication
+    request.auth = None
+    request.authed = False
+    request.session_data = None
     if "Authorization" in request.headers:
-        token = request.headers.get("Authorization")
+        if len(request.headers.get("Authorization")) <= 100:
+            token = request.headers.get("Authorization")
         file_read, token_data = app.meower.accounts.get_token(token)
-        if file_read:
+        if file_read and (token_data["type"] == 1):
             request.auth = token_data["u"]
             request.authed = True
             request.session_data = token_data.copy()
@@ -61,8 +80,7 @@ def get_me():
         if not file_write:
             abort(500)
 
-        if request.auth in app.meower.cl.getUsernames():
-            app.meower.commands.sendLivePayload(request.auth, "update_config", "")
+        app.meower.commands.sendLivePayload(request.auth, "update_config", "")
         
         return app.respond({}, 200, error=False)
     elif request.method == "DELETE":
@@ -88,12 +106,12 @@ def login():
     if not (("username" in request.form) and ("password" in request.form)):
         return app.respond({"type": "missingField"}, 400, error=True)
 
-    # Extract username, password and device for simplicity
+    # Extract username and password for simplicity
     username = request.form.get("username")
     password = request.form.get("password")
 
     # Check for bad datatypes and syntax
-    if not ((type(password) == str) and (type(password) == str)):
+    if not ((type(username) == str) and (type(password) == str)):
         return app.respond({"type": "badDatatype"}, 400, error=True)
     elif (len(username) > 20) or (len(password) > 72):
         return app.respond({"type": "fieldTooLarge"}, 400, error=True)
@@ -117,9 +135,75 @@ def login():
     
     # Restore account if it's pending deletion
     if userdata["flags"]["pending_deletion"]:
-        app.meower.accounts.update_config(username, {"flags.delete_after": None}, forceUpdate=True)
+        file_write = app.meower.accounts.update_config(username, {"flags.delete_after": None}, forceUpdate=True)
+        if not file_write:
+            abort(500)
 
     # Generate new token and return to user
+    if userdata["userdata"]["mfa_secret"] != None:
+        # MFA only token
+        token_type = "MFA"
+        file_write, token = app.meower.accounts.create_token(username, expiry=600, type=2)
+        if not file_write:
+            abort(500)
+    else:
+        # Full account token
+        token_type = "Bearer"
+        file_write, token = app.meower.accounts.create_token(username, expiry=2592000, type=1, device={
+            "ip": request.remote_addr,
+            "ua": request.headers.get("user-agent"),
+            "os": {
+                "name": request.parsed_user_agent.os.family,
+                "version": request.parsed_user_agent.os.version_string
+            },
+            "browser": {
+                "name": request.parsed_user_agent.browser.family,
+                "version": request.parsed_user_agent.browser.version_string
+            },
+            "client": request.parsed_user_agent.client
+        })
+        if not file_write:
+            abort(500)
+
+    return app.respond({"token": token, "type": token_type}, 200, error=False)
+
+@auth.route("/login/mfa", methods=["POST"])
+def login_mfa():
+    if not (("token" in request.form) and ("code" in request.form)):
+        return app.respond({"type": "missingField"}, 400, error=True)
+    
+    # Extract token and MFA code for simplicity
+    token = request.form.get("token")
+    code = request.form.get("code")
+
+    # Check for bad datatypes and syntax
+    if not ((type(token) == str) and (type(code) == str)):
+        return app.respond({"type": "badDatatype"}, 400, error=True)
+    elif (len(token) > 100) or (len(code) > 6):
+        return app.respond({"type": "fieldTooLarge"}, 400, error=True)
+
+    # Get user from token
+    file_read, token_data = app.meower.accounts.get_token(token)
+    if (not file_read) or (token_data["type"] != 2):
+        return app.respond({"type": "tokenInvalid"}, 401, error=True)
+    else:
+        username = token_data["u"]
+
+    # Get account and MFA secret
+    file_read, userdata = app.meower.accounts.get_account(username)
+    if not file_read:
+        return app.respond({"type": "tokenInvalid"}, 401, error=True)
+    elif userdata["userdata"]["mfa_secret"] == None:
+        return app.respond({"type": "tokenInvalid"}, 401, error=True)
+
+    # Check MFA code
+    if app.meower.accounts.check_mfa(username, code) != (True, True):
+        return app.respond({"type": "mfaInvalid"}, 401, error=True)
+
+    # Delete temporary MFA token
+    app.meower.accounts.delete_token(token)
+
+    # Generate full account token and return to user
     file_write, token = app.meower.accounts.create_token(username, expiry=2592000, type=1, device={
         "ip": request.remote_addr,
         "ua": request.headers.get("user-agent"),
@@ -133,10 +217,10 @@ def login():
         },
         "client": request.parsed_user_agent.client
     })
-    if file_write:
-        return app.respond({"token": token, "type": "Bearer"}, 200, error=False)
-    else:
+    if not file_write:
         abort(500)
+    
+    return app.respond({"token": token, "type": "Bearer"}, 200, error=False)
 
 @auth.route("/create", methods=["POST"])
 def create_account():
@@ -249,8 +333,8 @@ def all_sessions():
 
         return app.respond({}, 200, error=False)
 
-@auth.route("/mfa_setup", methods=["GET", "POST"])
-def mfa_setup():
+@auth.route("/mfa", methods=["GET", "POST", "DELETE"])
+def mfa():
     if not request.authed:
         abort(401)
 
@@ -284,5 +368,12 @@ def mfa_setup():
             for i in range(8):
                 tmp_recovery_code = tmp_recovery_code+secrets.choice(string.ascii_letters+string.digits)
             recovery_codes.append(tmp_recovery_code.lower())
+
+        # Update userdata
+        file_write = app.meower.accounts.update_config(request.auth, {"mfa_secret": secret, "mfa_recovery": recovery_codes}, forceUpdate=True)
+        if not file_write:
+            abort(500)
+
+        app.meower.commands.sendLivePayload(request.auth, "update_config", "")
 
         return app.respond({"recovery": recovery_codes}, 200, error=False)
