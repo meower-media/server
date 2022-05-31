@@ -24,11 +24,9 @@ Currently supported functions of the API:
 * /home - Gets the current homepage index.
 * /home?page=# - Lets you get a certain page # of the homepage.
 * /home?autoget - Automatically fetches all posts currently present on the page.
-
 * /ip - Gets the client's IP address and returns with plaintext. Only works if the server is communicating with a client over CF Argo Tunnels.
-
-* /posts?id=(Post ID) - Gets a Post ID, use /home to get an index of posts. 
-
+* /posts?id=(Post ID) - Gets a Post ID, use /home to get an index of posts.
+* /status - Status for the Meower Server 
 ### Trust keys and access control
 
 In development, Meower is configured to use "meower" as a CloudLink Trust key. If you notice a forked server using this key, please request for it to be removed. This key is intended for development purposes only.
