@@ -2,17 +2,6 @@ from threading import Thread
 
 class Meower:
     def __init__(self):
-        # Set server MOTD
-        self.cl.setMOTD("Meower Social Media Platform Server - v{0}".format(self.version), True)
-
-        # Enable trusted access for kicking and legacy IP banning
-        self.cl.trustedAccess(True, [])
-        
-        # Load IP Banlist
-        FileRead, payload = self.files.load_item("config", "IPBanlist")
-        if FileRead:
-            self.cl.loadIPBlocklist(payload["wildcard"])
-        
         # Load profanity filter
         FileRead, payload = self.files.load_item("config", "filter")
         if FileRead:
@@ -26,16 +15,14 @@ class Meower:
             self.supporter.is_deprecated = payload["is_deprecated"]
 
         # Start CL server
-        self.cl_server = Thread(target=self.cl.server, kwargs={"ip": "0.0.0.0", "port": 3000})
+        self.cl_server = Thread(target=self.cl.server, kwargs={"ip": "0.0.0.0", "port": 3002})
         self.cl_server.start()
 
-        # Start REST API
-        self.rest_api_app = Thread(target=self.rest_api, args=(self,), kwargs={"ip": "0.0.0.0", "port": 3001})
-        self.rest_api_app.start()
+        # Start WebSocket server
+        self.wss = Thread(target=self.ws.server, args=(self,)).start()
 
-        test = self.accounts.User("sdgn")
-        print(dir(test))
-        test.authenticate("abc")
+        # Start REST API
+        self.rest_api_app = Thread(target=self.rest_api, args=(self,), kwargs={"ip": "0.0.0.0", "port": 3001}).start()
 
     def run_ws_command(self, cmd, val, listener_detected, listener_id, client):
         try:

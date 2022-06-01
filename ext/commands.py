@@ -94,8 +94,8 @@ class WSCommands:
             return self.returnCode(client = client, code = "PasswordInvalid", listener_detected = listener_detected, listener_id = listener_id)
 
         # Authenticate client
-        self.supporter.kickBadUsers(token_data["u"]) # Kick bad clients missusing the username
-        self.supporter.autoID(client, token_data["u"], "token") # Set ID for the client
+        #self.supporter.kickBadUsers(token_data["u"]) # Kick bad clients missusing the username
+        self.supporter.autoID(client, token_data["u"]) # Set ID for the client
         self.supporter.setAuthenticatedState(client, True) # Make the server know that the client is authed
 
         # Return info to sender
@@ -182,7 +182,7 @@ class WSCommands:
 
         # Authenticate client
         self.supporter.kickBadUsers(username) # Kick bad clients missusing the username
-        self.supporter.autoID(client, username, "pswd") # Set ID for the client
+        self.supporter.autoID(client, username) # Set ID for the client
         self.supporter.setAuthenticatedState(client, True) # Make the server know that the client is authed
 
         # Return info to sender

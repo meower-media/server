@@ -1,5 +1,6 @@
 from meower import Meower
 from ext.cloudlink import CloudLink
+from ext.websocket import WS
 from ext.commands import WSCommands
 from ext.supporter import Supporter
 from ext.security import Security
@@ -37,6 +38,7 @@ class Main:
 
         # Add modules to Meower class
         self.meower.cl = CloudLink(debug=debug)
+        self.meower.ws = WS()
         self.meower.supporter = Supporter(self.meower)
         self.meower.files = Files(self.meower)
         self.meower.accounts = Security(self.meower)

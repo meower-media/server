@@ -38,6 +38,41 @@ class Security:
             "deleted": userdata["flags"]["isDeleted"]
         }
 
+        last_seen = self.meower.supporter.timestamp(6)-userdata["last_seen"]
+        if last_seen == 0:
+            last_seen = ""
+        elif last_seen < 60:
+            last_seen = "a moment ago"
+        elif last_seen < 3600:
+            last_seen = int(last_seen/60)
+            if last_seen == 1:
+                last_seen = "a minute ago"
+            else:
+                last_seen = "{0} minutes ago".format(last_seen)
+        elif last_seen < 86400:
+            last_seen = int(last_seen/3600)
+            if last_seen == 1:
+                last_seen = "an hour ago"
+            else:
+                last_seen = "{0} hours ago".format(last_seen)
+        elif last_seen < 604800:
+            last_seen = int(last_seen/86400)
+            if last_seen == 1:
+                last_seen = "yesterday"
+            else:
+                last_seen = "{0} days ago".format(last_seen)
+        else:
+            last_seen = int(last_seen/604800)
+            if last_seen == 1:
+                last_seen = "A week ago"
+            else:
+                last_seen = "{0} weeks ago".format(last_seen)
+
+        status = {
+            "status": "Banned" if flags["banned"] else userdata["user_status"] if (username in self.meower.ws.ulist) else "Offline",
+            "last_seen": last_seen
+        }
+
         profile = {
             "username": userdata["_id"],
             "lower_username": userdata["lower_username"],
@@ -49,7 +84,7 @@ class Security:
                 "banned": flags["banned"],
                 "isDeleted": flags["deleted"]
             },
-            "online": (userdata["_id"] in self.meower.cl.getUsernames())
+            "status": status
         }
 
         return file_read, {
@@ -76,6 +111,8 @@ class Security:
             "bgm_song": 2,
             "pfp_data": 1,
             "quote": "",
+            "user_status": "Online",
+            "last_seen": 0,
             "email": "",
             "pswd": hashed_pw.decode(),
             "mfa_secret": None,

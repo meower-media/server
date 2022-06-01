@@ -30,6 +30,9 @@ class Supporter:
         self.ratelimits = {}
         
         if not self.cl == None:
+            # Create username list
+            self.ulist = {}
+
             # Add custom status codes to CloudLink
             self.cl.codes["KeyNotFound"] = "I:010 | Key Not Found"
             self.cl.codes["PasswordInvalid"] = "I:011 | Invalid Password"
@@ -112,13 +115,28 @@ class Supporter:
     def sendPacket(self, payload, listener_detected=False, listener_id=None):
         if not self.cl == None:
             if listener_detected:
-                if "id" in payload:
-                    payload["listener"] = listener_id
-                self.cl.sendPacket(payload)
+                payload["listener"] = listener_id
+
+            if "id" in payload:
+                print(self.ulist)
+                if type(payload["id"]) == str:
+                    if payload["id"] in self.ulist:
+                        tmp_payload = payload.copy()
+                        for client in self.ulist[payload["id"]]:
+                            tmp_payload["id"] = client
+                            try:
+                                self.cl.sendPacket(tmp_payload)
+                            except:
+                                self.log("Failed to send packet to client {0}".format(client))
+                    else:
+                        self.log("Dropping packet because {0} is not online".format(payload["id"]))
+                else:
+                    self.cl.sendPacket(payload)
             else:
                 self.cl.sendPacket(payload)
     
     def get_client_statedata(self, client): # "steals" information from the CloudLink module to get better client data
+        return client
         if not self.cl == None:
             if type(client) == str:
                 client = self.cl._get_obj_of_username(client)
@@ -130,6 +148,7 @@ class Supporter:
                     return None
     
     def modify_client_statedata(self, client, key, newvalue): # WARN: Use with caution: DO NOT DELETE UNNECESSARY KEYS!
+        client[key] = newvalue
         if not self.cl == None:
             if type(client) == str:
                 client = self.cl._get_obj_of_username(client)
@@ -183,10 +202,12 @@ class Supporter:
             if client_statedata["login_code"] != None:
                 del self.cl.statedata["ulist"]["login_codes"][client_statedata["login_code"]]
 
-            if type(client) == dict:
-                self.log("{0} Disconnected.".format(client["id"]))
-            elif type(client) == str:
-                self.log("{0} Logged out.".format(self.cl._get_username_of_obj(client)))
+            if client_statedata["username"] in self.ulist:
+                self.ulist[client_statedata["username"]].remove(client)
+                if len(self.ulist[client_statedata["username"]]) == 0:
+                    del self.ulist[client_statedata["username"]]
+
+            self.log("{0} Disconnected.".format(client["id"]))
             self.log_peak_users()
     
     def on_connect(self, client):
@@ -199,14 +220,14 @@ class Supporter:
 
                 # Auto trusted access
                 print("Trusting {0}".format(client["id"]))
-                self.modify_client_statedata(client, "ip", "no more trusted access")
-                self.modify_client_statedata(client, "type", "js")
                 self.cl.statedata["trusted"].append(client)
                 self.sendPacket({"cmd": "ulist", "val": self.cl._get_ulist(), "id": client}, listener_detected = False, listener_id = None)
 
                 # Non authenticated statedata
+                self.modify_client_statedata(client, "ip", "abc")
+                self.modify_client_statedata(client, "type", "js")
+                self.modify_client_statedata(client, "username", "")
                 self.modify_client_statedata(client, "login_code", None)
-                self.modify_client_statedata(client, "authtype", "")
                 self.modify_client_statedata(client, "authed", False)
     
     def on_packet(self, message):
@@ -238,8 +259,8 @@ class Supporter:
             if not self.packet_handler == None:
                 self.packet_handler(self.meower, cmd, val, self.listener_detected, self.listener_id, client)
     
-    def timestamp(self, ttype):
-        today = datetime.now()
+    def timestamp(self, ttype, epoch=int(time.time())):
+        today = datetime.fromtimestamp(epoch)
         if ttype == 1:
             return {
                 "mo": (datetime.now()).strftime("%m"),
@@ -279,7 +300,8 @@ class Supporter:
     
     def isAuthenticated(self, client):
         if not self.cl == None:
-            return self.get_client_statedata(client)["authed"]
+            print(client)
+            return client["authed"]
     
     def setAuthenticatedState(self, client, value):
         if not self.cl == None:
@@ -314,13 +336,16 @@ class Supporter:
         else:
             return True
 
-    def autoID(self, client, username, type):
+    def autoID(self, client, username):
         if not self.cl == None:
             print(self.cl.statedata["ulist"]["usernames"])
             # really janky code that automatically sets user ID
             self.modify_client_statedata(client, "username", username)
-            self.modify_client_statedata(client, "authtype", type)
-            self.cl.statedata["ulist"]["usernames"][username] = client["id"]
+            if not (username in self.ulist):
+                self.ulist[username] = []
+            print(self.ulist)
+            self.ulist[username].append(client)
+            print(self.ulist)
             self.sendPacket({"cmd": "ulist", "val": self.cl._get_ulist()})
             self.log("{0} autoID given".format(username))
     
