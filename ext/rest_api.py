@@ -9,6 +9,7 @@ from apiv0.authentication import auth
 from apiv0.users import users
 from apiv0.posts import posts
 from apiv0.chats import chats
+from apiv0.search import search
 
 class REST_API:
     def __init__(self, meower, ip="0.0.0.0", port=3001):
@@ -26,6 +27,7 @@ class REST_API:
         self.app.register_blueprint(users, url_prefix="/v0/users")
         self.app.register_blueprint(posts, url_prefix="/v0/posts")
         self.app.register_blueprint(chats, url_prefix="/v0/chats")
+        self.app.register_blueprint(search, url_prefix="/v0/search")
 
         CORS(self.app, resources={r'*': {'origins': '*'}})
 
