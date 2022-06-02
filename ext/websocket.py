@@ -3,9 +3,10 @@ from threading import Thread
 import json
 
 class WS:
-    def server(self, meower):
+    def __init__(self, meower):
         self.meower = meower
 
+    def server(self):
         # Create WebSocket Server
         self.wss = WebsocketServer(
             host="127.0.0.1", 

@@ -18,43 +18,12 @@ This keeps the main.py clean and more understandable.
 class Supporter:
     def __init__(self, meower):
         self.meower = meower
-        self.cl = meower.cl
-        self.packet_handler = meower.packet_callback
-        self.listener_detected = False
-        self.listener_id = None
 
         self.repair_mode = True
         self.is_deprecated = True
         self.profanity = profanity
         self.profanity.load_censor_words()
         self.ratelimits = {}
-        
-        if not self.cl == None:
-            # Create username list
-            self.ulist = {}
-
-            # Add custom status codes to CloudLink
-            self.cl.codes["KeyNotFound"] = "I:010 | Key Not Found"
-            self.cl.codes["PasswordInvalid"] = "I:011 | Invalid Password"
-            self.cl.codes["GettingReady"] = "I:012 | Getting ready"
-            self.cl.codes["ObsoleteClient"] = "I:013 | Client is out-of-date or unsupported"
-            self.cl.codes["Pong"] = "I:014 | Pong"
-            self.cl.codes["IDExists"] = "I:015 | Account exists"
-            self.cl.codes["2FAOnly"] = "I:016 | 2FA Required"
-            self.cl.codes["MissingPermissions"] = "I:017 | Missing permissions"
-            self.cl.codes["Banned"] = "E:018 | Account Banned"
-            self.cl.codes["IllegalChars"] = "E:019 | Illegal characters detected"
-            self.cl.codes["Kicked"] = "E:020 | Kicked"
-            self.cl.codes["ChatExists"] = "E:021 | Chat exists"
-            self.cl.codes["ChatNotFound"] = "E:022 | Chat not found"
-            self.cl.codes["Dormant"] = "E:023 | Account Dormant"
-            self.cl.codes["Locked"] = "E:024 | Account Locked"
-            self.cl.codes["PermLocked"] = "E:025 | Account Locked"
-            self.cl.codes["Deleted"] = "E:026 | Account Deleted"
-            self.cl.codes["EmailNotVerified"] = "E:027 | Email Not Verified"
-            self.cl.codes["EmailMalformed"] = "E:028 | Email Malformed"
-            self.cl.codes["EmailInvalid"] = "E:029 | Email Invalid"
-            self.cl.codes["TokenInvalid"] = "E:030 | Token Invalid"
         
         # Create permitted lists of characters for posts
         self.permitted_chars_post = []
@@ -74,26 +43,6 @@ class Supporter:
         ]:
             self.permitted_chars_username.remove(item)
         
-        # Peak number of users logger
-        self.peak_users_logger = {
-            "count": 0,
-            "timestamp": {
-                "mo": 0,
-                "d": 0,
-                "y": 0,
-                "h": 0,
-                "mi": 0,
-                "s": 0,
-                "e": 0
-            }
-        }
-        
-        if not self.cl == None:
-            # Specify server callbacks
-            self.cl.callback("on_packet", self.on_packet)
-            self.cl.callback("on_close", self.on_close)
-            self.cl.callback("on_connect", self.on_connect)
-        
         self.log("Supporter initialized!")
     
     def full_stack(self):
@@ -111,153 +60,6 @@ class Supporter:
     
     def log(self, event):
         print("{0}: {1}".format(self.timestamp(4), event))
-    
-    def sendPacket(self, payload, listener_detected=False, listener_id=None):
-        if not self.cl == None:
-            if listener_detected:
-                payload["listener"] = listener_id
-
-            if "id" in payload:
-                print(self.ulist)
-                if type(payload["id"]) == str:
-                    if payload["id"] in self.ulist:
-                        tmp_payload = payload.copy()
-                        for client in self.ulist[payload["id"]]:
-                            tmp_payload["id"] = client
-                            try:
-                                self.cl.sendPacket(tmp_payload)
-                            except:
-                                self.log("Failed to send packet to client {0}".format(client))
-                    else:
-                        self.log("Dropping packet because {0} is not online".format(payload["id"]))
-                else:
-                    self.cl.sendPacket(payload)
-            else:
-                self.cl.sendPacket(payload)
-    
-    def get_client_statedata(self, client): # "steals" information from the CloudLink module to get better client data
-        return client
-        if not self.cl == None:
-            if type(client) == str:
-                client = self.cl._get_obj_of_username(client)
-            if not client == None:
-                if client['id'] in self.cl.statedata["ulist"]["objs"]:
-                    tmp = self.cl.statedata["ulist"]["objs"][client['id']]
-                    return tmp
-                else:
-                    return None
-    
-    def modify_client_statedata(self, client, key, newvalue): # WARN: Use with caution: DO NOT DELETE UNNECESSARY KEYS!
-        client[key] = newvalue
-        if not self.cl == None:
-            if type(client) == str:
-                client = self.cl._get_obj_of_username(client)
-            if not client == None:
-                if client['id'] in self.cl.statedata["ulist"]["objs"]:
-                    try:
-                        self.cl.statedata["ulist"]["objs"][client['id']][key] = newvalue
-                        return True
-                    except:
-                        self.log("{0}".format(self.full_stack()))
-                        return False
-                else:
-                    return False
-    
-    def delete_client_statedata(self, client, key): # WARN: Use with caution: DO NOT DELETE UNNECESSARY KEYS!
-        if not self.cl == None:
-            if type(client) == str:
-                client = self.cl._get_obj_of_username(client)
-            if not client == None:
-                if client['id'] in self.cl.statedata["ulist"]["objs"]:
-                    if key in self.cl.statedata["ulist"]["objs"][client['id']]:
-                        try:
-                            del self.cl.statedata["ulist"]["objs"][client['id']][key]
-                            return True
-                        except:
-                            self.log("{0}".format(self.full_stack()))
-                            return False
-                else:
-                    return False
-    
-    def log_peak_users(self):
-        if not self.cl == None:
-            current_users = len(self.cl.getUsernames())
-            if current_users > self.peak_users_logger["count"]:
-                today = datetime.now()
-                self.peak_users_logger = {
-                    "count": current_users,
-                    "timestamp": self.timestamp(1)
-                }
-                self.log("New peak in # of concurrent users: {0}".format(current_users))
-                #self.create_system_message("Yay! New peak in # of concurrent users: {0}".format(current_users))
-                payload = {
-                    "mode": "peak",
-                    "payload": self.peak_users_logger
-                }
-                self.sendPacket({"cmd": "direct", "val": payload})
-    
-    def on_close(self, client):
-        if not self.cl == None:
-            client_statedata = self.get_client_statedata(client)
-            if client_statedata["login_code"] != None:
-                del self.cl.statedata["ulist"]["login_codes"][client_statedata["login_code"]]
-
-            if client_statedata["username"] in self.ulist:
-                self.ulist[client_statedata["username"]].remove(client)
-                if len(self.ulist[client_statedata["username"]]) == 0:
-                    del self.ulist[client_statedata["username"]]
-
-            self.log("{0} Disconnected.".format(client["id"]))
-            self.log_peak_users()
-    
-    def on_connect(self, client):
-        if not self.cl == None:
-            if self.repair_mode:
-                self.log("Refusing connection from {0} due to repair mode being enabled".format(client["id"]))
-                self.cl.kickClient(client)
-            else:
-                self.log("{0} Connected.".format(client["id"]))
-
-                # Auto trusted access
-                print("Trusting {0}".format(client["id"]))
-                self.cl.statedata["trusted"].append(client)
-                self.sendPacket({"cmd": "ulist", "val": self.cl._get_ulist(), "id": client}, listener_detected = False, listener_id = None)
-
-                # Non authenticated statedata
-                self.modify_client_statedata(client, "ip", "abc")
-                self.modify_client_statedata(client, "type", "js")
-                self.modify_client_statedata(client, "username", "")
-                self.modify_client_statedata(client, "login_code", None)
-                self.modify_client_statedata(client, "authed", False)
-    
-    def on_packet(self, message):
-        if not self.cl == None:
-            # CL Turbo Support
-            self.listener_detected = ("listener" in message)
-            self.listener_id = None
-            
-            if self.listener_detected:
-                self.listener_id = message["listener"]
-            
-            # Read packet contents
-            id = message["id"]
-            val = message["val"]
-            clienttype = None
-            client = message["id"]
-            if type(message["id"]) == dict:
-                ip = self.cl.getIPofObject(client)
-                clienttype = 0
-            elif type(message["id"]) == str:
-                ip = self.cl.getIPofUsername(client)
-                clienttype = 1
-            
-            # Handle packet
-            cmd = None
-            if "cmd" in message:    
-                cmd = message["cmd"]
-            
-            if not self.packet_handler == None:
-                self.packet_handler(self.meower, cmd, val, self.listener_detected, self.listener_id, client)
     
     def timestamp(self, ttype, epoch=int(time.time())):
         today = datetime.fromtimestamp(epoch)
@@ -298,15 +100,6 @@ class Supporter:
             message = profanity.censor(message)
         return message
     
-    def isAuthenticated(self, client):
-        if not self.cl == None:
-            print(client)
-            return client["authed"]
-    
-    def setAuthenticatedState(self, client, value):
-        if not self.cl == None:
-            self.modify_client_statedata(client, "authed", value)
-    
     def checkForBadCharsUsername(self, value):
         # Check for profanity in username, will return '*' if there's profanity which will be blocked as an illegal character
         value = self.filter(value)
@@ -335,30 +128,6 @@ class Supporter:
                 return True
         else:
             return True
-
-    def autoID(self, client, username):
-        if not self.cl == None:
-            print(self.cl.statedata["ulist"]["usernames"])
-            # really janky code that automatically sets user ID
-            self.modify_client_statedata(client, "username", username)
-            if not (username in self.ulist):
-                self.ulist[username] = []
-            print(self.ulist)
-            self.ulist[username].append(client)
-            print(self.ulist)
-            self.sendPacket({"cmd": "ulist", "val": self.cl._get_ulist()})
-            self.log("{0} autoID given".format(username))
-    
-    def kickBadUsers(self, username):
-        if not self.cl == None:
-            # Check for clients that are trying to steal the ID and kick em' / Disconnect other sessions
-            if username in self.cl.getUsernames():
-                self.log("{0} logged in from another location".format(username))
-                self.sendPacket({"cmd": "direct", "val": self.cl.codes["IDConflict"], "id": username})
-                client_id = self.cl.statedata["ulist"]["usernames"][username]
-                del self.cl.statedata["ulist"]["usernames"][username]
-                time.sleep(0.5)
-                self.cl.kickClient(client_id)
     
     def check_for_spam(self, username):
         if str(username) in self.ratelimits:

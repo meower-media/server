@@ -13,16 +13,12 @@ This keeps other files clean and allows both the API and WSS to use the same fun
 class Posts:
     def __init__(self, meower):
         self.meower = meower
-        self.cl = meower.cl
         self.log = meower.supporter.log
-        self.errorhandler = meower.supporter.full_stack
-        self.timestamp = meower.supporter.timestamp
-        self.sendPacket = meower.supporter.sendPacket
-        self.files = meower.files
+
         self.log("Posts initialized!")
     
     def get_post(self, post_id, requested_by="Server", ignore_deletion=False):
-        FileRead, postdata = self.files.load_item("posts", post_id)
+        FileRead, postdata = self.meower.files.load_item("posts", post_id)
         if not FileRead:
             return False, False, None
 
@@ -35,7 +31,7 @@ class Posts:
                 has_permission = True
         else:
             # Get chat data
-            FileRead, chatdata = self.files.load_item("chats", postdata["post_origin"])
+            FileRead, chatdata = self.meower.files.load_item("chats", postdata["post_origin"])
             if not FileRead:
                 return False, False, None
             if (requested_by in chatdata["members"]) or (requested_by == "Server"):
@@ -53,13 +49,13 @@ class Posts:
         postdata = {
             "post_origin": origin,
             "u": author,
-            "t": self.timestamp(1),
+            "t": self.meower.supporter.timestamp(1),
             "p": content,
             "link": link_to,
             "parent": parent_post,
             "isDeleted": False
         }
-        FileWrite = self.files.create_item("posts", str(uuid4()), postdata)
+        FileWrite = self.meower.files.create_item("posts", str(uuid4()), postdata)
         if not FileWrite:
             return False, None
         
