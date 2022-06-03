@@ -13,7 +13,7 @@ class WSCommands:
         self.sendPacket = meower.supporter.sendPacket
         self.log("Meower initialized!")
     
-    def sendLivePayload(self, client, mode, payload):
+    def sendPayload(self, client, mode, payload):
         if client == None:
             self.sendPacket({"cmd": "direct", "val": {"mode": mode, "payload": payload}}, listener_detected = False, listener_id = None)
         else:
@@ -24,7 +24,7 @@ class WSCommands:
     
     def abruptLogout(self, username, payload):
         if username in self.cl.getUsernames():
-            self.sendLivePayload(username, "abrupt_logout", payload)
+            self.sendPayload(username, "abrupt_logout", payload)
             client_id = self.cl.statedata["ulist"]["usernames"][username]
             del self.cl.statedata["ulist"]["usernames"][username]
             self.supporter.modify_client_statedata(username, "authed", False)
@@ -436,109 +436,6 @@ class WSCommands:
         else:
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-    
-    # Logging and data management
-    
-    def get_peak_users(self, client, val, listener_detected, listener_id):
-        if not self.supporter.isAuthenticated(client):
-            # Not authenticated
-            return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
-        # Payload of peak users
-        payload = {
-            "mode": "peak",
-            "payload": self.supporter.peak_users_logger
-        }
-        
-        # Relay payload to client
-        self.sendPacket({"cmd": "direct", "val": payload, "id": client})
-        
-        # Tell client payload was sent
-        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-    
-    def search_home_posts(self, client, val, listener_detected, listener_id):
-        if not self.supporter.isAuthenticated(client):
-            # Not authenticated
-            return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        elif not (type(val) == dict):
-            # Bad datatype
-            return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        elif not (("query" in val) and (type(val["query"]) == str)):
-            # Bad syntax
-            return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
-        # Get index
-        try:
-            if not (("page" in val) and (type(val["page"]) == int)):
-                val["page"] = 1
-            index = self.filesystem.find_items("posts", {"post_origin": "home", "p": {"$regex": val["query"]}, "isDeleted": False}, sort="t.e", truncate=True, page=val["page"])
-        except:
-            self.log("{0}".format(self.errorhandler()))
-            return self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-        
-        # Return index
-        payload = {
-            "mode": "search_home_posts",
-            "index": index
-        }
-        self.sendPacket({"cmd": "direct", "val": payload, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
-        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-
-    def search_user_posts(self, client, val, listener_detected, listener_id):
-        if not self.supporter.isAuthenticated(client):
-            # Not authenticated
-            return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        elif not (type(val) == dict):
-            # Bad datatype
-            return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        elif not (("query" in val) and (type(val["query"]) == str)):
-            # Bad syntax
-            return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
-        # Get index
-        try:
-            if not (("page" in val) and (type(val["page"]) == int)):
-                val["page"] = 1
-            index = self.filesystem.find_items("posts", {"post_origin": "home", "u": val["query"], "isDeleted": False}, sort="t.e", truncate=True, page=val["page"])
-        except:
-            self.log("{0}".format(self.errorhandler()))
-            return self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-        
-        # Return index
-        payload = {
-            "mode": "search_user_posts",
-            "index": index
-        }
-        self.sendPacket({"cmd": "direct", "val": payload, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
-        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-
-    def search_profiles(self, client, val, listener_detected, listener_id):
-        if not self.supporter.isAuthenticated(client):
-            # Not authenticated
-            return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        elif not (type(val) == dict):
-            # Bad datatype
-            return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        elif not (("query" in val) and (type(val["query"]) == str)):
-            # Bad syntax
-            return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
-        # Get index
-        try:
-            if not (("page" in val) and (type(val["page"]) == int)):
-                val["page"] = 1
-            index = self.filesystem.find_items("usersv0", {"lower_username": {"$regex": val["query"].lower()}, "flags.isDeleted": False}, sort="lower_username", truncate=True, page=val["page"])
-        except:
-            self.log("{0}".format(self.errorhandler()))
-            return self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-        
-        # Return index
-        payload = {
-            "mode": "search_profiles",
-            "index": index
-        }
-        self.sendPacket({"cmd": "direct", "val": payload, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
-        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
 
     # Moderator features
     

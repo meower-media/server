@@ -1,4 +1,3 @@
-import re
 from flask import Blueprint, request, abort
 from flask import current_app as app
 from user_agents import parse as parse_ua
@@ -82,7 +81,7 @@ def get_me():
         if not file_write:
             abort(500)
 
-        app.meower.commands.sendLivePayload(request.auth, "update_config", "")
+        app.meower.ws.sendPayload(request.auth, "update_config", "", username=request.auth)
         
         return app.respond({}, 200, error=False)
     elif request.method == "DELETE":
@@ -295,7 +294,7 @@ def auth_login_code():
         abort(500)
 
     # Send token to client
-    app.meower.commands.sendLivePayload(app.meower.cl.statedata["ulist"]["login_codes"][code], "login_code", token)
+    app.meower.ws.sendPayload(app.meower.cl.statedata["ulist"]["login_codes"][code], "login_code", token)
 
     # Delete login code
     app.meower.supporter.modify_client_statedata(app.meower.cl.statedata["ulist"]["login_codes"][code], "login_code", None)
@@ -364,6 +363,6 @@ def mfa():
         if not file_write:
             abort(500)
 
-        app.meower.commands.sendLivePayload(request.auth, "update_config", "")
+        app.meower.ws.sendPayload(request.auth, "update_config", "", username=request.auth)
 
         return app.respond({"recovery": recovery_codes}, 200, error=False)

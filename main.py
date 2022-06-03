@@ -4,7 +4,6 @@ from ext.supporter import Supporter
 from ext.security import Security
 from ext.files import Files
 from ext.posts import Posts
-from ext.chats import Chats
 from ext.rest_api import REST_API
 
 """
@@ -37,7 +36,6 @@ class Main:
         self.meower.files = Files(self.meower)
         self.meower.accounts = Security(self.meower)
         self.meower.posts = Posts(self.meower)
-        self.meower.chats = Chats(self.meower)
         self.meower.rest_api = REST_API
 
         # Initialize class to start everything

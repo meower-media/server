@@ -71,9 +71,10 @@ class WS:
             print("[WS] Sending packet to: {0}".format(client["id"]))
             self.wss.send_message(client, packet)
         elif username is not None:
-            for client in self.ulist[username]:
-                print("[WS] Sending packet to: {0}".format(client["id"]))
-                self.wss.send_message(client, packet)
+            if username in self.ulist:
+                for client in self.ulist[username]:
+                    print("[WS] Sending packet to: {0}".format(client["id"]))
+                    self.wss.send_message(client, packet)
         else:
             print("[WS] Sending packet to all clients")
             self.wss.send_message_to_all(packet)

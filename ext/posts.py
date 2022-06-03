@@ -66,11 +66,11 @@ class Posts:
                 self.meower.accounts.update_config(postdata["u"], {"unread_inbox": True})
 
         if (postdata["post_origin"] == "home") or (postdata["post_origin"] == "livechat"):
-            self.meower.commands.sendLivePayload(None, "post", postdata)
+            self.meower.ws.sendPayload("post", postdata)
         elif (postdata["post_origin"] == "inbox") and (postdata["u"] == "Server"):
-            self.meower.commands.sendLivePayload(None, "new_inbox", "")
-        elif (postdata["post_origin"] == "inbox") and (postdata["u"] in self.meower.cl.getUsernames()):
-            self.meower.commands.sendLivePayload(postdata["u"], "new_inbox", "")
+            self.meower.ws.sendPayload("new_inbox", "")
+        elif postdata["post_origin"] == "inbox":
+            self.meower.ws.sendPayload("new_inbox", "", username=postdata["u"])
         else:
             pass # group chats
 

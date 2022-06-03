@@ -233,7 +233,7 @@ class Files:
         if not (collection in self.db.list_collection_names()):
             return []
         
-        if sort == None:
+        if sort is None:
             sort = "_id"
         
         if truncate:
@@ -241,19 +241,19 @@ class Files:
         else:
             all_items = self.db[collection].find(query).sort(sort, pymongo.DESCENDING)
         
+        index = []
         payload = []
-        for item in all_items:
-            payload.append(item["_id"])
-        
-        if truncate:
-            return {
-                "query": query,
-                "index": payload,
-                "page#": page,
-                "pages": self.pages_amount(collection, query, items_per_page)
-            }
-        else:
-            return payload
+        for item in list(all_items):
+            index.append(item["_id"])
+            payload.append(item)
+
+        return {
+            "query": query,
+            "index": index,
+            "items": payload,
+            "page#": page,
+            "pages": self.pages_amount(collection, query, items_per_page)
+        }
 
     def delete_item(self, collection, id):
         if not (collection in self.db.list_collection_names()):

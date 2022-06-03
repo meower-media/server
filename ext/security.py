@@ -27,6 +27,9 @@ class Security:
         del client_userdata["mfa_recovery"]
         del client_userdata["pswd"]
         del client_userdata["last_ip"]
+        chats_index = self.meower.files.find_items("chats", {"members": {"$all": [username]}}, sort="nickname")
+        client_userdata["chats_index"] = chats_index["index"]
+        client_userdata["all_chats"] = chats_index["items"]
 
         current_time = self.meower.supporter.timestamp(7)
         flags = {
@@ -227,11 +230,11 @@ class Security:
     
     def get_token(self, token: str):
         session_id = self.meower.files.find_items("keys", {"token": token})
-        if len(session_id) == 0:
+        if len(session_id["index"]) == 0:
             return False, None
-            
-        file_read, token_data = self.meower.files.load_item("keys", session_id[0])
-        if not (file_read and (((token_data["created"] < self.meower.supporter.timestamp(6)+31536000) and (token_data["expires"] > self.meower.supporter.timestamp(6))) or (token_data["expires"] == -1))):
+    
+        token_data = session_id["items"][0]
+        if not (((token_data["created"] < self.meower.supporter.timestamp(6)+31536000) and (token_data["expires"] > self.meower.supporter.timestamp(6))) or (token_data["expires"] == -1)):
             return False, None
 
         file_read, userdata = self.get_account(token_data["u"])
