@@ -5,9 +5,6 @@ search = Blueprint("search_blueprint", __name__)
 
 @search.route("/profiles", methods=["GET"])
 def search_profiles():
-    if not request.authed:
-        abort(401)
-
     if not ("q" in request.args):
         return app.respond({"type": "missingField"}, 400, error=True)
 
@@ -29,9 +26,6 @@ def search_profiles():
 
 @search.route("/posts", methods=["GET"])
 def search_home_posts():
-    if not request.authed:
-        abort(401)
-    
     if not ("q" in request.args):
         return app.respond({"type": "missingField"}, 400, error=True)
     

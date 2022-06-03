@@ -1,3 +1,4 @@
+import re
 from flask import Blueprint, request, abort
 from flask import current_app as app
 from user_agents import parse as parse_ua
@@ -18,7 +19,7 @@ def check_auth():
     file_read, ip_data = app.meower.accounts.get_ip(request.ip)
     if not file_read:
         abort(500)
-    elif (ip_data["blocked"] or ip_data["poisoned"]) and (not request.path in ["/v0/status", "/status"]):
+    elif (ip_data["blocked"] or ip_data["poisoned"]) and (not request.path in ["/v0", "/v0/status", "/status"]):
         return app.respond({"type": "IPBlocked"}, 403)
     else:
         request.ip_data = ip_data
@@ -45,12 +46,13 @@ def check_auth():
             request.auth = token_data["u"]
             request.authed = True
             request.session_data = token_data.copy()
+    
+    # Exit request if client is not authenticated
+    if not (request.authed or (request.method == "OPTIONS") or (request.path in ["/v0", "/v0/status", "/status", "/v0/me/login", "/v0/me/create"])):
+        abort(401)
 
 @auth.route("/", methods=["GET", "PATCH", "DELETE"])
 def get_me():
-    if not request.authed:
-        abort(401)
-
     app.meower.accounts.renew_token(request.session_data["token"], device={
         "ip": request.remote_addr,
         "ua": request.headers.get("user-agent"),
@@ -269,9 +271,6 @@ def create_account():
 
 @auth.route("/login_code", methods=["POST"])
 def auth_login_code():
-    if not request.authed:
-        abort(401)
-    
     if not ("code" in request.form):
         return app.respond({"type": "missingField"}, 400, error=True)
     
@@ -306,9 +305,6 @@ def auth_login_code():
 
 @auth.route("/session", methods=["GET", "DELETE"])
 def current_session():
-    if not request.authed:
-        abort(401)
-    
     if request.method == "GET":
         session_data = request.session_data.copy()
         session_data["authed"] = request.authed
@@ -323,9 +319,6 @@ def current_session():
 
 @auth.route("/all_sessions", methods=["DELETE"])
 def all_sessions():
-    if not request.authed:
-        abort(401)
-    
     if request.method == "DELETE":
         app.meower.files.delete_all("keys", {"u": request.auth, "type": 1})
 
@@ -335,9 +328,6 @@ def all_sessions():
 
 @auth.route("/mfa", methods=["GET", "POST", "DELETE"])
 def mfa():
-    if not request.authed:
-        abort(401)
-
     if request.method == "GET":
         mfa_secret = app.meower.accounts.new_mfa_secret()
         return app.respond({"secret": mfa_secret, "totp_app": "otpauth://totp/Meower: {0}?secret={1}&issuer=Meower".format(request.auth, mfa_secret)}, 200, error=False)

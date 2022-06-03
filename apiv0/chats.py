@@ -5,9 +5,6 @@ chats = Blueprint("chats_blueprint", __name__)
 
 @chats.route("/", methods=["GET", "PUT"])
 def get_chats():
-    if not request.authed:
-        abort(401)
-    
     if request.method == "GET":
         if not ("page" in request.args):
             page = 1
@@ -53,9 +50,6 @@ def get_chats():
 
 @chats.route("/mychat/<chatid>", methods=["GET", "DELETE"])
 def get_chat_data(chatid):
-    if not request.authed:
-        abort(401)
-
     # Get chat data
     file_read, chatdata = app.meower.files.load_item("chats", chatid)
     if not file_read:
@@ -82,9 +76,6 @@ def get_chat_data(chatid):
 
 @chats.route("/mychat/<chatid>/<user>", methods=["PUT", "DELETE"])
 def add_member(chatid, user):
-    if not request.authed:
-        abort(401)
-
     if request.method == "PUT":
         # Get chat data
         file_read, chatdata = app.meower.files.load_item("chats", chatid)

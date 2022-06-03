@@ -5,9 +5,6 @@ posts = Blueprint("posts_blueprint", __name__)
 
 @posts.route("/home", methods=["GET", "POST"])
 def get_home():
-    if not request.authed:
-        abort(401)
-
     if request.method == "GET":
         # Get index
         query_get = app.meower.files.find_items("posts", {"post_origin": "home", "isDeleted": False}, sort="t.e", truncate=True)
