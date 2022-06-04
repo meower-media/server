@@ -35,7 +35,6 @@ class Supporter:
         # Create permitted lists of characters for usernames
         self.permitted_chars_username = self.permitted_chars_post.copy()
         for item in [
-            " ",
             '"',
             "'",
             "*",
@@ -58,8 +57,12 @@ class Supporter:
             stackstr += '  ' + traceback.format_exc().lstrip(trc)
         return stackstr
     
-    def log(self, event):
-        print("{0}: {1}".format(self.timestamp(4), event))
+    def log(self, msg, prefix=None):
+        timestamp = self.timestamp(4)
+        if prefix is None:
+            print("{0}: {1}".format(timestamp, msg))
+        else:
+            print("[{0}] {1}: {2}".format(prefix, timestamp, msg))
     
     def timestamp(self, ttype, epoch=int(time.time())):
         today = datetime.fromtimestamp(epoch)

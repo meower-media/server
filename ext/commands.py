@@ -14,7 +14,7 @@ class WSCommands:
         self.log("Meower initialized!")
     
     def sendPayload(self, client, mode, payload):
-        if client == None:
+        if client is None:
             self.sendPacket({"cmd": "direct", "val": {"mode": mode, "payload": payload}}, listener_detected = False, listener_id = None)
         else:
             self.sendPacket({"cmd": "direct", "val": {"mode": mode, "payload": payload}, "id": client}, listener_detected = False, listener_id = None)
@@ -61,7 +61,7 @@ class WSCommands:
 
         # Generate a random code
         code = None
-        while not ((code in self.cl.statedata["ulist"]["login_codes"]) or (code == None)):
+        while not ((code in self.cl.statedata["ulist"]["login_codes"]) or (code is None)):
             code = str(secrets.SystemRandom().randint(111111,999999))
 
         # Store the code

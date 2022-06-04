@@ -11,17 +11,16 @@ This file should be modified/refactored to interact with a JSON-friendly databas
 """
 
 class Files:
-
     def __init__(self, meower):
         self.log = meower.supporter.log
         self.errorhandler = meower.supporter.full_stack
 
         mongo_ip = "mongodb://localhost:27017"
-        self.log("Connecting to database '{0}'\n(If it seems like the server is stuck, it probably means it couldn't connect to the database)".format(mongo_ip))
+        self.log("Connecting to database '{0}' (If it seems like the server is stuck, it probably means it couldn't connect to the database)".format(mongo_ip))
         self.db = MongoClient(mongo_ip)["meowerserver"]
 
         # Check connection status
-        if self.db.client.get_database("meowerserver") == None:
+        if self.db.client.get_database("meowerserver") is None:
             self.log("Failed to connect to MongoDB database!")
         else:
             self.log("Connected to database")
@@ -157,10 +156,10 @@ class Files:
 
     def does_item_exist(self, collection, id):
         if collection in self.db.list_collection_names():
-            if self.db[collection].find_one({"_id": id}) != None:
-                return True
-            else:
+            if self.db[collection].find_one({"_id": id}) is None:
                 return False
+            else:
+                return True
         else:
             return False
              
@@ -229,10 +228,7 @@ class Files:
                 pages = (total_amount // items_per_page)+1
         return pages
 
-    def find_items(self, collection, query, sort=None, truncate=False, page=1, items_per_page=25):
-        if not (collection in self.db.list_collection_names()):
-            return []
-        
+    def find_items(self, collection, query, sort=None, truncate=False, page=1, items_per_page=25, autoget=False):
         if sort is None:
             sort = "_id"
         
@@ -245,7 +241,8 @@ class Files:
         payload = []
         for item in list(all_items):
             index.append(item["_id"])
-            payload.append(item)
+            if autoget:
+                payload.append(item)
 
         return {
             "query": query,

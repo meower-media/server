@@ -49,7 +49,7 @@ class Posts:
         postdata = {
             "post_origin": origin,
             "u": author,
-            "t": self.meower.supporter.timestamp(1),
+            "t": self.meower.timestamp(1),
             "p": content,
             "link": link_to,
             "parent": parent_post,

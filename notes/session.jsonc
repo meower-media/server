@@ -1,0 +1,12 @@
+{
+    "_id": "UUID to identify the session",
+    "token": "Token to use the session",
+    "user": "User ID",
+    "user_agent": "user agent that created the session",
+    "oauth": {
+        "app": "OAuth app ID",
+        "scopes": ["OAuth app scopes"]
+    },
+    "created": "Timestamp of creation",
+    "expires": "Timestamp of expiration"
+}

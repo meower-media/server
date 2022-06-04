@@ -12,12 +12,18 @@ class Security:
         self.meower = meower
         self.log = meower.supporter.log
         self.errorhandler = meower.supporter.full_stack
-        self.log("Security initialized!")
+        self.log("Security initialized!"))
 
-    def get_account(self, username: str):
-        self.log("Getting account: {0}".format(username))
-        file_read, userdata = self.meower.files.load_item("usersv0", username)
-        
+    def get_account(self, user_id: str=None, username: str=None):
+        if username is not None:
+            index = self.meower.files.find_items("usersv0", {"lower_username": username.lower()})
+            if len(index["index"]) != 0:
+                user_id = index["index"][0]
+        elif user_id is None:
+            return False, None
+
+        self.log("Getting account: {0}".format(user_id))
+        file_read, userdata = self.meower.files.load_item("usersv0", user_id)
         if not file_read:
             return False, None
 
@@ -27,11 +33,11 @@ class Security:
         del client_userdata["mfa_recovery"]
         del client_userdata["pswd"]
         del client_userdata["last_ip"]
-        chats_index = self.meower.files.find_items("chats", {"members": {"$all": [username]}}, sort="nickname")
+        chats_index = self.meower.files.find_items("chats", {"members": {"$all": [user_id]}}, sort="nickname")
         client_userdata["chats_index"] = chats_index["index"]
         client_userdata["all_chats"] = chats_index["items"]
 
-        current_time = self.meower.supporter.timestamp(7)
+        current_time = self.meower.timestamp(7)
         flags = {
             "dormant": userdata["flags"]["dormant"],
             "locked": ((userdata["flags"]["locked_until"] > current_time) or (userdata["flags"]["locked_until"] == -1)),
@@ -41,7 +47,7 @@ class Security:
             "deleted": userdata["flags"]["isDeleted"]
         }
 
-        last_seen = self.meower.supporter.timestamp(6)-userdata["last_seen"]
+        last_seen = self.meower.timestamp(6)-userdata["last_seen"]
         if last_seen == 0:
             last_seen = ""
         elif last_seen < 60:
@@ -67,7 +73,7 @@ class Security:
         else:
             last_seen = int(last_seen/604800)
             if last_seen == 1:
-                last_seen = "A week ago"
+                last_seen = "a week ago"
             else:
                 last_seen = "{0} weeks ago".format(last_seen)
 
@@ -104,7 +110,7 @@ class Security:
         file_write = self.meower.files.create_item("usersv0", username, { # Default account data
             "username": username,
             "lower_username": username.lower(),
-            "created": self.meower.supporter.timestamp(6),
+            "created": self.meower.timestamp(6),
             "unread_inbox": False,
             "theme": "orange",
             "mode": True,
@@ -224,8 +230,8 @@ class Security:
             token = "Bearer "+token
         elif type == 2:
             token = "MFA "+token
-        expires = self.meower.supporter.timestamp(6)+expiry
-        file_write = self.meower.files.create_item("keys", self.meower.supporter.uuid(), {"token": token, "u": username, "created": self.meower.supporter.timestamp(6), "expires": expires, "renew_time": expiry, "type": type, "device": device})
+        expires = self.meower.timestamp(6)+expiry
+        file_write = self.meower.files.create_item("keys", self.meower.supporter.uuid(), {"token": token, "u": username, "created": self.meower.timestamp(6), "expires": expires, "renew_time": expiry, "type": type, "device": device})
         return file_write, token
     
     def get_token(self, token: str):
@@ -234,7 +240,7 @@ class Security:
             return False, None
     
         token_data = session_id["items"][0]
-        if not (((token_data["created"] < self.meower.supporter.timestamp(6)+31536000) and (token_data["expires"] > self.meower.supporter.timestamp(6))) or (token_data["expires"] == -1)):
+        if not (((token_data["created"] < self.meower.timestamp(6)+31536000) and (token_data["expires"] > self.meower.timestamp(6))) or (token_data["expires"] == -1)):
             return False, None
 
         file_read, userdata = self.get_account(token_data["u"])
@@ -248,8 +254,8 @@ class Security:
 
     def renew_token(self, token: str, device: str="Unknown"):
         file_read, token_data = self.get_token(token)
-        if file_read and (token_data["created"] < self.meower.supporter.timestamp(6)+31536000) and (token_data["renew_time"] != None):
-            return file_read, self.meower.files.update_item("keys", token_data["_id"], {"expires": self.meower.supporter.timestamp(6)+token_data["renew_time"], "device": device})
+        if file_read and (token_data["created"] < self.meower.timestamp(6)+31536000) and (token_data["renew_time"] != None):
+            return file_read, self.meower.files.update_item("keys", token_data["_id"], {"expires": self.meower.timestamp(6)+token_data["renew_time"], "device": device})
         else:
             return file_read, False
     

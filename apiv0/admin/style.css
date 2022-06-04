@@ -1,0 +1,215 @@
+/* STYLE_ORIGINAL IS READABLE, this is minified to save loading time */
+/* Use minifier.org on the original to update this file with minified CSS */
+/* why all caps lol */
+@font-face{
+	font-family:'Scratch';
+	src:url(./fonts/Simvoni.ttf) format("truetype")
+}
+@font-face{
+	font-family:'Code';
+	src:url(./fonts/CODE.ttf) format("truetype"),url(./fonts/CODE.woff) format("woff")
+}
+@font-face{
+	font-family:'Card';
+	src:url(./fonts/AVANT.otf) format('opentype')
+}
+*{
+	font-family:"Arial"
+}
+a{
+	text-decoration:none}.float-right{float:right}.postbutton{height:23px;position:relative;top:-3px;border-color:#fff;
+	background-color:#ff5600;
+	padding:4px;line-height:0;
+	box-shadow:none;
+	margin:0 3px
+}
+.white{
+	color:#fff
+}
+.postbutton:active{
+	background-color:#BB7A00
+}
+.link{
+	font-size:32px
+}
+#nav{
+	background-color:#ff5600
+}
+#scratch{
+	font-family:'Scratch'
+}
+#wiki{
+	font-family:'Scratch'
+}
+#upper_tab{
+	background-color:#ff5600;
+	color:#fff;
+	padding:5px
+}
+body{
+	background-color:#fff;
+	font-size:16px;
+	overflow-x:hidden
+}
+#blog{
+	margin-top:60px;
+	width:50%;
+	bottom:95px
+}
+#want_more{
+	position:absolute;
+	padding:15px;
+	border-radius:2px;
+	width:40%;
+	margin-left:52%
+}
+#post{
+	border:5px solid #ff5600;
+	padding:5px;
+	border-radius:2px
+}
+.logo{
+	color:#ff5600;
+	background-color:#ff5600;
+	padding:10px;
+	font-size:50px;
+	position:absolute;
+	top:0;
+	left:0;
+	width:100%
+}
+.logo a{
+	text-decoration:none;color:#fff
+}
+.content{
+	margin-top:60px
+}
+ol.code{
+	background:rgba(221,221,221,.76);
+	display:inline-block;
+	border-radius:calc(0.35rem / 2);
+	border-bottom-right-radius:0;
+	padding:10px;
+	padding-left:15px;
+	counter-reset:item;
+	list-style-type:none;
+	border-left-style:solid;
+	border-left-color:#ff5600;
+	border-width:medium;
+	line-height:20px
+}
+ol.code li{
+	display:block;
+	color:rgb(0,0,0);
+	font-family:Code;
+	font-size:25px
+}
+ol.code li:before{
+content:counter(item) "  ";
+counter-increment:item;
+color:gray;
+display:inline-block;
+text-align:right;
+padding-left:1em;
+text-indent:-1.5em;
+margin-right:.5em
+}
+.card{
+	padding:15px;
+	box-shadow:0 0 4px 3px #ccc;
+	border-radius:10px;
+	width:200px;
+	float:left;
+	margin-left:15px
+}
+.card h3,.card p,.card button{
+	font-family:Card;
+	text-align:center;
+	margin:20px auto;
+	display:block
+}
+.content, .tabcontent button{
+	font-family:Card;
+	border-radius:calc(0.5rem / 2);
+	border:solid 2px #ff5600;
+	background-color:#fff;
+	padding:10px;
+	padding-bottom:6px;
+	font-size:15px;
+	cursor:pointer;
+	box-shadow:0 1px 2px 0 rgba(0,0,0,.2),0 2px 5px 0 rgba(0,0,0,.19)
+}
+.meower-info{
+  font-family:Card;
+  font-size: 1.2em;
+  text-align: left;
+  padding-left: 0px
+  padding-right: 20px
+  background-color: #F1F1F1;
+}
+.color_orange{
+  background-color: #F29748;
+  horizontal-align: right;
+  display: inline;
+}
+.meower_gui{
+  padding-left: 10px
+}
+.hub {
+  width: 100%;
+  height: auto;
+}
+
+#grad {
+  background-image: linear-gradient(white, rgba(255,216,192,255));
+}
+.tab {
+	margin-top: 60px;
+	overflow: hidden;
+	border: 1px solid #ccc;
+	background-color: #f1f1f1;
+}
+.tab_button {
+	background-color: inherit;
+	float: left;
+	border: none;
+	outline: none;
+	cursor: pointer;
+	padding: 14px 16px;
+	transition: 0.3s;
+	font-size: 17px;
+}
+.tab_button:hover {
+	background-color: #ddd;
+}
+.tab_button.active {
+	background-color: #ccc;
+}
+.tabcontent {
+	padding: 6px 12px;
+	border: 1px solid #ccc;
+	border-top: none;
+}
+
+table {
+	font-family: Arial, Helvetica, sans-serif;
+	border-collapse: collapse;
+	width: 40%;
+}
+
+table td, table th {
+	border: 1px solid #ddd;
+	padding: 8px;
+}
+
+table tr:nth-child(even){background-color: #f2f2f2;}
+
+table tr:hover {background-color: #ddd;}
+
+table th {
+	padding-top: 12px;
+	padding-bottom: 12px;
+	text-align: left;
+	background-color: #04AA6D;
+	color: white;
+}

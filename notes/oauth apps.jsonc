@@ -1,0 +1,7 @@
+{
+    "_id": "UUID of OAuth app",
+    "owner": "User ID",
+    "name": "OAuth app name",
+    "secret": "OAuth app secret",
+    "created": "Timestamp of creation"
+}

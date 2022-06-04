@@ -11,8 +11,8 @@ def create_chat():
     # Create chat
     chatdata = {
         "nickname": request.form.get("nickname"),
-        "members": [request.auth],
-        "permissions": {request.auth: 3},
+        "members": [request.session.user],
+        "permissions": {request.session.user: 3},
         "isPublic": False,
         "isDeleted": False
     }
@@ -21,7 +21,7 @@ def create_chat():
         abort(500)
 
     # Alert client that chat was created
-    app.meower.ws.sendPayload("update_config", "", username=request.auth)
+    app.meower.ws.sendPayload("update_config", "", username=request.session.user)
 
     return app.respond(chatdata, 200, error=False)
 
@@ -33,16 +33,16 @@ def get_chat_data(chatid):
         abort(404)
     
     if request.method == "GET":
-        if not (request.auth in chatdata["members"] or chatdata["isPublic"]):
+        if not (request.session.user in chatdata["members"] or chatdata["isPublic"]):
             abort(403)
         return app.respond(chatdata, 200, error=False)
     elif request.method == "DELETE":
-        if (request.auth in chatdata["members"]) and (chatdata["permissions"][request.auth] == 3):
+        if (request.session.user in chatdata["members"]) and (chatdata["permissions"][request.session.user] == 3):
             file_write = app.meower.files.delete_item("chats", chatid)
             if not file_write:
                 abort(500)
-        elif request.auth in chatdata["members"]:
-            chatdata["members"].remove(request.auth)
+        elif request.session.user in chatdata["members"]:
+            chatdata["members"].remove(request.session.user)
             file_write = app.meower.files.write_item("chats", chatid, chatdata)
             if not file_write:
                 abort(500)
@@ -60,7 +60,7 @@ def add_member(chatid, user):
             abort(404)
 
         # Check if user is in chat
-        if not (request.auth in chatdata["members"]):
+        if not (request.session.user in chatdata["members"]):
             abort(403)
 
         # Check for bad datatypes and syntax
@@ -77,7 +77,7 @@ def add_member(chatid, user):
         # Add user to chat
         if not (user in chatdata["members"]):
             chatdata["members"].append(user)
-            chatdata["added_by"][user] = request.auth
+            chatdata["added_by"][user] = request.session.user
             file_write = app.meower.files.write_item("chats", chatid, chatdata)
             if not file_write:
                 abort(500)
@@ -90,7 +90,7 @@ def add_member(chatid, user):
             abort(404)
 
         # Check if user is owner
-        if request.auth != chatdata["owner"]:
+        if request.session.user != chatdata["owner"]:
             abort(403)
 
         # Check for bad datatypes and syntax

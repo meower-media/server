@@ -29,22 +29,22 @@ def get_home():
             return app.respond({"type": "fieldTooLarge"}, 400, error=True)
         elif app.meower.supporter.checkForBadCharsPost(content):
             return app.respond({"type": "illegalCharacters"}, 400, error=True)
-        elif app.meower.supporter.check_for_spam(request.auth):
+        elif app.meower.supporter.check_for_spam(request.session.user):
             return app.respond({"type": "ratelimited"}, 429, error=True)
 
-        file_read, userdata = app.meower.accounts.get_account(request.auth)
+        file_read, userdata = app.meower.accounts.get_account(request.session.user)
         if not file_read:
             abort(500)
         elif userdata["flags"]["suspended"]:
             return app.respond({"type": "accountSuspended"}, 403, error=True)
 
         # Create post
-        file_write, postdata = app.meower.posts.create_post("home", request.auth, content)
+        file_write, postdata = app.meower.posts.create_post("home", request.session.user, content)
         if not file_write:
             abort(500)
         else:
             # Ratelimit client
-            app.meower.supporter.ratelimit(request.auth)
+            app.meower.supporter.ratelimit(request.session.user)
 
         # Return payload
         return app.respond(postdata, 200, error=False)
