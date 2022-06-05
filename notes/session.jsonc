@@ -2,7 +2,7 @@
     "_id": "UUID to identify the session",
     "token": "Token to use the session",
     "user": "User ID",
-    "user_agent": "user agent that created the session",
+    "user_agent": "User agent that created the session",
     "oauth": {
         "app": "OAuth app ID",
         "scopes": ["OAuth app scopes"]
