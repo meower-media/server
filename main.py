@@ -3,7 +3,9 @@ from flask import Flask, request
 meower = Flask(__name__)
 
 # Initialize Utils
-from apiv0.utils import *
+from apiv0.utils import log, timestamp
+meower.log = log
+meower.timestamp = timestamp
 
 # Initialize Responder
 from apiv0.respond import respond
@@ -36,7 +38,11 @@ meower.register_blueprint(search, url_prefix="/v0/search")
 from flask_sock import Sock
 from apiv0.socket import Socket
 sock = Sock(meower)
-meower.sock_clients = {}
+meower.sock_clients = {
+    "users": {},
+    "sessions": {},
+    "ips": {}
+}
 @sock.route("/v0/socket")
 def socket_server(client):
     return Socket(meower, client)
@@ -44,6 +50,16 @@ def socket_server(client):
 # Initialize CORS
 from flask_cors import CORS
 CORS(meower, resources={r'*': {'origins': '*'}})
+
+# Set repair mode and scratch deprecated state
+data = meower.db["config"].find_one({"_id": "status"})
+if data is None:
+    meower.log("Failed getting server status. Enabling repair mode to be safe.")
+    meower.supporter.repair_mode = True
+    meower.supporter.scratch_deprecated = False
+else:
+    meower.supporter.repair_mode = data["repair_mode"]
+    meower.supporter.scratch_deprecated = data["scratch_deprecated"]
 
 # Run Flask app
 meower.run(host="0.0.0.0", port=3000, debug=True)

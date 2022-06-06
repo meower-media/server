@@ -16,9 +16,11 @@ class Accounts:
         self.errorhandler = meower.supporter.full_stack
         self.log("Accounts initialized!")
 
-    def create_account(self, username, password, uid=None):
+    def create_account(self, username, password=None, uid=None):
         if uid is None:
             uid = str(uuid4())
+        if password is not None:
+            hashed_password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(12))
         self.meower.db["usersv0"].insert_one({
             "_id": uid,
             "username": username,
@@ -46,7 +48,7 @@ class Accounts:
             },
             "security": {
                 "email": None,
-                "password": bcrypt.hashpw(bytes(password, "utf-8"), bcrypt.gensalt(12)),
+                "password": hashed_password,
                 "mfa_secret": None,
                 "mfa_recovery": None,
                 "last_ip": None,
@@ -59,10 +61,11 @@ class Accounts:
                     "reset_password": 0,
                     "data_export": 0
                 },
+                "dormant": False,
                 "locked_until": 0,
                 "suspended_until": 0,
                 "banned_until": 0,
-                "delete_after": 0,
+                "delete_after": None,
                 "deleted": False
             }
         })

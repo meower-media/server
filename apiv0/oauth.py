@@ -2,8 +2,15 @@ from flask import Blueprint, request, abort
 from flask import current_app as meower
 import secrets
 import string
+import bcrypt
+import pyotp
+import time
+from uuid import uuid4
 
 oauth = Blueprint("oauth_blueprint", __name__)
+
+def generate_token(length=64):
+    return "{0}.{1}".format(str(secrets.token_urlsafe(length)), float(time.time()))
 
 """
 @oauth.before_app_request
@@ -76,39 +83,60 @@ def login():
         return meower.respond({"type": "illegalCharacters"}, 400, error=True)
 
     # Check account flags and password
-    file_read, userdata = meower.meower.accounts.get_account(username)
-    if not file_read:
+    userdata = meower.db["usersv0"].find_one({"lower_username": username.lower()})
+    if userdata is None:
         return meower.respond({"type": "accountDoesNotExist"}, 401, error=True)
-    elif userdata["flags"]["locked"]:
-        return meower.respond({"type": "accountLocked", "expires": userdata["userdata"]["flags"]["locked_until"]-meower.meower.timestamp(6)}, 401, error=True)
-    elif userdata["flags"]["dormant"]:
+    elif (userdata["security"]["locked_until"] > int(time.time())) or (userdata["security"]["locked_until"] == -1):
+        return meower.respond({"type": "accountLocked", "expires": userdata["security"]["locked_until"]}, 401, error=True)
+    elif userdata["security"]["dormant"]:
         return meower.respond({"type": "accountDormant"}, 401, error=True)
-    elif (meower.meower.accounts.check_password(username, password) != (True, True)):
+    elif not bcrypt.checkpw(password.encode("utf-8"), userdata["password"].encode("utf-8")):
         return meower.respond({"type": "invalidPassword"}, 401, error=True)
-    elif userdata["flags"]["deleted"]:
+    elif userdata["security"]["deleted"]:
         return meower.respond({"type": "accountDeleted"}, 401, error=True)
-    elif userdata["flags"]["banned"]:
-        return meower.respond({"type": "accountBanned", "expires": userdata["userdata"]["flags"]["banned_until"]-meower.meower.timestamp(6)}, 401, error=True)
+    elif (userdata["security"]["banned_until"] > int(time.time())) or (userdata["security"]["banned_until"] == -1):
+        return meower.respond({"type": "accountBanned", "expires": userdata["security"]["banned_until"]}, 401, error=True)
     
     # Restore account if it's pending deletion
-    if userdata["flags"]["pending_deletion"]:
-        file_write = meower.meower.accounts.update_config(username, {"flags.delete_after": None}, forceUpdate=True)
-        if not file_write:
-            abort(500)
+    if userdata["security"]["delete_after"] is not None:
+        meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.delete_after": None}})
 
     # Generate new token and return to user
-    if userdata["userdata"]["mfa_secret"] != None:
+    if userdata["security"]["mfa_secret"] is not None:
         # MFA only token
         token_type = "MFA"
-        file_write, token = meower.meower.accounts.create_token(username, expiry=600, scopes=["mfa"])
-        if not file_write:
-            abort(500)
+        token = generate_token(64)
+        refresh = generate_token(128)
+        meower.db["sessions"].insert_one({
+            "_id": str(uuid4()), 
+            "token": token, 
+            "user": userdata["_id"], 
+            "user_agent": request.user_agent.string, 
+            "oauth": {
+                "app": None, 
+                "scopes": ["mfa"]
+            }, 
+            "created": int(time.time()), 
+            "expires": int(time.time()) + 3600
+        })
     else:
         # Full account token
         token_type = "Bearer"
-        file_write, token = meower.meower.accounts.create_token(username, expiry=2592000, scopes=["all"])
-        if not file_write:
-            abort(500)
+        token = generate_token(64)
+        meower.db["sessions"].insert_one({
+            "_id": str(uuid4()), 
+            "token": token, 
+            "user": userdata["_id"], 
+            "user_agent": request.user_agent.string, 
+            "oauth": {
+                "app": None, 
+                "scopes": ["all"]
+            },
+            "created": int(time.time()), 
+            "expires": int(time.time()) + 3600,
+            "refresh_token": refresh,
+            "refresh_expiry": int(time.time()) + 31556952
+        })
 
     return meower.respond({"token": token, "type": token_type}, 200, error=False)
 
@@ -128,25 +156,45 @@ def login_mfa():
         return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
 
     # Get user from token
-    file_read, token_data = meower.meower.accounts.get_token(token)
-    if not (file_read or ("mfa" in token_data["scopes"])):
+    token_data = meower.db["sessions"].find_one({"token": token})
+    if token_data is None:
+        return meower.respond({"type": "tokenInvalid"}, 401, error=True)
+    elif not ("mfa" in token_data["oauth"]["scopes"]):
+        return meower.respond({"type": "tokenInvalid"}, 401, error=True)
+    elif token_data["expires"] < int(time.time()):
         return meower.respond({"type": "tokenInvalid"}, 401, error=True)
     else:
         user = token_data["user"]
+        userdata = meower.db["usersv0"].find_one({"_id": user})
+        if userdata is None:
+            return meower.respond({"type": "tokenInvalid"}, 401, error=True)
 
     # Check MFA code
-    if meower.meower.accounts.check_mfa(user, code) != (True, True):
+    if pyotp.TOTP(userdata["security"]["mfa_secret"]).now() != code:
         return meower.respond({"type": "mfaInvalid"}, 401, error=True)
 
     # Delete temporary MFA token
-    meower.meower.accounts.delete_token(token)
+    meower.db["usersv0"].delete_one({"_id": token_data["_id"]})
 
-    # Generate full account token and return to user
-    file_write, token = meower.meower.accounts.create_token(user, expiry=2592000, scopes=["all"])
-    if not file_write:
-        abort(500)
-    else:
-        return meower.respond({"token": token, "type": "Bearer"}, 200, error=False)
+    # Generate full account token
+    token = generate_token(64)
+    meower.db["sessions"].insert_one({
+        "_id": str(uuid4()), 
+        "token": token, 
+        "user": userdata["_id"], 
+        "user_agent": request.user_agent.string, 
+        "oauth": {
+            "app": None, 
+            "scopes": ["all"]
+        },
+        "created": int(time.time()), 
+        "expires": int(time.time()) + 3600,
+        "refresh_token": generate_token(128),
+        "refresh_expiry": int(time.time()) + 31556952
+    })
+
+    # Return account token to user
+    return meower.respond({"token": token, "type": "Bearer"}, 200, error=False)
 
 @oauth.route("/create", methods=["POST"])
 def create_account():
