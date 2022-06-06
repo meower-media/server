@@ -22,11 +22,10 @@ for item in [
     permitted_chars_username.remove(item)
 
 def log(msg, prefix=None):
-    timestamp = timestamp(4)
     if prefix is None:
-        print("{0}: {1}".format(timestamp, msg))
+        print("{0}: {1}".format(timestamp(4), msg))
     else:
-        print("[{0}] {1}: {2}".format(prefix, timestamp, msg))
+        print("[{0}] {1}: {2}".format(prefix, timestamp(4), msg))
 
 def timestamp(ttype, epoch=int(time.time())):
     today = datetime.fromtimestamp(epoch)
