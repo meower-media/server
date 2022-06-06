@@ -5,12 +5,54 @@ import string
 import bcrypt
 import pyotp
 import time
+import requests
 from uuid import uuid4
 
 oauth = Blueprint("oauth_blueprint", __name__)
 
 def generate_token(length=64):
     return "{0}.{1}".format(str(secrets.token_urlsafe(length)), float(time.time()))
+
+def create_session(user, oauth_app=None, scopes=[], expiry_time=1800, renewable=True):
+    token = {
+        "_id": str(uuid4()),
+        "user": user,
+        "user_agent": request.headers.get("User-Agent"),
+        "oauth_app": oauth_app,
+        "scopes": scopes,
+        "access_token": generate_token(32),
+        "access_expiry": int(time.time()) + expiry_time,
+        "renew_token": generate_token(64) if renewable else None,
+        "renew_expiry": int(time.time()) + 31556952 if renewable else None,
+        "previous_renew_tokens": [] if renewable else None,
+        "created": int(time.time())
+    }
+    meower.db["sessions"].insert_one(token)
+    return token
+
+def send_email(email, name, subject, body, type="text/plain"):
+    if meower.email_auth_key is not None:
+        status = requests.post("https://email-worker.meower.workers.dev", headers={
+            "X-Auth-Token": meower.email_auth_key
+        }, json={
+            "personalizations": [{
+                "to": [{
+                    "email": email,
+                    "name": name
+                }],
+            }],
+            "from": {
+                "email": "no-reply@meower.org",
+                "name": "Meower"
+            },
+            "subject": subject,
+            "content": [{
+                "type": type,
+                "value": body
+            }]
+        })
+    else:
+        meower.log("Email worker not configured. Skipping email.")
 
 """
 @oauth.before_app_request
@@ -29,7 +71,7 @@ def before_request():
 
     class Session:
         def __init__(self, token):
-            file_read, token_data = meower.meower.accounts.get_token(token)
+            file_read, token_data = meower.accounts.get_token(token)
             if file_read:
                 self.authed = True
                 self.user = token_data["user"]
@@ -39,7 +81,7 @@ def before_request():
                 self.created = token_data["created"]
                 self.expires = token_data["expires"]
 
-                file_read, user_data = meower.meower.accounts.get_account(self.user, scopes=self.scopes)
+                file_read, user_data = meower.accounts.get_account(self.user, scopes=self.scopes)
                 self.user_data = user_data
             else:
                 self.authed = False
@@ -79,7 +121,7 @@ def login():
         return meower.respond({"type": "badDatatype"}, 400, error=True)
     elif (len(username) > 20) or (len(password) > 72):
         return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
-    elif meower.meower.supporter.checkForBadCharsUsername(username):
+    elif meower.check_for_bad_chars_username(username):
         return meower.respond({"type": "illegalCharacters"}, 400, error=True)
 
     # Check account flags and password
@@ -90,7 +132,7 @@ def login():
         return meower.respond({"type": "accountLocked", "expires": userdata["security"]["locked_until"]}, 401, error=True)
     elif userdata["security"]["dormant"]:
         return meower.respond({"type": "accountDormant"}, 401, error=True)
-    elif not bcrypt.checkpw(password.encode("utf-8"), userdata["password"].encode("utf-8")):
+    elif not bcrypt.checkpw(bytes(password, "utf-8"), bytes(userdata["security"]["password"], "utf-8")):
         return meower.respond({"type": "invalidPassword"}, 401, error=True)
     elif userdata["security"]["deleted"]:
         return meower.respond({"type": "accountDeleted"}, 401, error=True)
@@ -104,41 +146,13 @@ def login():
     # Generate new token and return to user
     if userdata["security"]["mfa_secret"] is not None:
         # MFA only token
-        token_type = "MFA"
-        token = generate_token(64)
-        refresh = generate_token(128)
-        meower.db["sessions"].insert_one({
-            "_id": str(uuid4()), 
-            "token": token, 
-            "user": userdata["_id"], 
-            "user_agent": request.user_agent.string, 
-            "oauth": {
-                "app": None, 
-                "scopes": ["mfa"]
-            }, 
-            "created": int(time.time()), 
-            "expires": int(time.time()) + 3600
-        })
+        token = create_session(userdata["_id"], scopes=["mfa"], expiry_time=900, renewable=False)
+        return meower.respond({"session": token, "user": None, "requires_mfa": True}, 200, error=False)
     else:
         # Full account token
-        token_type = "Bearer"
-        token = generate_token(64)
-        meower.db["sessions"].insert_one({
-            "_id": str(uuid4()), 
-            "token": token, 
-            "user": userdata["_id"], 
-            "user_agent": request.user_agent.string, 
-            "oauth": {
-                "app": None, 
-                "scopes": ["all"]
-            },
-            "created": int(time.time()), 
-            "expires": int(time.time()) + 3600,
-            "refresh_token": refresh,
-            "refresh_expiry": int(time.time()) + 31556952
-        })
-
-    return meower.respond({"token": token, "type": token_type}, 200, error=False)
+        token = create_session(userdata["_id"], scopes=["all"])
+        del userdata["security"]
+        return meower.respond({"session": token, "user": userdata, "requires_mfa": False}, 200, error=False)
 
 @oauth.route("/login/mfa", methods=["POST"])
 def login_mfa():
@@ -168,6 +182,8 @@ def login_mfa():
         userdata = meower.db["usersv0"].find_one({"_id": user})
         if userdata is None:
             return meower.respond({"type": "tokenInvalid"}, 401, error=True)
+        else:
+            del userdata["security"]
 
     # Check MFA code
     if pyotp.TOTP(userdata["security"]["mfa_secret"]).now() != code:
@@ -176,25 +192,38 @@ def login_mfa():
     # Delete temporary MFA token
     meower.db["usersv0"].delete_one({"_id": token_data["_id"]})
 
-    # Generate full account token
-    token = generate_token(64)
-    meower.db["sessions"].insert_one({
-        "_id": str(uuid4()), 
-        "token": token, 
-        "user": userdata["_id"], 
-        "user_agent": request.user_agent.string, 
-        "oauth": {
-            "app": None, 
-            "scopes": ["all"]
-        },
-        "created": int(time.time()), 
-        "expires": int(time.time()) + 3600,
-        "refresh_token": generate_token(128),
-        "refresh_expiry": int(time.time()) + 31556952
-    })
+    # Generate full account token and return to user
+    token = create_session(userdata["_id"], scopes=["all"])
+    return meower.respond({"session": token, "user": userdata, "requires_mfa": False}, 200, error=False)
 
-    # Return account token to user
-    return meower.respond({"token": token, "type": "Bearer"}, 200, error=False)
+@oauth.route("/login/reset-password", methods=["POST"])
+def reset_password():
+    if not (("username" in request.form) and ("email" in request.form)):
+        return meower.respond({"type": "missingField"}, 400, error=True)
+    
+    # Extract username and email for simplicity
+    username = request.form.get("username").strip()
+    email = request.form.get("email").strip()
+
+    # Check for bad datatypes and syntax
+    if not ((type(username) == str) and (type(email) == str)):
+        return meower.respond({"type": "badDatatype"}, 400, error=True)
+    elif (len(username) > 20) or (len(email) > 100):
+        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
+    elif meower.check_for_bad_chars_username(username):
+        return meower.respond({"type": "illegalCharacters"}, 400, error=True)
+    
+    # Check account exists and email is valid
+    userdata = meower.db["usersv0"].find_one({"lower_username": username.lower()})
+    if userdata is None:
+        return meower.respond({"type": "accountDoesNotExist"}, 401, error=True)
+    elif userdata["security"]["email"] is None:
+        return meower.respond({"type": "invalidEmail"}, 401, error=True)
+    elif not bcrypt.checkpw(bytes(email, "utf-8"), bytes(userdata["security"]["email"], "utf-8")):
+        return meower.respond({"type": "invalidEmail"}, 401, error=True)
+
+    send_email(email, "Test", "This is a test email.", "meower.com")
+    return "", 204
 
 @oauth.route("/create", methods=["POST"])
 def create_account():
@@ -210,24 +239,68 @@ def create_account():
         return meower.respond({"type": "badDatatype"}, 400, error=True)
     elif (len(username) > 20) or (len(password) > 72):
         return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
-    elif meower.meower.supporter.checkForBadCharsUsername(username):
+    elif meower.check_for_bad_chars_username(username):
         return meower.respond({"type": "illegalCharacters"}, 400, error=True)
 
     # Check if account exists
-    if meower.meower.accounts.does_username_exist("usersv0", username):
+    if meower.db["usersv0"].find_one({"lower_username": username.lower()}) is not None:
         return meower.respond({"type": "accountAlreadyExists"}, 401, error=True)
 
     # Create userdata
-    file_write = meower.meower.accounts.create_account(username, password)
-    if not file_write:
-        abort(500)
+    userdata = {
+        "_id": str(uuid4()),
+        "username": username,
+        "lower_username": username.lower(),
+        "state": 0,
+        "created": int(time.time()),
+        "config": {
+            "unread_inbox": False,
+            "theme": "orange",
+            "mode": True,
+            "sound_effects": True,
+            "background_music": {
+                "enabled": True,
+                "type": "default",
+                "data": 2
+            }
+        },
+        "profile": {
+            "avatar": {
+                "type": "default",
+                "data": 1
+            },
+            "bio": "",
+            "status": 1,
+            "last_seen": 0
+        },
+        "security": {
+            "email": None,
+            "password": bcrypt.hashpw(bytes(password, "utf-8"), bcrypt.gensalt(12)),
+            "mfa_secret": None,
+            "mfa_recovery": None,
+            "last_ip": None,
+            "dormant": False,
+            "locked_until": 0,
+            "suspended_until": 0,
+            "banned_until": 0,
+            "delete_after": None,
+            "deleted": False
+        },
+        "ratelimits": {
+            "authentication": 0,
+            "change_username": 0,
+            "change_password": 0,
+            "email_verification": 0,
+            "reset_password": 0,
+            "data_export": 0
+        }
+    }
+    meower.db["usersv0"].insert_one(userdata)
 
     # Generate new token and return to user
-    file_write, token = meower.meower.accounts.create_token(username, expiry=2592000, scopes=["all"])
-    if file_write:
-        return meower.respond({"token": token, "type": "Bearer"}, 200, error=False)
-    else:
-        abort(500)
+    token = create_session(userdata["_id"], scopes=["all"])
+    del userdata["security"]
+    return meower.respond({"session": token, "user": userdata, "requires_mfa": False}, 200, error=False)
 
 @oauth.route("/login_code", methods=["POST"])
 def auth_login_code():
@@ -242,24 +315,24 @@ def auth_login_code():
         return meower.respond({"type": "badDatatype"}, 400, error=True)
     elif len(code) > 6:
         return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
-    elif meower.meower.supporter.checkForBadCharsPost(code):
+    elif meower.supporter.checkForBadCharsPost(code):
         return meower.respond({"type": "illegalCharacters"}, 400, error=True)
     
     # Check if code exists
-    if not (code in meower.meower.cl.statedata["ulist"]["login_codes"]):
+    if not (code in meower.cl.statedata["ulist"]["login_codes"]):
         return meower.respond({"type": "codeDoesNotExist"}, 400, error=True)
     
     # Create new token
-    file_write, token = meower.meower.accounts.create_token(request.session.user, expiry=2592000, type=1)
+    file_write, token = meower.accounts.create_token(request.session.user, expiry=2592000, type=1)
     if not file_write:
         abort(500)
 
     # Send token to client
-    meower.meower.ws.sendPayload(meower.meower.cl.statedata["ulist"]["login_codes"][code], "login_code", token)
+    meower.ws.sendPayload(meower.cl.statedata["ulist"]["login_codes"][code], "login_code", token)
 
     # Delete login code
-    meower.meower.supporter.modify_client_statedata(meower.meower.cl.statedata["ulist"]["login_codes"][code], "login_code", None)
-    del meower.meower.cl.statedata["ulist"]["login_codes"][code]
+    meower.supporter.modify_client_statedata(meower.cl.statedata["ulist"]["login_codes"][code], "login_code", None)
+    del meower.cl.statedata["ulist"]["login_codes"][code]
 
     return meower.respond({}, 200, error=False)
 
@@ -271,7 +344,7 @@ def current_session():
 
         return meower.respond(session_data, 200, error=False)
     elif request.method == "DELETE":
-        file_write = meower.meower.files.delete_item("usersv0", )
+        file_write = meower.files.delete_item("usersv0", )
         if not file_write:
             abort(500)
 
@@ -280,7 +353,7 @@ def current_session():
 @oauth.route("/mfa", methods=["GET", "POST", "DELETE"])
 def mfa():
     if request.method == "GET":
-        mfa_secret = meower.meower.accounts.new_mfa_secret()
+        mfa_secret = meower.accounts.new_mfa_secret()
         return meower.respond({"secret": mfa_secret, "totp_app": "otpauth://totp/Meower: {0}?secret={1}&issuer=Meower".format(request.session.user, mfa_secret)}, 200, error=False)
     elif request.method == "POST":
         if not (("secret" in request.form) and ("code" in request.form)):
@@ -297,7 +370,7 @@ def mfa():
             return meower.respond({"type": "fieldNotCorrectSize"}, 400, error=True)
         
         # Check if code matches secret
-        if meower.meower.accounts.check_mfa(request.session.user, code, custom_secret=secret) != (True, True):
+        if meower.accounts.check_mfa(request.session.user, code, custom_secret=secret) != (True, True):
             return meower.respond({"type": "mfaCodeInvalid"}, 401, error=True)
         
         # Generate recovery codes
@@ -309,11 +382,11 @@ def mfa():
             recovery_codes.append(tmp_recovery_code.lower())
 
         # Update userdata
-        file_write = meower.meower.accounts.update_config(request.session.user, {"mfa_secret": secret, "mfa_recovery": recovery_codes}, forceUpdate=True)
+        file_write = meower.accounts.update_config(request.session.user, {"mfa_secret": secret, "mfa_recovery": recovery_codes}, forceUpdate=True)
         if not file_write:
             abort(500)
 
-        meower.meower.ws.sendPayload(request.session.user, "update_config", "", username=request.session.user)
+        meower.ws.sendPayload(request.session.user, "update_config", "", username=request.session.user)
 
         return meower.respond({"recovery": recovery_codes}, 200, error=False)
     elif request.method == "DELETE":
@@ -330,14 +403,14 @@ def mfa():
             return meower.respond({"type": "fieldNotCorrectSize"}, 400, error=True)
         
         # Check if code matches secret
-        if meower.meower.accounts.check_mfa(request.session.user, code) != (True, True):
+        if meower.accounts.check_mfa(request.session.user, code) != (True, True):
             return meower.respond({"type": "mfaCodeInvalid"}, 401, error=True)
 
         # Update userdata
-        file_write = meower.meower.accounts.update_config(request.session.user, {"mfa_secret": None, "mfa_recovery": None}, forceUpdate=True)
+        file_write = meower.accounts.update_config(request.session.user, {"mfa_secret": None, "mfa_recovery": None}, forceUpdate=True)
         if not file_write:
             abort(500)
         
-        meower.meower.ws.sendPayload(request.session.user, "update_config", "", username=request.session.user)
+        meower.ws.sendPayload(request.session.user, "update_config", "", username=request.session.user)
 
         return meower.respond({}, 200, error=False)

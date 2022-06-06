@@ -1,7 +1,25 @@
 from __main__ import meower
 from datetime import datetime
 import time
+import string
 import secrets
+
+# Create permitted lists of characters for posts
+permitted_chars_post = []
+permitted_chars_post.extend(string.ascii_letters)
+permitted_chars_post.extend(string.digits)
+permitted_chars_post.extend(string.punctuation)
+permitted_chars_post.append(" ")
+
+# Create permitted lists of characters for usernames
+permitted_chars_username = permitted_chars_post.copy()
+for item in [
+    '"',
+    "'",
+    "*",
+    ";"
+]:
+    permitted_chars_username.remove(item)
 
 def log(msg, prefix=None):
     timestamp = timestamp(4)
@@ -31,5 +49,14 @@ def timestamp(ttype, epoch=int(time.time())):
     elif ttype == 5:    
         return str(today.strftime("%d%m%Y"))
 
-def generate_token(length=64):
-    return "{0}.{1}".format(str(secrets.token_urlsafe(length)), float(time.time()))
+def check_for_bad_chars_username(message):
+    for char in message:
+        if not char in permitted_chars_username:
+            return True
+    return False
+
+def check_for_bad_chars_post(message):
+    for char in message:
+        if not char in permitted_chars_post:
+            return True
+    return False

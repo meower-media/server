@@ -53,19 +53,19 @@ class Accounts:
                 "mfa_recovery": None,
                 "last_ip": None,
                 "state": 0,
-                "ratelimits": {
-                    "authentication": 0,
-                    "change_username": 0,
-                    "change_password": 0,
-                    "email_verification": 0,
-                    "reset_password": 0,
-                    "data_export": 0
-                },
                 "dormant": False,
                 "locked_until": 0,
                 "suspended_until": 0,
                 "banned_until": 0,
                 "delete_after": None,
                 "deleted": False
+            },
+            "ratelimits": {
+                "authentication": 0,
+                "change_username": 0,
+                "change_password": 0,
+                "email_verification": 0,
+                "reset_password": 0,
+                "data_export": 0
             }
         })

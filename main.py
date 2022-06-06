@@ -3,9 +3,11 @@ from flask import Flask, request
 meower = Flask(__name__)
 
 # Initialize Utils
-from apiv0.utils import log, timestamp
+from apiv0.utils import log, timestamp, check_for_bad_chars_post, check_for_bad_chars_username
 meower.log = log
 meower.timestamp = timestamp
+meower.check_for_bad_chars_post = check_for_bad_chars_post
+meower.check_for_bad_chars_username = check_for_bad_chars_username
 
 # Initialize Responder
 from apiv0.respond import respond
@@ -55,11 +57,19 @@ CORS(meower, resources={r'*': {'origins': '*'}})
 data = meower.db["config"].find_one({"_id": "status"})
 if data is None:
     meower.log("Failed getting server status. Enabling repair mode to be safe.")
-    meower.supporter.repair_mode = True
-    meower.supporter.scratch_deprecated = False
+    meower.repair_mode = True
+    meower.scratch_deprecated = False
 else:
-    meower.supporter.repair_mode = data["repair_mode"]
-    meower.supporter.scratch_deprecated = data["scratch_deprecated"]
+    meower.repair_mode = data["repair_mode"]
+    meower.scratch_deprecated = data["scratch_deprecated"]
+
+# Set email authentication key
+data = meower.db["config"].find_one({"_id": "email_auth_key"})
+if data is None:
+    meower.log("Failed getting email authentication key. Emails will not be sent.")
+    meower.email_auth_key = None
+else:
+    meower.email_auth_key = data["key"]
 
 # Run Flask app
 meower.run(host="0.0.0.0", port=3000, debug=True)

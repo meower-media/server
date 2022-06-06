@@ -1,12 +1,12 @@
 {
     "_id": "UUID to identify the session",
-    "token": "Token to use the session",
     "user": "User ID",
     "user_agent": "User agent that created the session",
-    "oauth": {
-        "app": "OAuth app ID",
-        "scopes": ["OAuth app scopes"]
-    },
-    "created": "Timestamp of creation",
-    "expires": "Timestamp of expiration"
+    "oauth_app": "OAuth app ID",
+    "scopes": ["Session scopes"],
+    "access_token": "Secure access token - 64 characters long",
+    "access_expiry": "Timestamp of access expiry - expires after 30 minutes by default",
+    "renew_token": "Secure renew token - 128 characters long",
+    "renew_expiry": "Timestamp of renew expiry - expires after 1 year by default",
+    "created": "Timestamp of creation"
 }
