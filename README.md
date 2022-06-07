@@ -1,9 +1,8 @@
 # Meower-Server
 Official source code of the Meower server, written in Python. Powered by CloudLink. 
 
-## NOTICE OF END-OF-LIFE
-This is the APIv0 Branch of Code! This API code will no longer be maintained as it has been deprecated in favor of APIv1.
-Use this code to develop forks of Meower for Scratch clients.
+## NOTICE
+This is the APIv0 Branch of Code! This API code will only be maintained up until when New Meower is released.
 
 APIv0 will be upgraded automatically to APIv1 when New Meower is released. The API can be found at https://api.meower.org/
 
