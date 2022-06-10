@@ -7,3 +7,4 @@ flask_sock
 pymongo
 pyotp
 requests
+pycryptodomex

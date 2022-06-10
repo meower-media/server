@@ -6,7 +6,6 @@ class Socket:
     def __init__(self, meower, client):
         self.meower = meower
         self.client = client
-        self.log = self.meower.utils.log
 
         self.client.id = str(uuid4())
         self.client.user = None
@@ -35,7 +34,7 @@ class Socket:
         if not (("cmd" in msg) and ("val" in msg)):
             return self.send_status("Syntax", listener=listener)
 
-        self.log("Handling '{0}' from: {1}".format(msg["cmd"], self.client.id))
+        self.meower.log("Handling '{0}' from: {1}".format(msg["cmd"], self.client.id))
 
         cmd = msg["cmd"]
         val = msg["val"]

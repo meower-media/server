@@ -15,7 +15,8 @@ meower.respond = respond
 
 # Initialize database
 import pymongo
-meower.db = pymongo.MongoClient("mongodb://localhost:27017")["meowerserver"]
+meower.log("Connecting to MongoDB... (if it looks like the server is stuck, it probably couldn't connect to the database)")
+meower.db = pymongo.MongoClient("mongodb://localhost:27017").meowerserver
 
 # Register blueprints
 from apiv0.errors import errors
@@ -41,35 +42,43 @@ from flask_sock import Sock
 from apiv0.socket import Socket
 sock = Sock(meower)
 meower.sock_clients = {
-    "users": {},
-    "sessions": {},
-    "ips": {}
+	"users": {},
+	"sessions": {},
+	"ips": {}
 }
 @sock.route("/v0/socket")
 def socket_server(client):
-    return Socket(meower, client)
+	return Socket(meower, client)
 
 # Initialize CORS
 from flask_cors import CORS
 CORS(meower, resources={r'*': {'origins': '*'}})
 
+# Load IP bans into memory
+meower.log("Loading IP bans...")
+meower.ip_banlist = []
+ip_bans = meower.db.netlog.find({"blocked": True})
+for ip in ip_bans:
+	meower.ip_banlist.append(ip["_id"])
+
 # Set repair mode and scratch deprecated state
 data = meower.db["config"].find_one({"_id": "status"})
 if data is None:
-    meower.log("Failed getting server status. Enabling repair mode to be safe.")
-    meower.repair_mode = True
-    meower.scratch_deprecated = False
+	meower.log("Failed getting server status. Enabling repair mode to be safe.")
+	meower.repair_mode = True
+	meower.scratch_deprecated = False
 else:
-    meower.repair_mode = data["repair_mode"]
-    meower.scratch_deprecated = data["scratch_deprecated"]
+	meower.repair_mode = data["repair_mode"]
+	meower.scratch_deprecated = data["scratch_deprecated"]
 
 # Set email authentication key
 data = meower.db["config"].find_one({"_id": "email_auth_key"})
 if data is None:
-    meower.log("Failed getting email authentication key. Emails will not be sent.")
-    meower.email_auth_key = None
+	meower.log("Failed getting authentication keys. Emails will not be sent.")
+	meower.auth_keys = None
 else:
-    meower.email_auth_key = data["key"]
+	del data["_id"]
+	meower.auth_keys = data
 
 # Run Flask app
 meower.run(host="0.0.0.0", port=3000, debug=True)

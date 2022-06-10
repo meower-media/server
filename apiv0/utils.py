@@ -3,6 +3,7 @@ from datetime import datetime
 import time
 import string
 import secrets
+import pymongo
 
 # Create permitted lists of characters for posts
 permitted_chars_post = []
@@ -59,3 +60,8 @@ def check_for_bad_chars_post(message):
         if not char in permitted_chars_post:
             return True
     return False
+	
+def database_template():
+	# Create indexes
+	meower.db.chats.create_index([("members", pymongo.ASCENDING), ("isPublic", pymongo.ASCENDING)])
+	meower.db.chats.create_index([("members", pymongo.ASCENDING), ("isPublic", pymongo.ASCENDING)])
