@@ -72,9 +72,9 @@ else:
 	meower.scratch_deprecated = data["scratch_deprecated"]
 
 # Set email authentication key
-data = meower.db["config"].find_one({"_id": "email_auth_key"})
+data = meower.db["config"].find_one({"_id": "auth_keys"})
 if data is None:
-	meower.log("Failed getting authentication keys. Emails will not be sent.")
+	meower.log("Failed getting authentication keys. Some functions will be disabled.")
 	meower.auth_keys = None
 else:
 	del data["_id"]
