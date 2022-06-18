@@ -9,5 +9,5 @@ def index():
 
 @general.route("/status", methods=["GET"])
 def get_status():
-    file_read, data = meower.files.load_item("config", "supported_versions")
-    return meower.respond({"isRepairMode": meower.supporter.repair_mode, "scratchDeprecated": meower.supporter.is_deprecated, "supported": {"0": True}, "supported_clients": data["index"]}, 200)
+    data = meower.db["config"].find_one({"_id": "supported_versions"})
+    return meower.respond({"isRepairMode": meower.repair_mode, "scratchDeprecated": meower.scratch_deprecated, "supported": {"0": True}, "supported_clients": data["index"], "IPBlocked": (request.remote_addr in meower.ip_banlist)}, 200)

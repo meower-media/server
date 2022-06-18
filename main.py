@@ -3,11 +3,14 @@ from flask import Flask, request
 meower = Flask(__name__)
 
 # Initialize Utils
-from apiv0.utils import log, timestamp, check_for_bad_chars_post, check_for_bad_chars_username
+from apiv0.utils import log, timestamp, check_for_spam, check_for_bad_chars_post, check_for_bad_chars_username, user_status, send_payload
 meower.log = log
 meower.timestamp = timestamp
+meower.check_for_spam = check_for_spam
 meower.check_for_bad_chars_post = check_for_bad_chars_post
 meower.check_for_bad_chars_username = check_for_bad_chars_username
+meower.user_status = user_status
+meower.send_payload = send_payload
 
 # Initialize Responder
 from apiv0.respond import respond
@@ -41,11 +44,9 @@ meower.register_blueprint(search, url_prefix="/v0/search")
 from flask_sock import Sock
 from apiv0.socket import Socket
 sock = Sock(meower)
-meower.sock_clients = {
-	"users": {},
-	"sessions": {},
-	"ips": {}
-}
+meower.sock_next_id = 0
+meower.sock_clients = {}
+meower.sock_login_codes = {}
 @sock.route("/v0/socket")
 def socket_server(client):
 	return Socket(meower, client)
@@ -68,8 +69,8 @@ if data is None:
 	meower.repair_mode = True
 	meower.scratch_deprecated = False
 else:
-	meower.repair_mode = data["repair_mode"]
-	meower.scratch_deprecated = data["scratch_deprecated"]
+	meower.repair_mode = data["repairMode"]
+	meower.scratch_deprecated = data["scratchDeprecated"]
 
 # Set email authentication key
 data = meower.db["config"].find_one({"_id": "auth_keys"})
