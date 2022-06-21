@@ -1,0 +1,8 @@
+{
+    "_id": "UUID to identify the session",
+    "type": 0,
+    "user": "User ID",
+    "token": "Secure access token - 64 characters long",
+    "expires": "Timestamp of access expiry - expires after 30 days of no use",
+    "created": "Timestamp of creation - can no longer be used if over a year old"
+}

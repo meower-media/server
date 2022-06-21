@@ -4,6 +4,8 @@ import time
 import string
 import secrets
 import pymongo
+import requests
+from threading import Thread
 
 # Create permitted lists of characters for posts
 permitted_chars_post = []
@@ -96,6 +98,44 @@ def send_payload(payload, user=None):
         if user in meower.sock_clients:
             for sock_client in meower.sock_clients[user]:
                 sock_client.client.send(payload)
+
+def send_email(users, subject, body, type="text/plain", unverified_emails=False):
+    def run(payload):
+        return requests.post("https://email-worker.meower.workers.dev", headers={"X-Auth-Token": meower.auth_keys["worker_token"]}, json=payload)
+
+    template = {
+        "personalizations": [{
+            "to": [],
+            "dkim_domain": "meower.org",
+            "dkim_selector": "mailchannels",
+            "dkim_private_key": meower.auth_keys["email_dkim"]
+        }],
+        "from": {
+            "email": "no-reply@meower.org",
+            "name": "Meower"
+        },
+        "subject": subject,
+        "content": [{
+            "type": type,
+            "value": body
+        }]
+    }
+    
+    for user in users:
+        userdata = meower.db["usersv0"].find_one({"_id": user})
+        if userdata is not None:
+            payload = template.copy()
+            for method in userdata["security"]["authentication_methods"]:
+                if method["type"] != "email":
+                    continue
+                elif not (unverified_emails or method["verified"]):
+                    continue
+                else:
+                    payload["personalizations"][0]["to"].append({
+                        "email": method["encrypted_email"],
+                        "name": userdata["username"]
+                    })
+            Thread(target=run, args=(payload,)).start()
 
 def database_template():
 	# Create indexes

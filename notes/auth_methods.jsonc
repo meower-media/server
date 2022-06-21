@@ -1,0 +1,26 @@
+{
+    "password": {
+        "type": "password",
+        "mfa_method": false,
+        "hash_type": "scrypt",
+        "password_hash": ""
+    },
+    "email": {
+        "type": "email",
+        "mfa_method": true,
+        "verified": true,
+        "encrypted_email": "",
+        "encryption_key": ""
+    },
+    "totp": {
+        "type": "totp",
+        "mfa_method": true,
+        "totp_secret": ""
+    },
+    "security_key": {
+        "type": "security_key",
+        "mfa_method": true,
+        "key_id": "",
+        "key_secret": ""
+    }
+}

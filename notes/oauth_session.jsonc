@@ -1,0 +1,12 @@
+{
+    "_id": "UUID to identify the session",
+    "type": 3,
+    "user": "User ID",
+    "oauth_app": "OAuth app ID",
+    "scopes": ["Session scopes"],
+    "token": "Secure access token - 32 characters long",
+    "expires": "Timestamp of access expiry - expires after 30 minutes",
+    "refresh_token": "Secure renew token - 128 characters long",
+    "previous_refresh_tokens": ["Previous refresh tokens"],
+    "created": "Timestamp of creation - can no longer be used if over a year old"
+}

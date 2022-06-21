@@ -1,0 +1,8 @@
+{
+    "_id": "ID of post",
+    "origin": "origin of post",
+    "user": "author of post",
+    "content": "content of post",
+    "created": "epoch of creation",
+    "deleted": false// true or false
+}
