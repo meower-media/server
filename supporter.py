@@ -295,6 +295,7 @@ class Supporter:
             if username in self.cl.getUsernames():
                 self.log("Detected someone trying to use the username {0} wrongly".format(username))
                 self.cl.kickClient(username)
+                time.sleep(0.5)
     
     def check_for_spam(self, client):
         if not self.cl == None:
