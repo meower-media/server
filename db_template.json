@@ -1,0 +1,93 @@
+{
+    "config": {
+        "indexes": ["_id"],
+        "items": [
+            {
+                "_id": "status",
+                "repairMode": false,
+                "scratchDeprecated": false
+            },
+            {
+                "_id": "supported_versions",
+                "apis": [0],
+                "clients": ["scratch-beta-6-r1"]
+            },
+            {
+                "_id": "filter",
+                "whitelist": [],
+                "blacklist": []
+            },
+            {
+                "_id": "auth_keys",
+                "email_dkim": "",
+                "worker_token": ""
+            }
+        ]
+    },
+    "usersv0": {
+        "indexes": ["_id", "username", "lower_username"],
+        "items": [
+            {
+                "_id": "0",
+                "username": "Deleted",
+                "lower_username": "deleted",
+                "state": 0,
+                "deleted": true,
+                "created": 0,
+                "config": {
+                    "unread_inbox": false,
+                    "theme": "orange",
+                    "mode": true,
+                    "sound_effects": true,
+                    "background_music": {
+                        "enabled": true,
+                        "type": "default",
+                        "data": 2
+                    }
+                },
+                "profile": {
+                    "avatar": {
+                        "type": "default",
+                        "data": 1
+                    },
+                    "bio": "",
+                    "status": 1,
+                    "last_seen": 0
+                },
+                "security": {
+                    "authentication_methods": [],
+                    "default_method": 0,
+                    "last_changed_username": 0,
+                    "last_requested_data": 0,
+                    "delete_after": null,
+                    "suspended_until": null,
+                    "banned": false
+                }
+            }
+        ]
+    },
+    "usersv1": {
+        "indexes": ["_id"],
+        "items": []
+    },
+    "sessions": {
+        "indexes": ["_id", "token", "user"],
+        "items": []
+    },
+    "oauth": {
+        "indexes": ["_id"],
+        "items": []
+    },
+    "netlog": {
+        "indexes": ["_id", "blocked", "poisoned", "users"],
+        "items": []
+    },
+    "chats": {
+        "indexes": ["_id", "nickname", "members", "public", "deleted"],
+        "items": []
+    },
+    "posts": {
+        "indexes": ["_id", "origin", "user", "content"],
+        "items": []
+    }
+}

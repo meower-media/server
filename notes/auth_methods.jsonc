@@ -10,17 +10,11 @@
         "mfa_method": true,
         "verified": true,
         "encrypted_email": "",
-        "encryption_key": ""
+        "encryption_id": ""
     },
     "totp": {
         "type": "totp",
         "mfa_method": true,
         "totp_secret": ""
-    },
-    "security_key": {
-        "type": "security_key",
-        "mfa_method": true,
-        "key_id": "",
-        "key_secret": ""
     }
 }

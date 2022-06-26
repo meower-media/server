@@ -6,6 +6,9 @@ import secrets
 import pymongo
 import requests
 from threading import Thread
+import base64
+from hashlib import sha256
+import json
 
 # Create permitted lists of characters for posts
 permitted_chars_post = []
@@ -23,9 +26,6 @@ for item in [
     ";"
 ]:
     permitted_chars_username.remove(item)
-
-# Create ratelimit dictionary
-ratelimit = {}
 
 def log(msg, prefix=None):
     if prefix is None:
@@ -54,12 +54,18 @@ def timestamp(ttype, epoch=int(time.time())):
     elif ttype == 5:    
         return str(today.strftime("%d%m%Y"))
 
-def check_for_spam(user, seconds=1):
-    if user in ratelimit:
-        if ratelimit[user] > int(time.time()):
-            return True
-    ratelimit[user] = int(time.time()) + seconds
-    return False
+def check_for_spam(type: str, client: str, seconds: float=1):
+    if not (type in meower.ratelimits):
+        meower.ratelimits[type] = {}
+
+    if not (client in meower.ratelimits[type]):
+        meower.ratelimits[type][client] = 0
+    
+    if meower.ratelimits[type][client] > time.time():
+        return True
+    else:
+        meower.ratelimits[type][client] = time.time() + seconds
+        return False
 
 def check_for_bad_chars_username(message):
     for char in message:
@@ -137,7 +143,17 @@ def send_email(users, subject, body, type="text/plain", unverified_emails=False)
                     })
             Thread(target=run, args=(payload,)).start()
 
-def database_template():
-	# Create indexes
-	meower.db.chats.create_index([("members", pymongo.ASCENDING), ("isPublic", pymongo.ASCENDING)])
-	meower.db.chats.create_index([("members", pymongo.ASCENDING), ("isPublic", pymongo.ASCENDING)])
+def init_db():
+    with open("db_template.json", "r") as f:
+        db_data = json.loads(f.read())
+    for collection_name, collection_data in db_data.items():
+        for index_name in collection_data["indexes"]:
+            try:
+                meower.db[collection_name].create_index(index_name)
+            except:
+                pass
+        for item in collection_data["items"]:
+            try:
+                meower.db[collection_name].insert_one(item)
+            except:
+                pass

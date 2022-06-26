@@ -105,7 +105,7 @@ def before_request():
     if not (request.session.authed or (request.method == "OPTIONS") or (request.path in ["/", "/v0", "/status", "/v0/status", "/v0/socket", "/v0/oauth/login", "/v0/oauth/get-auth-methods", "/v0/oauth/create", "/v0/oauth/login/mfa", "/v0/oauth/session/refresh"]) or request.path.startswith("/admin")):
         abort(401)
 
-@oauth.route("/get-auth-methods", methods=["POST"])
+@oauth.route("/auth-methods", methods=["GET"])
 def get_auth_methods():
     if not ("username" in request.json):
         return meower.respond({"type": "missingField"}, 400, error=True)
@@ -121,18 +121,13 @@ def get_auth_methods():
     elif meower.check_for_bad_chars_username(username):
         return meower.respond({"type": "accountDoesNotExist"}, 400, error=True)
 
-    # Check account flags and password
+    # Make sure account exists and check if it is able to be accessed
     userdata = meower.db["usersv0"].find_one({"lower_username": username.lower()})
     if userdata is None:
         return meower.respond({"type": "accountDoesNotExist"}, 401, error=True)
-    elif userdata["deleted"]:
-        return meower.respond({"type": "accountDeleted"}, 401, error=True)
-    elif (userdata["security"]["banned_until"] > int(time.time())) or (userdata["security"]["banned_until"] == -1):
-        return meower.respond({"type": "accountBanned", "expires": userdata["security"]["banned_until"]}, 401, error=True)
-    
-    # Restore account if it's pending deletion
-    if userdata["security"]["delete_after"] is not None:
-        meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.delete_after": None}})
+    elif len(userdata["security"]["authentication_methods"]) == 0:
+        # Account doesn't have any authentication methods
+        return meower.respond({"type": "noAuthenticationMethods"}, 401, error=True)
 
     # Give authentication methods
     methods_payload = []
@@ -158,10 +153,21 @@ def login():
     elif meower.check_for_bad_chars_username(username):
         return meower.respond({"type": "illegalCharacters"}, 400, error=True)
 
-    # Check account flags and password
+    # Make sure the account exists and check account flags
     userdata = meower.db["usersv0"].find_one({"lower_username": username.lower()})
     if userdata is None:
+        # Account does not exist
         return meower.respond({"type": "accountDoesNotExist"}, 401, error=True)
+    elif userdata["deleted"]:
+        # Account is deleted
+        return meower.respond({"type": "accountDeleted"}, 401, error=True)
+    elif userdata["security"]["banned"]:
+        # Account is banned
+        return meower.respond({"type": "accountBanned"}, 401, error=True)
+    elif len(userdata["security"]["authentication_methods"]) == 0:
+        # Account doesn't have any authentication methods
+        return meower.respond({"type": "noAuthenticationMethods"}, 401, error=True)
+    
     
     # Check for valid authentication
     valid = False

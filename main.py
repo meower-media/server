@@ -4,7 +4,7 @@ from jinja2 import Template
 meower = Flask(__name__)
 
 # Initialize Utils
-from apiv0.utils import log, timestamp, check_for_spam, check_for_bad_chars_post, check_for_bad_chars_username, user_status, send_payload, send_email
+from apiv0.utils import log, timestamp, check_for_spam, check_for_bad_chars_post, check_for_bad_chars_username, user_status, send_payload, send_email, init_db
 meower.log = log
 meower.timestamp = timestamp
 meower.check_for_spam = check_for_spam
@@ -13,6 +13,7 @@ meower.check_for_bad_chars_username = check_for_bad_chars_username
 meower.user_status = user_status
 meower.send_payload = send_payload
 meower.send_email = send_email
+meower.init_db = init_db
 
 # Initialize Responder
 from apiv0.respond import respond
@@ -22,6 +23,7 @@ meower.respond = respond
 import pymongo
 meower.log("Connecting to MongoDB... (if it looks like the server is stuck, it probably couldn't connect to the database)")
 meower.db = pymongo.MongoClient("mongodb://localhost:27017").meowerserver
+meower.init_db()
 
 # Register blueprints
 from apiv0.errors import errors
@@ -46,12 +48,14 @@ meower.register_blueprint(search, url_prefix="/v0/search")
 from flask_sock import Sock
 from apiv0.socket import Socket
 sock = Sock(meower)
-meower.sock_next_id = 0
-meower.sock_clients = {}
-meower.sock_login_codes = {}
+meower.socket = {
+	"next_id": 0,
+	"clients": {},
+	"login_codes": {}
+}
 @sock.route("/v0/socket")
 def socket_server(client):
-	return Socket(meower, client)
+	Socket(meower, client)
 
 # Initialize CORS
 from flask_cors import CORS
@@ -64,29 +68,17 @@ ip_bans = meower.db.netlog.find({"blocked": True})
 for ip in ip_bans:
 	meower.ip_banlist.append(ip["_id"])
 
+# Create ratelimits
+meower.failed_logins = {}
+meower.ratelimits = {}
+
+# Set required authentication keys
+meower.auth_keys = meower.db["config"].find_one({"_id": "auth_keys"})
+del meower.auth_keys["_id"]
+
 # Set repair mode and scratch deprecated state
-data = meower.db["config"].find_one({"_id": "status"})
-if data is None:
-	meower.log("Failed getting server status. Enabling repair mode to be safe.")
-	meower.repair_mode = True
-	meower.scratch_deprecated = False
-else:
-	meower.repair_mode = data["repairMode"]
-	meower.scratch_deprecated = data["scratchDeprecated"]
-
-# Set email authentication key
-data = meower.db["config"].find_one({"_id": "auth_keys"})
-if data is None:
-	meower.log("Failed getting authentication keys. Some functions will be disabled.")
-	meower.auth_keys = None
-else:
-	del data["_id"]
-	meower.auth_keys = data
-
-# Test email sending
-with open(f"apiv0/templates/email/account_termination.html", "r") as f:
-	email_template = Template(f.read()).render({"username": "tnix", "reason": "Unsolicitated spam.", "expires": "1st July, 2022 @ 12:00am", "code": "123456", "token": "testing-abc-xyz"})
-send_email(["176debdf-7edc-4be8-b158-71a2a2dfe23c"], "Testing Emails -- Please tell me what you think", email_template, type="text/html")
+meower.status = meower.db["config"].find_one({"_id": "status"})
+del meower.status["_id"]
 
 # Run Flask app
 meower.run(host="0.0.0.0", port=3000, debug=True)
