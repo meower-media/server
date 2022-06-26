@@ -59,7 +59,7 @@ def get_home():
         userdata = meower.db["usersv0"].find_one({"_id": request.session.user})
         if (userdata["security"]["suspended_until"] > int(time.time())) or (userdata["security"]["suspended_until"] == -1):
             return meower.respond({"type": "accountSuspended"}, 403, error=True)
-        elif meower.check_for_spam(request.session.user):
+        elif meower.check_for_spam("posts-home", request.session.user):
             return meower.respond({"type": "ratelimited"}, 429, error=True)
 
         # Create post

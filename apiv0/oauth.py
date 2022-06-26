@@ -1,5 +1,6 @@
 from flask import Blueprint, request, abort, render_template
 from flask import current_app as meower
+from httplib2 import Authentication
 from passlib.hash import scrypt, bcrypt
 from hashlib import sha256
 import secrets
@@ -169,7 +170,7 @@ def login():
             return meower.respond({"type": "missingField"}, 400, error=True)
         attempted_password = sha256(request.json["password"].strip().encode()).hexdigest()
         for method in userdata["security"]["authentication_methods"]:
-            if method["type"] != auth_method:
+            if method["type"] != "password":
                 continue
             elif (method["hash_type"] == "scrypt") and scrypt.verify(attempted_password, method["password_hash"]):
                 valid = True
@@ -184,8 +185,12 @@ def login():
                 meower.db["usersv0"].update_one({"_id": userdata["_id"], "security.authentication_methods": {"$elemMatch": {"hash_type": "sha256"}}}, {"$set": {"security.authentication_methods.$.hash_type": "scrypt", "security.authentication_methods.$.password_hash": scrypt.hash(attempted_password)}})
                 valid = True
                 break
-    if not valid:
-        return meower.respond({"type": "invalidCredentials"}, 401, error=True)
+        if not valid:
+            return meower.respond({"type": "invalidCredentials"}, 401, error=True)
+    elif auth_method == "email":
+        if meower.check_for_spam("email_login", userdata["_id"], 60):
+            return meower.respond({"type": "tooManyRequests"}, 429, error=True)
+        meower.send_email([userdata["_id"]], "Login Code", )
 
     # Restore account if it's pending deletion
     if userdata["security"]["delete_after"] is not None:
@@ -213,7 +218,6 @@ def login_mfa():
 
     # Get user from token
     token_data = meower.db["sessions"].find_one({"access_token": token})
-    print(token_data)
     if token_data is None:
         return meower.respond({"type": "tokenInvalid"}, 401, error=True)
     elif not ("mfa" in token_data["scopes"]):
