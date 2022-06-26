@@ -1,0 +1,9 @@
+{
+    "_id": "UUID to identify the session",
+    "type": 1,
+    "user": "User ID",
+    "action": "Action that can be taken",
+    "token": "Secure access token - 32 characters long",
+    "expires": "Timestamp of access expiry",
+    "created": "Timestamp of creation"
+}

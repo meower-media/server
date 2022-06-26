@@ -1,9 +1,10 @@
 # Initialize API
 from flask import Flask, request
+from jinja2 import Template
 meower = Flask(__name__)
 
 # Initialize Utils
-from apiv0.utils import log, timestamp, check_for_spam, check_for_bad_chars_post, check_for_bad_chars_username, user_status, send_payload
+from apiv0.utils import log, timestamp, check_for_spam, check_for_bad_chars_post, check_for_bad_chars_username, user_status, send_payload, send_email
 meower.log = log
 meower.timestamp = timestamp
 meower.check_for_spam = check_for_spam
@@ -11,6 +12,7 @@ meower.check_for_bad_chars_post = check_for_bad_chars_post
 meower.check_for_bad_chars_username = check_for_bad_chars_username
 meower.user_status = user_status
 meower.send_payload = send_payload
+meower.send_email = send_email
 
 # Initialize Responder
 from apiv0.respond import respond
@@ -80,6 +82,11 @@ if data is None:
 else:
 	del data["_id"]
 	meower.auth_keys = data
+
+# Test email sending
+with open(f"apiv0/templates/email/account_termination.html", "r") as f:
+	email_template = Template(f.read()).render({"username": "tnix", "reason": "Unsolicitated spam.", "expires": "1st July, 2022 @ 12:00am", "code": "123456", "token": "testing-abc-xyz"})
+send_email(["176debdf-7edc-4be8-b158-71a2a2dfe23c"], "Testing Emails -- Please tell me what you think", email_template, type="text/html")
 
 # Run Flask app
 meower.run(host="0.0.0.0", port=3000, debug=True)
