@@ -72,6 +72,11 @@ for ip in ip_bans:
 meower.failed_logins = {}
 meower.ratelimits = {}
 
+# Create email keys
+meower.email_keys = {
+	"login": {}
+}
+
 # Set required authentication keys
 meower.auth_keys = meower.db["config"].find_one({"_id": "auth_keys"})
 del meower.auth_keys["_id"]

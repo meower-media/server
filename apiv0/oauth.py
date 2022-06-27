@@ -1,3 +1,4 @@
+from jinja2 import Template
 from flask import Blueprint, request, abort, render_template
 from flask import current_app as meower
 from httplib2 import Authentication
@@ -10,13 +11,14 @@ import time
 import requests
 from uuid import uuid4
 import json
+import string
 
-oauth = Blueprint("oauth_blueprint", __name__, template_folder="templates")
+oauth = Blueprint("oauth_blueprint", __name__)
 
 def generate_token(length):
     return "{0}.{1}".format(str(secrets.token_urlsafe(length)), float(time.time()))
 
-def create_session(type: int, user: str, action: str=None, oauth_app: str=None, scopes: list=[], signle_use: bool=False, expiry_time: int=None):
+def create_session(type: int, user: str, action: str=None, oauth_app: str=None, scopes: list=[], single_use: bool=False, expiry_time: int=None):
     if type == 0: # Single action sessions
         session_data = {
             "_id": str(uuid4()),
@@ -26,7 +28,7 @@ def create_session(type: int, user: str, action: str=None, oauth_app: str=None, 
             "action": action,
             "token": generate_token(64),
             "expires": int(time.time()) + expiry_time,
-            "single_use": signle_use,
+            "single_use": single_use,
             "created": int(time.time())
         }
     elif type == 1: # OAuth session
@@ -102,151 +104,8 @@ def before_request():
         request.session = Session(str(request.headers.get("Authorization")).replace("Bearer ", ""))
 
     # Exit request if client is not authenticated
-    if not (request.session.authed or (request.method == "OPTIONS") or (request.path in ["/", "/v0", "/status", "/v0/status", "/v0/socket", "/v0/oauth/login", "/v0/oauth/get-auth-methods", "/v0/oauth/create", "/v0/oauth/login/mfa", "/v0/oauth/session/refresh"]) or request.path.startswith("/admin")):
+    if not (request.session.authed or (request.method == "OPTIONS") or (request.path in ["/", "/v0", "/status", "/v0/status", "/v0/socket", "/v0/oauth/login", "/v0/oauth/auth-methods", "/v0/oauth/create", "/v0/oauth/login/email", "/v0/oauth/login/mfa", "/v0/oauth/session/refresh"]) or request.path.startswith("/admin")):
         abort(401)
-
-@oauth.route("/auth-methods", methods=["GET"])
-def get_auth_methods():
-    if not ("username" in request.json):
-        return meower.respond({"type": "missingField"}, 400, error=True)
-
-    # Extract username for simplicity
-    username = request.json["username"].strip()
-
-    # Check for bad datatypes and syntax
-    if not (type(username) == str):
-        return meower.respond({"type": "accountDoesNotExist"}, 400, error=True)
-    elif len(username) > 20:
-        return meower.respond({"type": "accountDoesNotExist"}, 400, error=True)
-    elif meower.check_for_bad_chars_username(username):
-        return meower.respond({"type": "accountDoesNotExist"}, 400, error=True)
-
-    # Make sure account exists and check if it is able to be accessed
-    userdata = meower.db["usersv0"].find_one({"lower_username": username.lower()})
-    if userdata is None:
-        return meower.respond({"type": "accountDoesNotExist"}, 401, error=True)
-    elif len(userdata["security"]["authentication_methods"]) == 0:
-        # Account doesn't have any authentication methods
-        return meower.respond({"type": "noAuthenticationMethods"}, 401, error=True)
-
-    # Give authentication methods
-    methods_payload = []
-    for method in userdata["security"]["authentication_methods"]:
-        if not (method["type"] in methods_payload):
-            methods_payload.append(method["type"])
-    return meower.respond({"methods": methods_payload, "default": userdata["security"]["default_method"]}, 200, error=False)
-
-@oauth.route("/login", methods=["POST"])
-def login():
-    if not (("username" in request.json) and ("auth_method" in request.json)):
-        return meower.respond({"type": "missingField"}, 400, error=True)
-
-    # Extract username and password for simplicity
-    username = request.json["username"].strip()
-    auth_method = request.json["auth_method"].strip().lower()
-
-    # Check for bad datatypes and syntax
-    if not ((type(username) == str) and (type(auth_method) == str)):
-        return meower.respond({"type": "badDatatype"}, 400, error=True)
-    elif len(username) > 20:
-        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
-    elif meower.check_for_bad_chars_username(username):
-        return meower.respond({"type": "illegalCharacters"}, 400, error=True)
-
-    # Make sure the account exists and check account flags
-    userdata = meower.db["usersv0"].find_one({"lower_username": username.lower()})
-    if userdata is None:
-        # Account does not exist
-        return meower.respond({"type": "accountDoesNotExist"}, 401, error=True)
-    elif userdata["deleted"]:
-        # Account is deleted
-        return meower.respond({"type": "accountDeleted"}, 401, error=True)
-    elif userdata["security"]["banned"]:
-        # Account is banned
-        return meower.respond({"type": "accountBanned"}, 401, error=True)
-    elif len(userdata["security"]["authentication_methods"]) == 0:
-        # Account doesn't have any authentication methods
-        return meower.respond({"type": "noAuthenticationMethods"}, 401, error=True)
-    
-    
-    # Check for valid authentication
-    valid = False
-    if auth_method == "password":
-        if not ("password" in request.form):
-            return meower.respond({"type": "missingField"}, 400, error=True)
-        attempted_password = sha256(request.json["password"].strip().encode()).hexdigest()
-        for method in userdata["security"]["authentication_methods"]:
-            if method["type"] != "password":
-                continue
-            elif (method["hash_type"] == "scrypt") and scrypt.verify(attempted_password, method["password_hash"]):
-                valid = True
-                break
-            elif (method["hash_type"] == "bcrypt") and bcrypt.verify(str(request.json["password"]), method["password_hash"]):
-                # Legacy support for Meower Scratch 4.7-5.6 -- updates to scrypt on first login
-                meower.db["usersv0"].update_one({"_id": userdata["_id"], "security.authentication_methods": {"$elemMatch": {"hash_type": "bcrypt"}}}, {"$set": {"security.authentication_methods.$.hash_type": "scrypt", "security.authentication_methods.$.password_hash": scrypt.hash(attempted_password)}})
-                valid = True
-                break
-            elif (method["hash_type"] == "sha256") and (method["password_hash"] == sha256(attempted_password.encode()).hexdigest()):
-                # Legacy support for Meower Scratch 4.5-4.6 -- updates to scrypt on first login
-                meower.db["usersv0"].update_one({"_id": userdata["_id"], "security.authentication_methods": {"$elemMatch": {"hash_type": "sha256"}}}, {"$set": {"security.authentication_methods.$.hash_type": "scrypt", "security.authentication_methods.$.password_hash": scrypt.hash(attempted_password)}})
-                valid = True
-                break
-        if not valid:
-            return meower.respond({"type": "invalidCredentials"}, 401, error=True)
-    elif auth_method == "email":
-        if meower.check_for_spam("email_login", userdata["_id"], 60):
-            return meower.respond({"type": "tooManyRequests"}, 429, error=True)
-        meower.send_email([userdata["_id"]], "Login Code", )
-
-    # Restore account if it's pending deletion
-    if userdata["security"]["delete_after"] is not None:
-        meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.delete_after": None}})
-
-    # Full account session
-    session = create_session(0, userdata["_id"], action="foundation", single_use=False, expiry_time=5260000)
-    del userdata["security"]
-    return meower.respond({"session": session, "user": userdata, "requires_mfa": False, "mfa_options": None}, 200, error=False)
-
-@oauth.route("/login/mfa", methods=["POST"])
-def login_mfa():
-    if not (("token" in request.form) and ("code" in request.form)):
-        return meower.respond({"type": "missingField"}, 400, error=True)
-    
-    # Extract token and MFA code for simplicity
-    token = request.form.get("token")
-    code = request.form.get("code")
-
-    # Check for bad datatypes and syntax
-    if not ((type(token) == str) and (type(code) == str)):
-        return meower.respond({"type": "badDatatype"}, 400, error=True)
-    elif (len(token) > 100) or (len(code) > 6):
-        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
-
-    # Get user from token
-    token_data = meower.db["sessions"].find_one({"access_token": token})
-    if token_data is None:
-        return meower.respond({"type": "tokenInvalid"}, 401, error=True)
-    elif not ("mfa" in token_data["scopes"]):
-        return meower.respond({"type": "tokenInvalid"}, 401, error=True)
-    elif token_data["access_expiry"] < int(time.time()):
-        return meower.respond({"type": "tokenInvalid"}, 401, error=True)
-    else:
-        user = token_data["user"]
-        userdata = meower.db["usersv0"].find_one({"_id": user})
-        if userdata is None:
-            return meower.respond({"type": "tokenInvalid"}, 401, error=True)
-
-    # Check MFA code
-    if not pyotp.TOTP(userdata["security"]["mfa_secret"]).verify(code):
-        return meower.respond({"type": "mfaInvalid"}, 401, error=True)
-
-    # Delete temporary MFA session
-    meower.db["sessions"].delete_one({"_id": token_data["_id"]})
-
-    # Generate full account session and return to user
-    session = create_session(0, userdata["_id"], action="foundation", single_use=False, expiry_time=5260000)
-    del userdata["security"]
-    return meower.respond({"session": session, "user": userdata, "requires_mfa": False}, 200, error=False)
 
 @oauth.route("/create", methods=["POST"])
 def create_account():
@@ -254,12 +113,13 @@ def create_account():
     if meower.db["netlog"].find_one({"_id": request.remote_addr, "creation_blocked": True}) is not None:
         return meower.respond({"type": "accountCreationBlocked"}, 403, error=True)
 
-    if not (("username" in request.form) and ("password" in request.form)):
+    # Check for required data
+    if not (("username" in request.json) and ("password" in request.json)):
         return meower.respond({"type": "missingField"}, 400, error=True)
 
     # Extract username and password for simplicity
-    username = request.form.get("username").strip()
-    password = request.form.get("password").strip()
+    username = request.json["username"].strip()
+    password = request.json["password"].strip()
 
     # Check for bad datatypes and syntax
     if not ((type(password) == str) and (type(password) == str)):
@@ -311,34 +171,221 @@ def create_account():
                 }
             ],
             "default_method": 0,
-            "multi_factor": False,
+            "last_changed_username": 0,
+            "last_requested_data": 0,
             "delete_after": None,
-            "locked_until": 0,
-            "suspended_until": 0,
-            "banned_until": 0
-        },
-        "ratelimits": {
-            "authentication": 0,
-            "change_username": 0,
-            "change_password": 0,
-            "email_verification": 0,
-            "reset_password": 0,
-            "data_export": 0
+            "suspended_until": None,
+            "banned": False
         }
     }
     if "email" in request.json:
         userdata["security"]["authentication_methods"].append({
             "id": str(uuid4()),
             "type": "email",
-            "mfa_method": True,
+            "mfa_method": False,
             "verified": False,
             "encrypted_email": "",
-            "encryption_key": ""
+            "encryption_id": ""
         })
     meower.db["usersv0"].insert_one(userdata)
 
     # Generate new session and return to user
     session = create_session(userdata["_id"], scopes=["all"])
+    del userdata["security"]
+    return meower.respond({"session": session, "user": userdata, "requires_mfa": False}, 200, error=False)
+
+@oauth.route("/auth-methods", methods=["GET"])
+def get_auth_methods():
+    # Check for required data
+    if not ("username" in request.json):
+        return meower.respond({"type": "missingField"}, 400, error=True)
+
+    # Extract username for simplicity
+    username = request.json["username"].strip()
+
+    # Check for bad datatypes and syntax
+    if not (type(username) == str):
+        return meower.respond({"type": "accountDoesNotExist"}, 400, error=True)
+    elif len(username) > 20:
+        return meower.respond({"type": "accountDoesNotExist"}, 400, error=True)
+    elif meower.check_for_bad_chars_username(username):
+        return meower.respond({"type": "accountDoesNotExist"}, 400, error=True)
+
+    # Make sure account exists and check if it is able to be accessed
+    userdata = meower.db["usersv0"].find_one({"lower_username": username.lower()})
+    if userdata is None:
+        return meower.respond({"type": "accountDoesNotExist"}, 401, error=True)
+    elif len(userdata["security"]["authentication_methods"]) == 0:
+        # Account doesn't have any authentication methods
+        return meower.respond({"type": "noAuthenticationMethods"}, 401, error=True)
+
+    # Give authentication methods
+    methods_payload = []
+    for method in userdata["security"]["authentication_methods"]:
+        if not (method["type"] in methods_payload):
+            methods_payload.append(method["type"])
+    return meower.respond({"methods": methods_payload, "default": userdata["security"]["default_method"]}, 200, error=False)
+
+@oauth.route("/login", methods=["POST"])
+def login():
+    # Check for required data
+    if not (("username" in request.json) and ("auth_method" in request.json)):
+        return meower.respond({"type": "missingField"}, 400, error=True)
+
+    # Extract username and password for simplicity
+    username = request.json["username"].strip()
+    auth_method = request.json["auth_method"].strip().lower()
+
+    # Check for bad datatypes and syntax
+    if not ((type(username) == str) and (type(auth_method) == str)):
+        return meower.respond({"type": "badDatatype"}, 400, error=True)
+    elif len(username) > 20:
+        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
+    elif meower.check_for_bad_chars_username(username):
+        return meower.respond({"type": "illegalCharacters"}, 400, error=True)
+
+    # Make sure the account exists and check account flags
+    userdata = meower.db["usersv0"].find_one({"lower_username": username.lower()})
+    if userdata is None:
+        # Account does not exist
+        return meower.respond({"type": "accountDoesNotExist"}, 401, error=True)
+    elif userdata["deleted"]:
+        # Account is deleted
+        return meower.respond({"type": "accountDeleted"}, 401, error=True)
+    elif userdata["security"]["banned"]:
+        # Account is banned
+        return meower.respond({"type": "accountBanned"}, 401, error=True)
+    elif len(userdata["security"]["authentication_methods"]) == 0:
+        # Account doesn't have any authentication methods
+        return meower.respond({"type": "noAuthenticationMethods"}, 401, error=True)
+    
+    # Check for valid authentication
+    valid = False
+    if auth_method == "password":
+        if not ("password" in request.form):
+            return meower.respond({"type": "missingField"}, 400, error=True)
+        attempted_password = sha256(request.json["password"].strip().encode()).hexdigest()
+        for method in userdata["security"]["authentication_methods"]:
+            if method["type"] != "password":
+                continue
+            elif (method["hash_type"] == "scrypt") and scrypt.verify(attempted_password, method["password_hash"]):
+                valid = True
+                break
+            elif (method["hash_type"] == "bcrypt") and bcrypt.verify(str(request.json["password"]), method["password_hash"]):
+                # Legacy support for Meower Scratch 4.7-5.6 -- updates to scrypt on first login
+                meower.db["usersv0"].update_one({"_id": userdata["_id"], "security.authentication_methods": {"$elemMatch": {"hash_type": "bcrypt"}}}, {"$set": {"security.authentication_methods.$.hash_type": "scrypt", "security.authentication_methods.$.password_hash": scrypt.hash(attempted_password)}})
+                valid = True
+                break
+            elif (method["hash_type"] == "sha256") and (method["password_hash"] == sha256(attempted_password.encode()).hexdigest()):
+                # Legacy support for Meower Scratch 4.5-4.6 -- updates to scrypt on first login
+                meower.db["usersv0"].update_one({"_id": userdata["_id"], "security.authentication_methods": {"$elemMatch": {"hash_type": "sha256"}}}, {"$set": {"security.authentication_methods.$.hash_type": "scrypt", "security.authentication_methods.$.password_hash": scrypt.hash(attempted_password)}})
+                valid = True
+                break
+        if not valid:
+            return meower.respond({"type": "invalidCredentials"}, 401, error=True)
+    elif auth_method == "email":
+        if meower.check_for_spam("email_login", userdata["_id"], 60):
+            return meower.respond({"type": "tooManyRequests"}, 429, error=True)
+        new_code = str("".join(secrets.choice(string.ascii_letters + string.digits) for i in range(8))).upper()
+        meower.email_keys["login"][new_code.lower()] = {
+            "user": userdata["_id"],
+            "expires": int(time.time()) + 600
+        }
+        with open("apiv0/email_templates/verification_code.html", "r") as f:
+            email_template = f.read()
+        meower.send_email([userdata["_id"]], "Login Code", Template(email_template).render({"username": userdata["username"], "code": new_code}), type="text/html")
+        return meower.respond({}, 200, error=False)
+
+    # Restore account if it's pending deletion
+    if userdata["security"]["delete_after"] is not None:
+        meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.delete_after": None}})
+
+    # Full account session
+    session = create_session(0, userdata["_id"], action="foundation", single_use=False, expiry_time=5260000)
+    del userdata["security"]
+    return meower.respond({"session": session, "user": userdata, "requires_mfa": False, "mfa_options": None}, 200, error=False)
+
+@oauth.route("/login/email", methods=["POST"])
+def login_email():
+    # Check for required data
+    if not (("username" in request.json) and ("code" in request.json)):
+        return meower.respond({"type": "missingField"}, 400, error=True)
+
+    # Extract username and given code for simplicity
+    username = request.json["username"].strip().lower()
+    code = request.json["code"].strip().lower()
+
+    # Check for bad datatypes and syntax
+    if not ((type(username) == str) and (type(code) == str)):
+        return meower.respond({"type": "badDatatype"}, 400, error=True)
+    elif (len(username) > 20) or (len(code) > 8):
+        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
+    elif meower.check_for_bad_chars_username(username):
+        return meower.respond({"type": "illegalCharacters"}, 400, error=True)
+
+    # Get login code from memory
+    if not (code in meower.email_keys["login"]):
+        return meower.respond({"type": "invalidCredentials"}, 401, error=True)
+    elif meower.email_keys["login"][code]["expires"] < int(time.time()):
+        return meower.respond({"type": "invalidCredentials"}, 401, error=True)
+    else:
+        userdata = meower.db["usersv0"].find_one({"_id": meower.email_keys["login"][code]["user"]})
+    
+    # Check if username matches
+    if userdata["lower_username"] != username:
+        return meower.respond({"type": "invalidCredentials"}, 401, error=True)
+
+    # Delete login code
+    del meower.email_keys["login"][code]
+
+    # Restore account if it's pending deletion
+    if userdata["security"]["delete_after"] is not None:
+        meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.delete_after": None}})
+
+    # Full account session
+    session = create_session(0, userdata["_id"], action="foundation", single_use=False, expiry_time=5260000)
+    del userdata["security"]
+    return meower.respond({"session": session, "user": userdata, "requires_mfa": False, "mfa_options": None}, 200, error=False)
+
+""" \/ All this stuff needs to be updated \/
+@oauth.route("/login/mfa", methods=["POST"])
+def login_mfa():
+    if not (("token" in request.form) and ("code" in request.form)):
+        return meower.respond({"type": "missingField"}, 400, error=True)
+    
+    # Extract token and MFA code for simplicity
+    token = request.form.get("token")
+    code = request.form.get("code")
+
+    # Check for bad datatypes and syntax
+    if not ((type(token) == str) and (type(code) == str)):
+        return meower.respond({"type": "badDatatype"}, 400, error=True)
+    elif (len(token) > 100) or (len(code) > 6):
+        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
+
+    # Get user from token
+    token_data = meower.db["sessions"].find_one({"access_token": token})
+    if token_data is None:
+        return meower.respond({"type": "tokenInvalid"}, 401, error=True)
+    elif not ("mfa" in token_data["scopes"]):
+        return meower.respond({"type": "tokenInvalid"}, 401, error=True)
+    elif token_data["access_expiry"] < int(time.time()):
+        return meower.respond({"type": "tokenInvalid"}, 401, error=True)
+    else:
+        user = token_data["user"]
+        userdata = meower.db["usersv0"].find_one({"_id": user})
+        if userdata is None:
+            return meower.respond({"type": "tokenInvalid"}, 401, error=True)
+
+    # Check MFA code
+    if not pyotp.TOTP(userdata["security"]["mfa_secret"]).verify(code):
+        return meower.respond({"type": "mfaInvalid"}, 401, error=True)
+
+    # Delete temporary MFA session
+    meower.db["sessions"].delete_one({"_id": token_data["_id"]})
+
+    # Generate full account session and return to user
+    session = create_session(0, userdata["_id"], action="foundation", single_use=False, expiry_time=5260000)
     del userdata["security"]
     return meower.respond({"session": session, "user": userdata, "requires_mfa": False}, 200, error=False)
 
@@ -480,3 +527,4 @@ def mfa():
         meower.ws.sendPayload(request.session.user, "update_config", "", username=request.session.user)
 
         return meower.respond({}, 200, error=False)
+"""
