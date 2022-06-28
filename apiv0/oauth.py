@@ -47,7 +47,10 @@ def create_session(type, user, token, expires=None, action=None, app=None, scope
             session_data[item] = None
 
     # Set expiration time
-    session_data["expires"] = time.time() + {0: expires, 1: 300, 2: 300, 3: 31556952, 4: 1800}[session_data["type"]]
+    if expires is not None:
+        session_data["expires"] = time.time() + expires
+    else:
+        session_data["expires"] = time.time() + {1: 300, 2: 300, 3: 31556952, 4: 1800}[session_data["type"]]
 
     # Add session to database and return session data
     meower.db["sessions"].insert_one(session_data)
@@ -82,7 +85,7 @@ def before_request():
                     self.json = token_data
                     for key, value in token_data.items():
                         setattr(self, key, value)
-                    if (not ((self.expires <= time.time()) or self.revoked)) or (self.expires == None):
+                    if (not ((self.expires < time.time()) or self.revoked)) or (self.expires == None):
                         self.authed = True
             except:
                 pass
@@ -192,7 +195,7 @@ def create_account():
     meower.db["usersv0"].insert_one(userdata)
 
     # Generate new session and return to user
-    session = create_session(userdata["_id"], scopes=["all"])
+    session = create_session(3, userdata["_id"], generate_token(64))
     del userdata["security"]
     return meower.respond({"session": session, "user": userdata, "requires_mfa": False}, 200, error=False)
 
@@ -289,10 +292,7 @@ def login():
         if meower.check_for_spam("email_login", userdata["_id"], 60):
             return meower.respond({"type": "tooManyRequests"}, 429, error=True)
         new_code = str("".join(secrets.choice(string.ascii_letters + string.digits) for i in range(8))).upper()
-        meower.email_keys["login"][new_code.lower()] = {
-            "user": userdata["_id"],
-            "expires": int(time.time()) + 600
-        }
+        create_session(0, userdata["_id"], new_code, expires=600, action="login")
         with open("apiv0/email_templates/verification_code.html", "r") as f:
             email_template = f.read()
         meower.send_email([userdata["_id"]], "Login Code", Template(email_template).render({"username": userdata["username"], "code": new_code}), type="text/html")
@@ -303,7 +303,7 @@ def login():
         meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.delete_after": None}})
 
     # Full account session
-    session = create_session(0, userdata["_id"], action="foundation", single_use=False, expiry_time=5260000)
+    session = create_session(3, userdata["_id"], generate_token(64))
     del userdata["security"]
     return meower.respond({"session": session, "user": userdata, "requires_mfa": False, "mfa_options": None}, 200, error=False)
 
@@ -315,7 +315,7 @@ def login_email():
 
     # Extract username and given code for simplicity
     username = request.json["username"].strip().lower()
-    code = request.json["code"].strip().lower()
+    code = request.json["code"].strip().upper()
 
     # Check for bad datatypes and syntax
     if not ((type(username) == str) and (type(code) == str)):
@@ -325,27 +325,23 @@ def login_email():
     elif meower.check_for_bad_chars_username(username):
         return meower.respond({"type": "illegalCharacters"}, 400, error=True)
 
-    # Get login code from memory
-    if not (code in meower.email_keys["login"]):
-        return meower.respond({"type": "invalidCredentials"}, 401, error=True)
-    elif meower.email_keys["login"][code]["expires"] < int(time.time()):
+    # Get userdata from database
+    userdata = meower.db["usersv0"].find_one({"lower_username": username})
+
+    # Get session data from database
+    session_data = meower.db["sessions"].find_one({"token": code})
+    if (session_data is None) or (session_data["type"] != 0) or (session_data["user"] != userdata["_id"]) or (session_data["expires"] < time.time()) or session_data["revoked"]:
         return meower.respond({"type": "invalidCredentials"}, 401, error=True)
     else:
-        userdata = meower.db["usersv0"].find_one({"_id": meower.email_keys["login"][code]["user"]})
-    
-    # Check if username matches
-    if userdata["lower_username"] != username:
-        return meower.respond({"type": "invalidCredentials"}, 401, error=True)
-
-    # Delete login code
-    del meower.email_keys["login"][code]
+        # Delete session
+        meower.db["sessions"].delete_one({"_id": session_data["_id"]})
 
     # Restore account if it's pending deletion
     if userdata["security"]["delete_after"] is not None:
         meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.delete_after": None}})
 
     # Full account session
-    session = create_session(0, userdata["_id"], action="foundation", single_use=False, expiry_time=5260000)
+    session = create_session(3, userdata["_id"], generate_token(64))
     del userdata["security"]
     return meower.respond({"session": session, "user": userdata, "requires_mfa": False, "mfa_options": None}, 200, error=False)
 
