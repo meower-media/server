@@ -18,36 +18,38 @@ oauth = Blueprint("oauth_blueprint", __name__)
 def generate_token(length):
     return "{0}.{1}".format(str(secrets.token_urlsafe(length)), float(time.time()))
 
-def create_session(type: int, user: str, action: str=None, oauth_app: str=None, scopes: list=[], single_use: bool=False, expiry_time: int=None):
-    if type == 0: # Single action sessions
-        session_data = {
-            "_id": str(uuid4()),
-            "type": 0,
-            "user": user,
-            "user_agent": request.headers.get("User-Agent"),
-            "action": action,
-            "token": generate_token(64),
-            "expires": int(time.time()) + expiry_time,
-            "single_use": single_use,
-            "created": int(time.time())
-        }
-    elif type == 1: # OAuth session
-        session_data = {
-            "_id": str(uuid4()),
-            "type": 1,
-            "user": user,
-            "user_agent": request.headers.get("User-Agent"),
-            "oauth_app": oauth_app,
-            "scopes": scopes,
-            "token": generate_token(32),
-            "expires": int(time.time()) + 1800,
-            "refresh_token": generate_token(128),
-            "refresh_expires": int(time.time()) + 31536000,
-            "previous_refresh_tokens": [],
-            "created": int(time.time())
-        }
-    else:
-        return None
+def create_session(type, user, token, expires=None, action=None, app=None, scopes=None):
+    # Base session data
+    session_data = {
+        "_id": str(uuid4()),
+        "type": type,
+        "user": user,
+        "user_agent": (request.headers.get("User-Agent") if "User-Agent" in request.headers else None),
+        "token": token,
+        "expires": None,
+        "created": time.time(),
+        "revoked": False
+    }
+    
+    # Add specific data for each type
+    if type == 0:
+        session_data["action"] = action
+    elif type == 4:
+        session_data["app"] = app
+        session_data["scopes"] = scopes
+        session_data["refresh_token"] = generate_token(128)
+        session_data["refresh_expires"] = time.time() + 31556952
+        session_data["previous_refresh_tokens"] = []
+
+    # Add any missing data
+    for item in ["_id", "type", "user", "action", "app", "scopes", "refresh_token", "refresh_expires", "previous_refresh_tokens", "user_agent", "token", "expires", "created", "revoked"]:
+        if item not in session_data:
+            session_data[item] = None
+
+    # Set expiration time
+    session_data["expires"] = time.time() + {0: expires, 1: 300, 2: 300, 3: 31556952, 4: 1800}[session_data["type"]]
+
+    # Add session to database and return session data
     meower.db["sessions"].insert_one(session_data)
     return session_data
 
@@ -70,37 +72,37 @@ def before_request():
 
     class Session:
         def __init__(self, token):
-            if token is not None:
-                token_data = meower.db.sessions.find_one({"access_token": token, "access_expiry": {"$gt": int(time.time())}})
+            # Get session data from database
+            token_data = meower.db.sessions.find_one({"token": token})
             
-            if token_data is not None:
-                self.json = token_data
-                self.authed = True
-                self.id = token_data["_id"]
-                self.user = token_data["user"]
-                self.user_agent = token_data["user_agent"]
-                self.oauth_app = token_data["oauth_app"]
-                self.scopes = token_data["scopes"]
-                self.expires = token_data["access_expiry"]
-                self.renew = token_data["renew_token"]
-                self.created = token_data["created"]
-            else:
-                self.json = None
-                self.authed = False
-                self.id = None
-                self.user = None
-                self.user_agent = None
-                self.oauth_app = None
-                self.scopes =  None
-                self.expires = None
-                self.renew = None
-                self.created = None
+            # Check if session is valid
+            self.authed = False
+            try:
+                if token_data is not None:
+                    self.json = token_data
+                    for key, value in token_data.items():
+                        setattr(self, key, value)
+                    if (not ((self.expires <= time.time()) or self.revoked)) or (self.expires == None):
+                        self.authed = True
+            except:
+                pass
 
+        def renew(self):
+            # Renew session
+            meower.db.sessions.update_one({"_id": self._id}, {"$set": {"expires": time.time() + self.expires}})
+            self.expires = time.time() + self.expires
+
+        def revoke(self):
+            # Revoke session
+            self.revoked = True
+            meower.db.sessions.update_one({"_id": self._id}, {"$set": {"revoked": True}})
+        
         def delete(self):
-            meower.db.sessions.delete_one({"_id": self.id})
+            # Delete session
+            meower.db.sessions.delete_one({"_id": self._id})
 
     # Check whether the client is authenticated
-    if len(str(request.headers.get("Authorization"))) <= 136:
+    if ("Authorization" in request.headers) or (len(str(request.headers.get("Authorization"))) <= 136):
         request.session = Session(str(request.headers.get("Authorization")).replace("Bearer ", ""))
 
     # Exit request if client is not authenticated

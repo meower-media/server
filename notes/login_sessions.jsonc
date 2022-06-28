@@ -1,8 +1,51 @@
 {
-    "_id": "UUID to identify the session",
-    "type": 0,
-    "user": "User ID",
-    "token": "Secure access token - 64 characters long",
-    "expires": "Timestamp of access expiry - expires after 30 days of no use",
-    "created": "Timestamp of creation - can no longer be used if over a year old"
+    "type 0 - email": {
+        "_id": "UUID to identify the session",
+        "type": 0,
+        "user": "User ID",
+        "action": "",
+        "token": "Secure token/code",
+        "expires": "Timestamp of access expiry",
+        "created": "Timestamp of creation"
+    },
+    "type 1 - device code": {
+        "_id": "UUID to identify the session",
+        "type": 1,
+        "user": "User ID",
+        "token": "Secure code",
+        "expires": "Timestamp of access expiry",
+        "created": "Timestamp of creation"
+    },
+    "type 2 - MFA": {
+        "_id": "UUID to identify the session",
+        "type": 2,
+        "user": "User ID",
+        "token": "Secure token",
+        "expires": "Timestamp of access expiry",
+        "created": "Timestamp of creation"
+    },
+    "type 3 - foundation": {
+        "_id": "UUID to identify the session",
+        "type": 3,
+        "user": "User ID",
+        "user_agent": "",
+        "token": "Secure token",
+        "expires": "Timestamp of access expiry",
+        "created": "Timestamp of creation",
+        "revoked": false
+    },
+    "type 4 - OAuth": {
+        "_id": "UUID to identify the session",
+        "type": 4,
+        "user": "User ID",
+        "app": "",
+        "scopes": [],
+        "token": "Secure token",
+        "expires": "Timestamp of access expiry",
+        "refresh_token": "Secure refresh token",
+        "refresh_expires": "Timestamp of refresh expiry",
+        "previous_refresh_tokens": [],
+        "created": "Timestamp of creation",
+        "revoked": false
+    }
 }
