@@ -13,6 +13,7 @@
         "type": 1,
         "user": "User ID",
         "token": "Secure code",
+        "verified": false,
         "expires": "Timestamp of access expiry",
         "created": "Timestamp of creation"
     },

@@ -34,6 +34,8 @@ def create_session(type, user, token, expires=None, action=None, app=None, scope
     # Add specific data for each type
     if type == 0:
         session_data["action"] = action
+    elif type == 1:
+        session_data["verified"] = False
     elif type == 4:
         session_data["app"] = app
         session_data["scopes"] = scopes
@@ -55,6 +57,21 @@ def create_session(type, user, token, expires=None, action=None, app=None, scope
     # Add session to database and return session data
     meower.db["sessions"].insert_one(session_data)
     return session_data
+
+def foundation_session(user):
+    # Create session
+    session = create_session(3, user, generate_token(64))
+    del session["previous_refresh_tokens"]
+
+    # Get user data
+    userdata = meower.db["usersv0"].find_one({"_id": user})
+    # Restore account if it's pending deletion
+    if userdata["security"]["delete_after"] is not None:
+        meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.delete_after": None}})
+    del userdata["security"]
+
+    # Return session data
+    return {"session": session, "user": userdata, "requires_mfa": False, "mfa_options": None}
 
 @oauth.before_app_request
 def before_request():
@@ -81,7 +98,7 @@ def before_request():
             # Check if session is valid
             self.authed = False
             try:
-                if token_data is not None:
+                if (token_data is not None) and (token_data["type"] == 3 or token_data["type"] == 4):
                     self.json = token_data
                     for key, value in token_data.items():
                         setattr(self, key, value)
@@ -106,10 +123,10 @@ def before_request():
 
     # Check whether the client is authenticated
     if ("Authorization" in request.headers) or (len(str(request.headers.get("Authorization"))) <= 136):
-        request.session = Session(str(request.headers.get("Authorization")).replace("Bearer ", ""))
+        request.session = Session(str(request.headers.get("Authorization")).replace("Bearer ", "").strip())
 
     # Exit request if client is not authenticated
-    if not (request.session.authed or (request.method == "OPTIONS") or (request.path in ["/", "/v0", "/status", "/v0/status", "/v0/socket", "/v0/oauth/login", "/v0/oauth/auth-methods", "/v0/oauth/create", "/v0/oauth/login/email", "/v0/oauth/login/mfa", "/v0/oauth/session/refresh"]) or request.path.startswith("/admin")):
+    if not (request.session.authed or (request.method == "OPTIONS") or (request.path in ["/", "/v0", "/status", "/v0/status", "/v0/socket", "/v0/oauth/login", "/v0/oauth/auth-methods", "/v0/oauth/create", "/v0/oauth/login/email", "/v0/oauth/login/device", "/v0/oauth/login/mfa", "/v0/oauth/session/refresh"]) or request.path.startswith("/admin")):
         abort(401)
 
 @oauth.route("/create", methods=["POST"])
@@ -169,6 +186,7 @@ def create_account():
         "security": {
             "authentication_methods": [
                 {
+                    "id": str(uuid4()),
                     "type": "password",
                     "mfa_method": False,
                     "hash_type": "scrypt",
@@ -219,6 +237,7 @@ def get_auth_methods():
     # Make sure account exists and check if it is able to be accessed
     userdata = meower.db["usersv0"].find_one({"lower_username": username.lower()})
     if userdata is None:
+        # Account does not exist
         return meower.respond({"type": "accountDoesNotExist"}, 401, error=True)
     elif len(userdata["security"]["authentication_methods"]) == 0:
         # Account doesn't have any authentication methods
@@ -286,7 +305,9 @@ def login():
                 meower.db["usersv0"].update_one({"_id": userdata["_id"], "security.authentication_methods": {"$elemMatch": {"hash_type": "sha256"}}}, {"$set": {"security.authentication_methods.$.hash_type": "scrypt", "security.authentication_methods.$.password_hash": scrypt.hash(attempted_password)}})
                 valid = True
                 break
-        if not valid:
+        if valid:
+            return meower.respond(foundation_session(userdata["_id"]), 200, error=False)
+        else:
             return meower.respond({"type": "invalidCredentials"}, 401, error=True)
     elif auth_method == "email":
         if meower.check_for_spam("email_login", userdata["_id"], 60):
@@ -297,15 +318,16 @@ def login():
             email_template = f.read()
         meower.send_email([userdata["_id"]], "Login Code", Template(email_template).render({"username": userdata["username"], "code": new_code}), type="text/html")
         return meower.respond({}, 200, error=False)
-
-    # Restore account if it's pending deletion
-    if userdata["security"]["delete_after"] is not None:
-        meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.delete_after": None}})
-
-    # Full account session
-    session = create_session(3, userdata["_id"], generate_token(64))
-    del userdata["security"]
-    return meower.respond({"session": session, "user": userdata, "requires_mfa": False, "mfa_options": None}, 200, error=False)
+    elif auth_method == "device":
+        new_code = str("".join(secrets.choice(string.ascii_letters + string.digits) for i in range(8))).upper()
+        session = create_session(1, userdata["_id"], new_code, expires=300)
+        del session["previous_refresh_tokens"]
+        minimal_userdata = {}
+        for key in ["username", "lower_username", "state", "deleted", "created"]:
+            minimal_userdata[key] = userdata[key]
+        return meower.respond({"session": session, "user": minimal_userdata, "requires_mfa": False, "mfa_options": None}, 200, error=False)
+    else:
+        return meower.respond({"type": "unknownMethod"}, 400, error=True)
 
 @oauth.route("/login/email", methods=["POST"])
 def login_email():
@@ -335,15 +357,45 @@ def login_email():
     else:
         # Delete session
         meower.db["sessions"].delete_one({"_id": session_data["_id"]})
+    
+        # Full account session
+        return meower.respond(foundation_session(userdata["_id"]), 200, error=False)
 
-    # Restore account if it's pending deletion
-    if userdata["security"]["delete_after"] is not None:
-        meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.delete_after": None}})
+@oauth.route("/login/device", methods=["GET"])
+def login_device():
+    # Check whether the client is authenticated
+    if ("Authorization" in request.headers) or (len(str(request.headers.get("Authorization"))) <= 136):
+        request.session = str(request.headers.get("Authorization").replace("Bearer ", "")).strip()
 
-    # Full account session
-    session = create_session(3, userdata["_id"], generate_token(64))
-    del userdata["security"]
-    return meower.respond({"session": session, "user": userdata, "requires_mfa": False, "mfa_options": None}, 200, error=False)
+    # Get session data
+    session = meower.db["sessions"].find_one({"token": request.session})
+
+    if (session is None) or (session["type"] != 1) or (session["expires"] < time.time()) or (not session["verified"]) or session["revoked"]:
+        # Invalid session or session has not been verified
+        abort(401)
+    else:
+        # Delete session
+        meower.db["sessions"].delete_one({"_id": session["user"]})
+    
+        # Full account session
+        return meower.respond(foundation_session(session["user"]), 200, error=False)
+
+@oauth.route("/session", methods=["GET", "DELETE"])
+def current_session():
+    if request.method == "GET":
+        # Get session data from database
+        session = request.session.json.copy()
+        del session["previous_refresh_tokens"]
+
+        # Get user data from database
+        userdata = meower.db["usersv0"].find_one({"_id": session["user"]})
+        del userdata["security"]
+
+        # Return session data
+        return meower.respond({"session": session, "user": userdata, "foundation_session": (session["type"] == 3), "oauth_session": (session["type"] == 4)}, 200, error=False)
+    elif request.method == "DELETE":
+        request.session.delete()
+        return meower.respond({}, 200, error=False)
 
 """ \/ All this stuff needs to be updated \/
 @oauth.route("/login/mfa", methods=["POST"])
@@ -415,22 +467,6 @@ def auth_login_code():
     del meower.sock_login_codes[code]
 
     return meower.respond({}, 200, error=False)
-
-@oauth.route("/session", methods=["GET", "DELETE"])
-def current_session():
-    if request.method == "GET":
-        payload = {
-            "authed": request.session.authed,
-            "user": request.session.user,
-            "oauth_app": request.session.oauth_app,
-            "scopes": request.session.scopes,
-            "expires": request.session.expires
-        }
-
-        return meower.respond(payload, 200, error=False)
-    elif request.method == "DELETE":
-        request.session.delete()
-        return meower.respond({}, 200, error=False)
 
 @oauth.route("/session/refresh", methods=["POST"])
 def refresh_session():
