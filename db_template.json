@@ -16,11 +16,6 @@
                 "_id": "filter",
                 "whitelist": [],
                 "blacklist": []
-            },
-            {
-                "_id": "auth_keys",
-                "email_dkim": "",
-                "worker_token": ""
             }
         ]
     },
@@ -38,15 +33,15 @@
                     "unread_inbox": false,
                     "theme": "orange",
                     "mode": true,
-                    "sound_effects": true,
-                    "background_music": {
+                    "sfx": true,
+                    "bgm": {
                         "enabled": true,
                         "type": "default",
                         "data": 2
                     }
                 },
                 "profile": {
-                    "avatar": {
+                    "pfp": {
                         "type": "default",
                         "data": 1
                     },
@@ -57,6 +52,15 @@
                 "security": {
                     "authentication_methods": [],
                     "default_method": 0,
+                    "totp": null,
+                    "username_history": [
+                        {
+                            "username": "Deleted",
+                            "timestamp": 0,
+                            "changed_by_admin": false
+                        }
+                    ],
+                    "moderation_history": [],
                     "last_changed_username": 0,
                     "last_requested_data": 0,
                     "delete_after": null,

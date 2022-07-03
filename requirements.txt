@@ -9,3 +9,4 @@ pyotp
 requests
 pycryptodome
 passlib
+python-dotenv

@@ -2,13 +2,13 @@ from __main__ import meower
 from datetime import datetime
 import time
 import string
-import secrets
-import pymongo
 import requests
 from threading import Thread
-import base64
-from hashlib import sha256
+import os
 import json
+
+# Create ratelimits
+meower.ratelimits = {}
 
 # Create permitted lists of characters for posts
 permitted_chars_post = []
@@ -107,17 +107,17 @@ def send_payload(payload, user=None):
 
 def send_email(users, subject, body, type="text/plain", unverified_emails=False):
     def run(payload):
-        return requests.post("https://email-worker.meower.workers.dev", headers={"X-Auth-Token": meower.auth_keys["worker_token"]}, json=payload)
+        return requests.post(os.getenv("EMAIL_WORKER_URL"), headers={"X-Auth-Token": os.getenv("EMAIL_WORKER_TOKEN")}, json=payload)
 
     template = {
         "personalizations": [{
             "to": [],
-            "dkim_domain": "meower.org",
+            "dkim_domain": os.getenv("EMAIL_DOMAIN"),
             "dkim_selector": "mailchannels",
-            "dkim_private_key": meower.auth_keys["email_dkim"]
+            "dkim_private_key": os.getenv("EMAIL_DKIM_KEY")
         }],
         "from": {
-            "email": "no-reply@meower.org",
+            "email": "no-reply@{0}".format(os.getenv("EMAIL_DOMAIN")),
             "name": "Meower"
         },
         "subject": subject,

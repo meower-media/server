@@ -8,7 +8,6 @@ import string
 import pyotp
 import time
 from uuid import uuid4
-import json
 import string
 
 oauth = Blueprint("oauth_blueprint", __name__)

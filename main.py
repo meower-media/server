@@ -1,3 +1,7 @@
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
 # Initialize API
 from flask import Flask
 meower = Flask(__name__)
@@ -66,14 +70,6 @@ meower.ip_banlist = []
 ip_bans = meower.db.netlog.find({"blocked": True})
 for ip in ip_bans:
 	meower.ip_banlist.append(ip["_id"])
-
-# Create ratelimits
-meower.failed_logins = {}
-meower.ratelimits = {}
-
-# Set required authentication keys
-meower.auth_keys = meower.db["config"].find_one({"_id": "auth_keys"})
-del meower.auth_keys["_id"]
 
 # Set repair mode and scratch deprecated state
 status = meower.db["config"].find_one({"_id": "status"})
