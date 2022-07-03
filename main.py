@@ -1,6 +1,5 @@
 # Initialize API
-from flask import Flask, request
-from jinja2 import Template
+from flask import Flask
 meower = Flask(__name__)
 
 # Initialize Utils
@@ -77,8 +76,10 @@ meower.auth_keys = meower.db["config"].find_one({"_id": "auth_keys"})
 del meower.auth_keys["_id"]
 
 # Set repair mode and scratch deprecated state
-meower.status = meower.db["config"].find_one({"_id": "status"})
-del meower.status["_id"]
+status = meower.db["config"].find_one({"_id": "status"})
+for key, value in status.items():
+	if key != "_id":
+		setattr(meower, key, value)
 
 # Run Flask app
 meower.run(host="0.0.0.0", port=3000, debug=True)

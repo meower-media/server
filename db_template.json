@@ -71,7 +71,7 @@
         "items": []
     },
     "sessions": {
-        "indexes": ["_id", "token", "user"],
+        "indexes": ["_id", "token", "refresh_token", "previous_refresh_tokens", "app", "user"],
         "items": []
     },
     "oauth": {
@@ -79,7 +79,7 @@
         "items": []
     },
     "netlog": {
-        "indexes": ["_id", "blocked", "poisoned", "users"],
+        "indexes": ["_id", "blocked", "creation_blocked", "poisoned", "users"],
         "items": []
     },
     "chats": {
