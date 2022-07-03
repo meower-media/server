@@ -7,7 +7,6 @@ import secrets
 import string
 import pyotp
 import time
-import requests
 from uuid import uuid4
 import json
 import string
@@ -35,7 +34,7 @@ def create_session(type, user, token, expires=None, action=None, app=None, scope
         session_data["action"] = action
     elif type == 1:
         session_data["verified"] = False
-    elif type == 4:
+    elif type == 5:
         session_data["app"] = app
         session_data["scopes"] = scopes
         session_data["refresh_token"] = generate_token(128)
@@ -70,7 +69,7 @@ def foundation_session(user):
     del userdata["security"]
 
     # Return session data
-    return {"session": session, "user": userdata, "requires_mfa": False, "mfa_options": None}
+    return {"session": session, "user": userdata, "requires_totp": False}
 
 @oauth.before_app_request
 def before_request():
@@ -97,7 +96,7 @@ def before_request():
             # Check if session is valid
             self.authed = False
             try:
-                if (token_data is not None) and (token_data["type"] == 3 or token_data["type"] == 4):
+                if (token_data is not None) and (token_data["type"] == 3 or token_data["type"] == 5):
                     self.json = token_data
                     for key, value in token_data.items():
                         setattr(self, key, value)
@@ -129,7 +128,7 @@ def before_request():
             request.user = None
 
     # Exit request if client is not authenticated
-    if not (request.session.authed or (request.method == "OPTIONS") or (request.path in ["/", "/v0", "/status", "/v0/status", "/v0/socket", "/v0/oauth/login", "/v0/oauth/auth-methods", "/v0/oauth/create", "/v0/oauth/login/email", "/v0/oauth/login/device", "/v0/oauth/login/mfa", "/v0/oauth/session/refresh"]) or request.path.startswith("/admin")):
+    if not (request.session.authed or (request.method == "OPTIONS") or (request.path in ["/", "/v0", "/status", "/v0/status", "/v0/socket", "/v0/oauth/login", "/v0/oauth/auth-methods", "/v0/oauth/create", "/v0/oauth/login/totp", "/v0/oauth/login/email", "/v0/oauth/login/device", "/v0/oauth/session/refresh"]) or request.path.startswith("/admin")):
         abort(401)
 
 @oauth.route("/create", methods=["POST"])
@@ -191,12 +190,12 @@ def create_account():
                 {
                     "id": str(uuid4()),
                     "type": "password",
-                    "mfa_method": False,
                     "hash_type": "scrypt",
                     "password_hash": scrypt.hash(sha256(password.encode()).hexdigest())
                 }
             ],
             "default_method": 0,
+            "totp": None,
             "username_history": [
                 {
                     "username": username,
@@ -216,7 +215,6 @@ def create_account():
         userdata["security"]["authentication_methods"].append({
             "id": str(uuid4()),
             "type": "email",
-            "mfa_method": False,
             "verified": False,
             "encrypted_email": "",
             "encryption_id": ""
@@ -226,7 +224,7 @@ def create_account():
     # Generate new session and return to user
     session = create_session(3, userdata["_id"], generate_token(64))
     del userdata["security"]
-    return meower.respond({"session": session, "user": userdata, "requires_mfa": False}, 200, error=False)
+    return meower.respond({"session": session, "user": userdata, "requires_totp": False}, 200, error=False)
 
 @oauth.route("/auth-methods", methods=["GET"])
 def get_auth_methods():
@@ -297,7 +295,7 @@ def login():
     # Check for valid authentication
     valid = False
     if auth_method == "password":
-        if not ("password" in request.form):
+        if not ("password" in request.json):
             return meower.respond({"type": "missingField"}, 400, error=True)
         attempted_password = sha256(request.json["password"].strip().encode()).hexdigest()
         for method in userdata["security"]["authentication_methods"]:
@@ -317,8 +315,18 @@ def login():
                 valid = True
                 break
         if valid:
-            return meower.respond(foundation_session(userdata["_id"]), 200, error=False)
+            # Return session
+            if userdata["security"]["totp"] is not None:
+                session = create_session(2, userdata["_id"], generate_token(64), expires=300)
+                del session["previous_refresh_tokens"]
+                minimal_userdata = {}
+                for key in ["username", "lower_username", "state", "deleted", "created"]:
+                    minimal_userdata[key] = userdata[key]
+                return meower.respond({"session": session, "user": minimal_userdata, "requires_totp": True}, 200, error=False)
+            else:
+                return meower.respond(foundation_session(userdata["_id"]), 200, error=False)
         else:
+            # Invalid password
             return meower.respond({"type": "invalidCredentials"}, 401, error=True)
     elif auth_method == "email":
         if meower.check_for_spam("email_login", userdata["_id"], 60):
@@ -336,9 +344,40 @@ def login():
         minimal_userdata = {}
         for key in ["username", "lower_username", "state", "deleted", "created"]:
             minimal_userdata[key] = userdata[key]
-        return meower.respond({"session": session, "user": minimal_userdata, "requires_mfa": False, "mfa_options": None}, 200, error=False)
+        return meower.respond({"session": session, "user": minimal_userdata, "requires_totp": False}, 200, error=False)
     else:
         return meower.respond({"type": "unknownMethod"}, 400, error=True)
+
+@oauth.route("/login/totp", methods=["POST"])
+def login_totp():
+    # Check whether the client is authenticated
+    if ("Authorization" in request.headers) or (len(str(request.headers.get("Authorization"))) <= 136):
+        token = str(request.headers.get("Authorization").replace("Bearer ", "")).strip()
+
+    # Get session data
+    session = meower.db["sessions"].find_one({"token": token})
+
+    # Check if the session is invalid
+    if (session is None) or (session["type"] != 2) or (session["expires"] < time.time()) or session["revoked"]:
+        abort(401)
+    else:
+        # Check for required data
+        if not ("code" in request.json):
+            return meower.respond({"type": "missingField"}, 400, error=True)
+        
+        # Get user data from database
+        userdata = meower.db["usersv0"].find_one({"_id": session["user"]})
+  
+        # Check for valid authentication
+        if (userdata["security"]["totp"] is None) or pyotp.TOTP(userdata["security"]["totp"]).verify(request.json["code"]):
+            # Delete session
+            meower.db["sessions"].delete_one({"_id": session["_id"]})
+        
+            # Full account session
+            return meower.respond(foundation_session(session["user"]), 200, error=False)
+        else:
+            # Invalid TOTP code
+            return meower.respond({"type": "invalidCredentials"}, 401, error=True)
 
 @oauth.route("/login/email", methods=["POST"])
 def login_email():
@@ -403,8 +442,9 @@ def current_session():
         del userdata["security"]
 
         # Return session data
-        return meower.respond({"session": session, "user": userdata, "foundation_session": (session["type"] == 3), "oauth_session": (session["type"] == 4)}, 200, error=False)
+        return meower.respond({"session": session, "user": userdata, "foundation_session": (session["type"] == 3), "oauth_session": (session["type"] == 5)}, 200, error=False)
     elif request.method == "DELETE":
+        # Delete session
         request.session.delete()
         return meower.respond({}, 200, error=False)
 
@@ -425,7 +465,7 @@ def refresh_session():
 
     # Get token data
     session_data = meower.db["sessions"].find_one({"refresh_token": request.session})
-    if (session_data is None) or (session_data["type"] != 4) or (session_data["refresh_expires"] < time.time()) or session_data["revoked"]:
+    if (session_data is None) or (session_data["type"] != 5) or (session_data["refresh_expires"] < time.time()) or session_data["revoked"]:
         return meower.respond({"type": "tokenDoesNotExist"}, 400, error=True)
     else:
         # Refresh token
@@ -436,7 +476,7 @@ def refresh_session():
         meower.db["sessions"].update_one({"_id": session_data["_id"]}, {"$set": session_data})
         userdata = meower.db["usersv0"].find_one({"_id": session_data["user"]})
         del userdata["security"]
-        return meower.respond({"session": session_data, "user": userdata, "requires_mfa": False}, 200, error=False)
+        return meower.respond({"session": session_data, "user": userdata, "requires_totp": False}, 200, error=False)
 
 @oauth.route("/authorize/device", methods=["POST"])
 def authorize_device():
@@ -463,108 +503,3 @@ def authorize_device():
         # Verify session
         meower.db["sessions"].update_one({"_id": session["_id"]}, {"$set": {"verified": True}})
         return meower.respond({}, 200, error=False)
-
-""" \/ All this stuff needs to be updated \/
-@oauth.route("/login/mfa", methods=["POST"])
-def login_mfa():
-    if not (("token" in request.form) and ("code" in request.form)):
-        return meower.respond({"type": "missingField"}, 400, error=True)
-    
-    # Extract token and MFA code for simplicity
-    token = request.form.get("token")
-    code = request.form.get("code")
-
-    # Check for bad datatypes and syntax
-    if not ((type(token) == str) and (type(code) == str)):
-        return meower.respond({"type": "badDatatype"}, 400, error=True)
-    elif (len(token) > 100) or (len(code) > 6):
-        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
-
-    # Get user from token
-    token_data = meower.db["sessions"].find_one({"access_token": token})
-    if token_data is None:
-        return meower.respond({"type": "tokenInvalid"}, 401, error=True)
-    elif not ("mfa" in token_data["scopes"]):
-        return meower.respond({"type": "tokenInvalid"}, 401, error=True)
-    elif token_data["access_expiry"] < int(time.time()):
-        return meower.respond({"type": "tokenInvalid"}, 401, error=True)
-    else:
-        user = token_data["user"]
-        userdata = meower.db["usersv0"].find_one({"_id": user})
-        if userdata is None:
-            return meower.respond({"type": "tokenInvalid"}, 401, error=True)
-
-    # Check MFA code
-    if not pyotp.TOTP(userdata["security"]["mfa_secret"]).verify(code):
-        return meower.respond({"type": "mfaInvalid"}, 401, error=True)
-
-    # Delete temporary MFA session
-    meower.db["sessions"].delete_one({"_id": token_data["_id"]})
-
-    # Generate full account session and return to user
-    session = create_session(0, userdata["_id"], action="foundation", single_use=False, expiry_time=5260000)
-    del userdata["security"]
-    return meower.respond({"session": session, "user": userdata, "requires_mfa": False}, 200, error=False)
-
-@oauth.route("/mfa", methods=["GET", "POST", "DELETE"])
-def mfa():
-    if request.method == "GET":
-        mfa_secret = str(pyotp.random_base32())
-        return meower.respond({"secret": mfa_secret, "totp_app": "otpauth://totp/Meower: {0}?secret={1}&issuer=Meower".format(request.session.user, mfa_secret)}, 200, error=False)
-    elif request.method == "POST":
-        if not (("secret" in request.form) and ("code" in request.form)):
-            return meower.respond({"type": "missingField"}, 400, error=True)
-        
-        # Extract secret and code for simplicity
-        secret = request.form.get("secret")
-        code = request.form.get("code")
-
-        # Check for bad datatypes and syntax
-        if not ((type(secret) == str) and (type(code) == str)):
-            return meower.respond({"type": "badDatatype"}, 400, error=True)
-        elif (len(secret) != 32) or (len(code) != 6):
-            return meower.respond({"type": "fieldNotCorrectSize"}, 400, error=True)
-        
-        # Check if code matches secret
-        if not pyotp.TOTP(secret).verify(code):
-            return meower.respond({"type": "mfaCodeInvalid"}, 401, error=True)
-        
-        # Generate recovery codes
-        recovery_codes = []
-        for i in range(6):
-            tmp_recovery_code = ""
-            for i in range(8):
-                tmp_recovery_code = tmp_recovery_code+secrets.choice(string.ascii_letters+string.digits)
-            recovery_codes.append(tmp_recovery_code.lower())
-
-        # Update userdata
-        meower.db["usersv0"].update_one({"_id": request.session.user}, {"$set": {"security.mfa_secret": secret, "security.mfa_recovery": recovery_codes}})
-
-        meower.ws.sendPayload(request.session.user, "update_config", "", username=request.session.user)
-
-        return meower.respond({"recovery": recovery_codes}, 200, error=False)
-    elif request.method == "DELETE":
-        if not ("code" in request.form):
-            return meower.respond({"type": "missingField"}, 400, error=True)
-
-        # Extract code for simplicity
-        code = request.form.get("code")
-
-        # Check for bad datatypes and syntax
-        if not (type(code) == str):
-            return meower.respond({"type": "badDatatype"}, 400, error=True)
-        elif len(code) != 6:
-            return meower.respond({"type": "fieldNotCorrectSize"}, 400, error=True)
-        
-        # Check if code matches secret
-        userdata = meower.db["usersv0"].find_one({"_id": request.session.user})
-        if not pyotp.TOTP(userdata["security"]["mfa_secret"]).verify(code):
-            return meower.respond({"type": "mfaCodeInvalid"}, 401, error=True)
-
-        # Update userdata
-        meower.db["usersv0"].update_one({"_id": request.session.user}, {"$set": {"security.mfa_secret": None, "security.mfa_recovery": None}})
-        
-        meower.ws.sendPayload(request.session.user, "update_config", "", username=request.session.user)
-
-        return meower.respond({}, 200, error=False)
-"""

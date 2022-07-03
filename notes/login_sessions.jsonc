@@ -17,7 +17,7 @@
         "expires": "Timestamp of access expiry",
         "created": "Timestamp of creation"
     },
-    "type 2 - MFA": {
+    "type 2 - TOTP": {
         "_id": "UUID to identify the session",
         "type": 2,
         "user": "User ID",
@@ -35,7 +35,17 @@
         "created": "Timestamp of creation",
         "revoked": false
     },
-    "type 4 - OAuth": {
+    "type 4 - OAuth exchange": {
+        "_id": "UUID to identify the session",
+        "type": 4,
+        "user": "User ID",
+        "app": "",
+        "scopes": [],
+        "token": "Secure token",
+        "expires": "Timestamp of access expiry",
+        "created": "Timestamp of creation"
+    },
+    "type 5 - OAuth": {
         "_id": "UUID to identify the session",
         "type": 4,
         "user": "User ID",
