@@ -157,3 +157,29 @@ def init_db():
                 meower.db[collection_name].insert_one(item)
             except:
                 pass
+
+class Session:
+    def __init__(self, token):
+        # Get session data from database
+        token_data = meower.db.sessions.find_one({"token": token})
+        
+        # Check if session is valid
+        self.authed = False
+        try:
+            if (token_data is not None) and (token_data["type"] == 3 or token_data["type"] == 5):
+                self.json = token_data
+                for key, value in token_data.items():
+                    setattr(self, key, value)
+                if (not (self.expires < time.time())) or (self.expires == None):
+                    self.authed = True
+        except:
+            pass
+
+    def renew(self):
+        # Renew session
+        meower.db.sessions.update_one({"_id": self._id}, {"$set": {"expires": time.time() + self.expires}})
+        self.expires = time.time() + self.expires
+    
+    def delete(self):
+        # Delete session
+        meower.db.sessions.delete_one({"_id": self._id})

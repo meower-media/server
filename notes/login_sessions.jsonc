@@ -32,8 +32,7 @@
         "user_agent": "",
         "token": "Secure token",
         "expires": "Timestamp of access expiry",
-        "created": "Timestamp of creation",
-        "revoked": false
+        "created": "Timestamp of creation"
     },
     "type 4 - OAuth exchange": {
         "_id": "UUID to identify the session",
@@ -56,7 +55,6 @@
         "refresh_token": "Secure refresh token",
         "refresh_expires": "Timestamp of refresh expiry",
         "previous_refresh_tokens": [],
-        "created": "Timestamp of creation",
-        "revoked": false
+        "created": "Timestamp of creation"
     }
 }

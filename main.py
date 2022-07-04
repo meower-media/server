@@ -7,7 +7,7 @@ from flask import Flask
 meower = Flask(__name__)
 
 # Initialize Utils
-from apiv0.utils import log, timestamp, check_for_spam, check_for_bad_chars_post, check_for_bad_chars_username, user_status, send_payload, send_email, init_db
+from apiv0.utils import log, timestamp, check_for_spam, check_for_bad_chars_post, check_for_bad_chars_username, user_status, send_payload, send_email, init_db, Session
 meower.log = log
 meower.timestamp = timestamp
 meower.check_for_spam = check_for_spam
@@ -17,6 +17,7 @@ meower.user_status = user_status
 meower.send_payload = send_payload
 meower.send_email = send_email
 meower.init_db = init_db
+meower.Session = Session
 
 # Initialize Responder
 from apiv0.respond import respond

@@ -24,8 +24,7 @@ def create_session(type, user, token, expires=None, action=None, app=None, scope
         "user_agent": (request.headers.get("User-Agent") if "User-Agent" in request.headers else None),
         "token": token,
         "expires": None,
-        "created": time.time(),
-        "revoked": False
+        "created": time.time()
     }
     
     # Add specific data for each type
@@ -44,7 +43,7 @@ def create_session(type, user, token, expires=None, action=None, app=None, scope
         session_data["previous_refresh_tokens"] = []
 
     # Add any missing data
-    for item in ["_id", "type", "user", "action", "app", "scopes", "refresh_token", "refresh_expires", "previous_refresh_tokens", "user_agent", "token", "expires", "created", "revoked"]:
+    for item in ["_id", "type", "user", "action", "app", "scopes", "refresh_token", "refresh_expires", "previous_refresh_tokens", "user_agent", "token", "expires", "created"]:
         if item not in session_data:
             session_data[item] = None
 
@@ -90,40 +89,9 @@ def before_request():
     if (request.remote_addr in meower.ip_banlist) and (not (request.path in ["/v0", "/v0/status", "/status"] or request.path.startswith("/admin"))):
         return meower.respond({"type": "IPBlocked"}, 403)
 
-    class Session:
-        def __init__(self, token):
-            # Get session data from database
-            token_data = meower.db.sessions.find_one({"token": token})
-            
-            # Check if session is valid
-            self.authed = False
-            try:
-                if (token_data is not None) and (token_data["type"] == 3 or token_data["type"] == 5):
-                    self.json = token_data
-                    for key, value in token_data.items():
-                        setattr(self, key, value)
-                    if (not ((self.expires < time.time()) or self.revoked)) or (self.expires == None):
-                        self.authed = True
-            except:
-                pass
-
-        def renew(self):
-            # Renew session
-            meower.db.sessions.update_one({"_id": self._id}, {"$set": {"expires": time.time() + self.expires}})
-            self.expires = time.time() + self.expires
-
-        def revoke(self):
-            # Revoke session
-            self.revoked = True
-            meower.db.sessions.update_one({"_id": self._id}, {"$set": {"revoked": True}})
-        
-        def delete(self):
-            # Delete session
-            meower.db.sessions.delete_one({"_id": self._id})
-
     # Check whether the client is authenticated
     if ("Authorization" in request.headers) or (len(str(request.headers.get("Authorization"))) <= 136):
-        request.session = Session(str(request.headers.get("Authorization")).replace("Bearer ", "").strip())
+        request.session = meower.Session(str(request.headers.get("Authorization")).replace("Bearer ", "").strip())
         if request.session.authed:
             request.user = request.session.user
         else:
@@ -364,7 +332,7 @@ def login_totp():
     session = meower.db["sessions"].find_one({"token": token})
 
     # Check if the session is invalid
-    if (session is None) or (session["type"] != 2) or (session["expires"] < time.time()) or session["revoked"]:
+    if (session is None) or (session["type"] != 2) or (session["expires"] < time.time()):
         abort(401)
     else:
         # Check for required data
@@ -408,7 +376,7 @@ def login_email():
 
     # Get session data from database
     session_data = meower.db["sessions"].find_one({"token": code})
-    if (session_data is None) or (session_data["type"] != 0) or (session_data["user"] != userdata["_id"]) or (session_data["expires"] < time.time()) or session_data["revoked"]:
+    if (session_data is None) or (session_data["type"] != 0) or (session_data["user"] != userdata["_id"]) or (session_data["expires"] < time.time()):
         return meower.respond({"type": "invalidCredentials"}, 401, error=True)
     else:
         # Delete session
@@ -427,7 +395,7 @@ def login_device():
     session = meower.db["sessions"].find_one({"token": request.session})
 
     # Check if the session is invalid or hasn't been verified yet
-    if (session is None) or (session["type"] != 1) or (session["expires"] < time.time()) or (not session["verified"]) or session["revoked"]:
+    if (session is None) or (session["type"] != 1) or (session["expires"] < time.time()) or (not session["verified"]):
         abort(401)
     else:
         # Delete session
@@ -471,7 +439,7 @@ def refresh_session():
 
     # Get token data
     session_data = meower.db["sessions"].find_one({"refresh_token": request.session})
-    if (session_data is None) or (session_data["type"] != 5) or (session_data["refresh_expires"] < time.time()) or session_data["revoked"]:
+    if (session_data is None) or (session_data["type"] != 5) or (session_data["refresh_expires"] < time.time()):
         return meower.respond({"type": "tokenDoesNotExist"}, 400, error=True)
     else:
         # Refresh token
@@ -503,7 +471,7 @@ def authorize_device():
     session = meower.db["sessions"].find_one({"token": code})
 
     # Check if the session is invalid
-    if (session is None) or (session["type"] != 1) or (session["expires"] < time.time()) or (session["user"] != request.session.user) or session["verified"] or session["revoked"]:
+    if (session is None) or (session["type"] != 1) or (session["expires"] < time.time()) or (session["user"] != request.session.user) or session["verified"]:
         return meower.respond({"type": "codeDoesNotExist"}, 400, error=True)
     else:
         # Verify session
@@ -585,7 +553,7 @@ def exchange_oauth_code():
 
     # Get session data
     session = meower.db["sessions"].find_one({"token": code})
-    if (session is None) or (session["type"] != 4) or (session["expires"] < time.time()) or (session["user"] != request.session.user) or (session["app"] != app_id) or session["revoked"]:
+    if (session is None) or (session["type"] != 4) or (session["expires"] < time.time()) or (session["user"] != request.session.user) or (session["app"] != app_id):
         return meower.respond({"type": "codeDoesNotExist"}, 401, error=True)
 
     # Get user data
