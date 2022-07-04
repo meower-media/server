@@ -53,6 +53,10 @@
                     "authentication_methods": [],
                     "default_method": 0,
                     "totp": null,
+                    "oauth": {
+                        "authorized": [],
+                        "scopes": {}
+                    },
                     "username_history": [
                         {
                             "username": "Deleted",
@@ -79,8 +83,20 @@
         "items": []
     },
     "oauth": {
-        "indexes": ["_id"],
-        "items": []
+        "indexes": ["_id", "owner"],
+        "items": [
+            {
+                "_id": "0",
+                "owner": "Deleted",
+                "name": "Meower Vanilla",
+                "description": "The Official Meower Scratch Client.",
+                "first_party": true,
+                "bans": [],
+                "allowed_redirects": ["*"],
+                "secret": "meower",
+                "created": 0
+            }
+        ]
     },
     "netlog": {
         "indexes": ["_id", "blocked", "creation_blocked", "poisoned", "users"],

@@ -2,7 +2,10 @@
     "_id": "UUID of OAuth app",
     "owner": "User ID",
     "name": "OAuth app name",
+    "description": "",
     "first_party": "Whether the app is a first-party app",
+    "bans": [],
+    "allowed_redirects": [],
     "secret": "OAuth app secret",
     "created": "Timestamp of creation"
 }

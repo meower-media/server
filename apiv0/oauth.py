@@ -33,6 +33,9 @@ def create_session(type, user, token, expires=None, action=None, app=None, scope
         session_data["action"] = action
     elif type == 1:
         session_data["verified"] = False
+    elif type == 4:
+        session_data["app"] = app
+        session_data["scopes"] = scopes
     elif type == 5:
         session_data["app"] = app
         session_data["scopes"] = scopes
@@ -195,6 +198,10 @@ def create_account():
             ],
             "default_method": 0,
             "totp": None,
+            "oauth": {
+                "authorized": [],
+                "scopes": {}
+            },
             "username_history": [
                 {
                     "username": username,
@@ -502,3 +509,105 @@ def authorize_device():
         # Verify session
         meower.db["sessions"].update_one({"_id": session["_id"]}, {"$set": {"verified": True}})
         return meower.respond({}, 200, error=False)
+
+@oauth.route("/authorize/app", methods=["GET", "POST"])
+def authorize_app():
+    # Check for required data
+    if not (("app" in request.json) and ("scopes" in request.json) and ("redirect_uri" in request.json)):
+        return meower.respond({"type": "missingField"}, 400, error=True)
+ 
+    # Extract app ID and scopes for simplicity
+    app_id = request.json["app"].strip()
+    scopes = request.json["scopes"].strip().split(" ")
+    redirect_uri = request.json["redirect_uri"].strip()
+
+    # Check for bad datatypes and syntax
+    if not ((type(app_id) == str) or (type(scopes) == list)):
+        return meower.respond({"type": "badDatatype"}, 400, error=True)
+    elif len(app_id) > 32:
+        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
+    elif len(scopes) > 32:
+        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
+
+    # Get app data
+    app_data = meower.db["oauth"].find_one({"_id": app_id})
+    # Check if the app exists
+    if app_data is None:
+        return meower.respond({"type": "appDoesNotExist"}, 400, error=True)
+
+    # Get user data
+    userdata = meower.db["usersv0"].find_one({"_id": request.session.user})
+
+    if request.method == "GET":
+        # Return app information
+        payload = app_data.copy()
+        del payload["bans"]
+        del payload["allowed_redirects"]
+        del payload["secret"]
+        payload["authorized"] = ((app_id in userdata["security"]["oauth"]["authorized"]) and (userdata["security"]["oauth"]["scopes"][app_id] == scopes))
+        payload["banned"] = (request.session.user in app_data["bans"])
+        payload["scopes"] = scopes
+        payload["redirect_uri"] = redirect_uri
+        payload["redirect_allowed"] = ((redirect_uri in app_data["allowed_redirects"]) or ("*" in app_data["allowed_redirects"]))
+        return meower.respond(payload, 200, error=False)
+    elif request.method == "POST":
+        # Check if user is banned
+        if request.session.user in app_data["bans"]:
+            return meower.respond({"type": "userBannedFromApp"}, 403, error=True)
+
+        # Authorize app
+        if not (app_id in userdata["security"]["oauth"]["authorized"]):
+            userdata["security"]["oauth"]["authorized"].append(app_id)
+            userdata["security"]["oauth"]["scopes"][app_id] = scopes
+            meower.db["usersv0"].update_one({"_id": request.session.user}, {"$set": {"security.oauth.authorized": userdata["security"]["oauth"]["authorized"], "security.oauth.scopes": userdata["security"]["oauth"]["scopes"]}})
+        
+        # Return OAuth exchange session
+        session = create_session(4, request.session.user, secrets.token_urlsafe(16), 300, app=app_id, scopes=scopes)
+        del session["previous_refresh_tokens"]
+        return meower.respond(session, 200, error=False)
+
+@oauth.route("/exchange", methods=["POST"])
+def exchange_oauth_code():
+    # Check for required data
+    if not (("code" in request.json) and ("app" in request.json) and ("secret" in request.json)):
+        return meower.respond({"type": "missingField"}, 400, error=True)
+ 
+    # Extract app ID and scopes for simplicity
+    code = request.json["code"].strip()
+    app_id = request.json["app"].strip()
+    secret = request.json["secret"].strip()
+
+    # Check for bad datatypes and syntax
+    if not ((type(code) == str) or (type(app_id) == str) or (type(secret) == str)):
+        return meower.respond({"type": "badDatatype"}, 400, error=True)
+    elif (len(code) > 32) or (len(app_id) > 32) or (len(secret) > 64):
+        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
+
+    # Get session data
+    session = meower.db["sessions"].find_one({"token": code})
+    if (session is None) or (session["type"] != 4) or (session["expires"] < time.time()) or (session["user"] != request.session.user) or (session["app"] != app_id) or session["revoked"]:
+        return meower.respond({"type": "codeDoesNotExist"}, 401, error=True)
+
+    # Get user data
+    userdata = meower.db["usersv0"].find_one({"_id": request.session.user})
+
+    # Get app data
+    app_data = meower.db["oauth"].find_one({"_id": app_id})
+    if app_data is None:
+        return meower.respond({"type": "appDoesNotExist"}, 400, error=True)
+
+    # Check if session is valid
+    if app_data["secret"] != secret:
+        return meower.respond({"type": "invalidSecret"}, 401, error=True)
+    elif request.session.user in app_data["bans"]:
+        return meower.respond({"type": "userBannedFromApp"}, 403, error=True)
+    elif not ((app_id in userdata["security"]["oauth"]["authorized"]) or (session["scopes"] != userdata["security"]["oauth"]["scopes"][app_id])):
+        return meower.respond({"type": "userNotAuthorized"}, 401, error=True)
+
+    # Delete exchange session
+    meower.db["sessions"].delete_one({"_id": session["_id"]})
+
+    # Return OAuth full session
+    session = create_session(5, request.session.user, generate_token(32), 300, app=session["app"], scopes=session["scopes"])
+    del session["previous_refresh_tokens"]
+    return meower.respond(session, 200, error=False)
