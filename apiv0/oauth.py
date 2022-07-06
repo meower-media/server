@@ -9,6 +9,7 @@ import pyotp
 import time
 from uuid import uuid4
 import string
+import pymongo
 
 oauth = Blueprint("oauth_blueprint", __name__)
 
@@ -62,12 +63,11 @@ def foundation_session(user):
     session = create_session(3, user, generate_token(64))
     del session["previous_refresh_tokens"]
 
-    # Get user data
+    # Get user data and check if it's pending deletion
     userdata = meower.db["usersv0"].find_one({"_id": user})
-    # Restore account if it's pending deletion
     if userdata["security"]["delete_after"] is not None:
         meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.delete_after": None}})
-    del userdata["security"]
+    del userdata["security"] # Delete security before returning to user
 
     # Return session data
     return {"session": session, "user": userdata, "requires_totp": False}
@@ -91,7 +91,7 @@ def before_request():
 
     # Check whether the client is authenticated
     if ("Authorization" in request.headers) or (len(str(request.headers.get("Authorization"))) <= 136):
-        request.session = meower.Session(str(request.headers.get("Authorization")).replace("Bearer ", "").strip())
+        request.session = meower.Session(meower, str(request.headers.get("Authorization")).replace("Bearer ", "").strip())
         if request.session.authed:
             request.user = request.session.user
         else:
@@ -108,8 +108,7 @@ def create_account():
         return meower.respond({"type": "accountCreationBlocked"}, 403, error=True)
 
     # Check for required data
-    if not (("username" in request.json) and ("password" in request.json)):
-        return meower.respond({"type": "missingField"}, 400, error=True)
+    meower.check_for_json(["username", "password"])
 
     # Extract username and password for simplicity
     username = request.json["username"].strip()
@@ -203,8 +202,7 @@ def create_account():
 @oauth.route("/auth-methods", methods=["GET"])
 def get_auth_methods():
     # Check for required data
-    if not ("username" in request.json):
-        return meower.respond({"type": "missingField"}, 400, error=True)
+    meower.check_for_json(["username"])
 
     # Extract username for simplicity
     username = request.json["username"].strip()
@@ -236,8 +234,7 @@ def get_auth_methods():
 @oauth.route("/login", methods=["POST"])
 def login():
     # Check for required data
-    if not (("username" in request.json) and ("auth_method" in request.json)):
-        return meower.respond({"type": "missingField"}, 400, error=True)
+    meower.check_for_json(["username", "auth_method"])
 
     # Extract username and password for simplicity
     username = request.json["username"].strip()
@@ -269,8 +266,7 @@ def login():
     # Check for valid authentication
     valid = False
     if auth_method == "password":
-        if not ("password" in request.json):
-            return meower.respond({"type": "missingField"}, 400, error=True)
+        meower.check_for_json(["password"])
         attempted_password = sha256(request.json["password"].strip().encode()).hexdigest()
         for method in userdata["security"]["authentication_methods"]:
             if method["type"] != "password":
@@ -336,8 +332,7 @@ def login_totp():
         abort(401)
     else:
         # Check for required data
-        if not ("code" in request.json):
-            return meower.respond({"type": "missingField"}, 400, error=True)
+        meower.check_for_json(["code"])
         
         # Get user data from database
         userdata = meower.db["usersv0"].find_one({"_id": session["user"]})
@@ -356,8 +351,7 @@ def login_totp():
 @oauth.route("/login/email", methods=["POST"])
 def login_email():
     # Check for required data
-    if not (("username" in request.json) and ("code" in request.json)):
-        return meower.respond({"type": "missingField"}, 400, error=True)
+    meower.check_for_json(["username", "code"])
 
     # Extract username and given code for simplicity
     username = request.json["username"].strip().lower()
@@ -455,8 +449,7 @@ def refresh_session():
 @oauth.route("/authorize/device", methods=["POST"])
 def authorize_device():
     # Check for required data
-    if not ("code" in request.json):
-        return meower.respond({"type": "missingField"}, 400, error=True)
+    meower.check_for_json(["code"])
 
     # Extract code for simplicity
     code = request.json["code"].strip().upper()
@@ -481,8 +474,7 @@ def authorize_device():
 @oauth.route("/authorize/app", methods=["GET", "POST"])
 def authorize_app():
     # Check for required data
-    if not (("app" in request.json) and ("scopes" in request.json) and ("redirect_uri" in request.json)):
-        return meower.respond({"type": "missingField"}, 400, error=True)
+    meower.check_for_json(["app", "scopes", "redirect_uri"])
  
     # Extract app ID and scopes for simplicity
     app_id = request.json["app"].strip()
@@ -537,8 +529,7 @@ def authorize_app():
 @oauth.route("/exchange", methods=["POST"])
 def exchange_oauth_code():
     # Check for required data
-    if not (("code" in request.json) and ("app" in request.json) and ("secret" in request.json)):
-        return meower.respond({"type": "missingField"}, 400, error=True)
+    meower.check_for_json(["code", "app", "secret"])
  
     # Extract app ID and scopes for simplicity
     code = request.json["code"].strip()
@@ -579,3 +570,10 @@ def exchange_oauth_code():
     session = create_session(5, request.session.user, generate_token(32), 300, app=session["app"], scopes=session["scopes"])
     del session["previous_refresh_tokens"]
     return meower.respond(session, 200, error=False)
+
+@oauth.route("/apps", methods=["GET", "POST", "PATCH", "DELETE"])
+def manage_oauth_apps():
+    if request.method == "GET":
+        # Get OAuth apps
+        apps = meower.db["oauth"].find({"owner": request.session.user}).sort("name", pymongo.ASCENDING)
+        return meower.respond({"apps": list(apps)}, 200, error=False)

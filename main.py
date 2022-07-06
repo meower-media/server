@@ -3,20 +3,22 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Initialize API
-from flask import Flask
+from flask import Flask, request
 meower = Flask(__name__)
 
 # Initialize Utils
-from apiv0.utils import log, timestamp, check_for_spam, check_for_bad_chars_post, check_for_bad_chars_username, user_status, send_payload, send_email, init_db, Session
-meower.log = log
-meower.timestamp = timestamp
-meower.check_for_spam = check_for_spam
-meower.check_for_bad_chars_post = check_for_bad_chars_post
-meower.check_for_bad_chars_username = check_for_bad_chars_username
-meower.user_status = user_status
-meower.send_payload = send_payload
-meower.send_email = send_email
-meower.init_db = init_db
+from apiv0.utils import Utils, Session
+utils = Utils(meower, request)
+meower.log = utils.log
+meower.timestamp = utils.timestamp
+meower.check_for_spam = utils.check_for_spam
+meower.check_for_bad_chars_post = utils.check_for_bad_chars_post
+meower.check_for_bad_chars_username = utils.check_for_bad_chars_username
+meower.user_status = utils.user_status
+meower.send_payload = utils.send_payload
+meower.send_email = utils.send_email
+meower.init_db = utils.init_db
+meower.check_for_json = utils.check_for_json
 meower.Session = Session
 
 # Initialize Responder
@@ -25,7 +27,7 @@ meower.respond = respond
 
 # Initialize database
 import pymongo
-meower.log("Connecting to MongoDB... (if it looks like the server is stuck, it probably couldn't connect to the database)")
+meower.log("Connecting to MongoDB... (if it looks like the server is stuck or randomly crashes, it probably couldn't connect to the database)")
 meower.db = pymongo.MongoClient("mongodb://localhost:27017").meowerserver
 meower.init_db()
 

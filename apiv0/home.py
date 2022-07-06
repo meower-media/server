@@ -17,19 +17,18 @@ def get_home():
             page = int(request.args.get("pages"))
 
         # Get index
-        query_get = meower.db["posts"].find({"origin": "home", "deleted": False}).skip((page-1)*25).limit(25).sort("created", pymongo.ASCENDING)
-        pages_amount = (meower.db["posts"].count_documents({"origin": "home", "deleted": False}) // 25) + 1
+        query_get = meower.db["posts"].find({"post_origin": "home", "isDeleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
+        pages_amount = (meower.db["posts"].count_documents({"post_origin": "home", "isDeleted": False}) // 25) + 1
 
         # Convert query get
         payload_posts = []
         for post in query_get:
-            userdata = meower.db["usersv0"].find_one({"_id": post["user"]})
+            userdata = meower.db["usersv0"].find_one({"_id": post["u"]})
             if userdata is None:
-                post["user"] = "Deleted"
+                post["u"] = "Deleted"
             else:
-                post["user"] = userdata["username"]
+                post["u"] = userdata["username"]
             payload_posts.append(post)
-        payload_posts.reverse()
 
         # Create payload
         payload = {
@@ -41,11 +40,10 @@ def get_home():
         # Return payload
         return meower.respond(payload, 200, error=False)
     elif request.method == "POST":
-        if not ("content" in request.form):
-            return meower.respond({"type": "missingField"}, 400, error=True)
+        meower.check_for_json(["p"])
     
         # Extract content for simplicity
-        content = request.form.get("content")
+        content = request.json["p"]
 
         # Check for bad datatypes and syntax
         if type(content) != str:
@@ -65,11 +63,12 @@ def get_home():
         # Create post
         post_data = {
             "_id": str(uuid4()),
-            "origin": "home",
-            "user": request.session.user,
-            "content": content,
-            "created": int(time.time()),
-            "deleted": False
+            "post_origin": "home",
+            "parent": None,
+            "u": request.session.user,
+            "p": content,
+            "t": int(time.time()),
+            "isDeleted": False
         }
         meower.db["posts"].insert_one(post_data)
 
