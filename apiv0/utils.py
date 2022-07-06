@@ -169,6 +169,36 @@ class Utils:
         for item in data:
             if item not in self.request.json:
                 return self.meower.respond({"type": "missingField", "message": "Missing required data: {0}".format(item)}, 400)
+    
+    def require_auth(self, allowed_types, levels=[-1, 0, 1, 2, 3], scopes=[], check_suspension=False):
+        if self.request.method != "OPTIONS":
+            # Check if session is valid
+            if not self.request.session.authed:
+                return self.meower.respond({"type": "unauthorized", "message": "You are not authenticated."}, 401)
+            
+            # Check session type
+            if self.request.session.type not in allowed_types:
+                return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403)
+            
+            # Check session scopes
+            if (self.request.session.type == 5) and ("all" not in self.request.session.scopes):
+                for scope in scopes:
+                    if scope not in self.request.session.scopes:
+                        return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403)
+
+            # Check if session is verified (only for certain types)
+            if (self.request.session.verified != None) and (self.request.session.verified != True):
+                return self.meower.respond({"type": "unauthorized", "message": "Session has not been verified yet."}, 401)
+
+            # Check user
+            userdata = self.meower.db["usersv0"].find_one({"_id": self.request.session.user})
+            if (userdata is None) or userdata["deleted"] or userdata["security"]["banned"]:
+                self.request.session.delete()
+                return self.meower.respond({"type": "unauthorized", "message": "You are not authenticated."}, 401)
+            elif userdata["state"] not in levels:
+                return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403)
+            elif check_suspension and (userdata["suspended_until"] > time.time()):
+                return self.meower.respond({"type": "forbidden", "message": "You are suspended from performing this action."}, 403)
 
 class Session:
     def __init__(self, meower, token):

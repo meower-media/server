@@ -19,6 +19,7 @@ meower.send_payload = utils.send_payload
 meower.send_email = utils.send_email
 meower.init_db = utils.init_db
 meower.check_for_json = utils.check_for_json
+meower.require_auth = utils.require_auth
 meower.Session = Session
 
 # Initialize Responder

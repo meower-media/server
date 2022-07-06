@@ -89,17 +89,13 @@ def before_request():
     if (request.remote_addr in meower.ip_banlist) and (not (request.path in ["/v0", "/v0/status", "/status"] or request.path.startswith("/admin"))):
         return meower.respond({"type": "IPBlocked"}, 403)
 
-    # Check whether the client is authenticated
+    # Attempt to authorize the user
     if ("Authorization" in request.headers) or (len(str(request.headers.get("Authorization"))) <= 136):
         request.session = meower.Session(meower, str(request.headers.get("Authorization")).replace("Bearer ", "").strip())
         if request.session.authed:
             request.user = request.session.user
         else:
             request.user = None
-
-    # Exit request if client is not authenticated
-    if not (request.session.authed or (request.method == "OPTIONS") or (request.path in ["/", "/v0", "/status", "/v0/status", "/v0/socket", "/v0/oauth/login", "/v0/oauth/auth-methods", "/v0/oauth/create", "/v0/oauth/login/totp", "/v0/oauth/login/email", "/v0/oauth/login/device", "/v0/oauth/session/refresh"]) or request.path.startswith("/admin")):
-        abort(401)
 
 @oauth.route("/create", methods=["POST"])
 def create_account():
@@ -321,32 +317,24 @@ def login():
 @oauth.route("/login/totp", methods=["POST"])
 def login_totp():
     # Check whether the client is authenticated
-    if ("Authorization" in request.headers) or (len(str(request.headers.get("Authorization"))) <= 136):
-        token = str(request.headers.get("Authorization").replace("Bearer ", "")).strip()
+    meower.require_auth([2])
 
-    # Get session data
-    session = meower.db["sessions"].find_one({"token": token})
+    # Check for required data
+    meower.check_for_json(["code"])
+    
+    # Get user data from database
+    userdata = meower.db["usersv0"].find_one({"_id": request.session.user})
 
-    # Check if the session is invalid
-    if (session is None) or (session["type"] != 2) or (session["expires"] < time.time()):
-        abort(401)
+    # Check for valid authentication
+    if (userdata["security"]["totp"] is None) or pyotp.TOTP(userdata["security"]["totp"]).verify(request.json["code"]):
+        # Delete session
+        request.session.delete()
+    
+        # Full account session
+        return meower.respond(foundation_session(request.session.user), 200, error=False)
     else:
-        # Check for required data
-        meower.check_for_json(["code"])
-        
-        # Get user data from database
-        userdata = meower.db["usersv0"].find_one({"_id": session["user"]})
-  
-        # Check for valid authentication
-        if (userdata["security"]["totp"] is None) or pyotp.TOTP(userdata["security"]["totp"]).verify(request.json["code"]):
-            # Delete session
-            meower.db["sessions"].delete_one({"_id": session["_id"]})
-        
-            # Full account session
-            return meower.respond(foundation_session(session["user"]), 200, error=False)
-        else:
-            # Invalid TOTP code
-            return meower.respond({"type": "invalidCredentials"}, 401, error=True)
+        # Invalid TOTP code
+        return meower.respond({"type": "invalidCredentials"}, 401, error=True)
 
 @oauth.route("/login/email", methods=["POST"])
 def login_email():
@@ -382,24 +370,19 @@ def login_email():
 @oauth.route("/login/device", methods=["GET"])
 def login_device():
     # Check whether the client is authenticated
-    if ("Authorization" in request.headers) or (len(str(request.headers.get("Authorization"))) <= 136):
-        request.session = str(request.headers.get("Authorization").replace("Bearer ", "")).strip()
+    meower.require_auth([1])
 
-    # Get session data
-    session = meower.db["sessions"].find_one({"token": request.session})
+    # Delete session
+    request.session.delete()
 
-    # Check if the session is invalid or hasn't been verified yet
-    if (session is None) or (session["type"] != 1) or (session["expires"] < time.time()) or (not session["verified"]):
-        abort(401)
-    else:
-        # Delete session
-        meower.db["sessions"].delete_one({"_id": session["_id"]})
-    
-        # Full account session
-        return meower.respond(foundation_session(session["user"]), 200, error=False)
+    # Full account session
+    return meower.respond(foundation_session(request.session.user), 200, error=False)
 
 @oauth.route("/session", methods=["GET", "DELETE"])
 def current_session():
+    # Check whether the client is authenticated
+    meower.require_auth([3, 5])
+
     if request.method == "GET":
         # Get session data from database
         session = request.session.json.copy()
@@ -420,19 +403,19 @@ def current_session():
 def refresh_session():
     # Check whether the client is authenticated
     if ("Authorization" in request.headers) or (len(str(request.headers.get("Authorization"))) <= 136):
-        request.session = str(request.headers.get("Authorization").replace("Bearer ", "")).strip()
+        session = str(request.headers.get("Authorization").replace("Bearer ", "")).strip()
 
     # Check for bad datatypes and syntax
-    if not (type(request.session) == str):
+    if not (type(session) == str):
         return meower.respond({"type": "badDatatype"}, 400, error=True)
-    elif len(request.session) <= 100:
+    elif len(session) <= 100:
         return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
 
     # Check for token reuse
-    meower.db["sessions"].delete_many({"previous_renew_tokens": {"$all": [request.session]}})
+    meower.db["sessions"].delete_many({"previous_renew_tokens": {"$all": [session]}})
 
     # Get token data
-    session_data = meower.db["sessions"].find_one({"refresh_token": request.session})
+    session_data = meower.db["sessions"].find_one({"refresh_token": session})
     if (session_data is None) or (session_data["type"] != 5) or (session_data["refresh_expires"] < time.time()):
         return meower.respond({"type": "tokenDoesNotExist"}, 400, error=True)
     else:
@@ -440,7 +423,7 @@ def refresh_session():
         session_data["token"] = generate_token(64)
         session_data["expires"] = time.time() + 1800
         session_data["refresh_token"] = generate_token(128)
-        session_data["previous_refresh_tokens"].append(request.session)
+        session_data["previous_refresh_tokens"].append(session)
         meower.db["sessions"].update_one({"_id": session_data["_id"]}, {"$set": session_data})
         userdata = meower.db["usersv0"].find_one({"_id": session_data["user"]})
         del userdata["security"]
