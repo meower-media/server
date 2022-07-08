@@ -40,6 +40,10 @@ def get_home():
         # Return payload
         return meower.respond(payload, 200, error=False)
     elif request.method == "POST":
+        # Check whether the client is authenticated
+        meower.require_auth([3], scope="meower:posts:create_posts")
+
+        # Check for required data
         meower.check_for_json(["p"])
     
         # Extract content for simplicity

@@ -170,7 +170,7 @@ class Utils:
             if item not in self.request.json:
                 return self.meower.respond({"type": "missingField", "message": "Missing required data: {0}".format(item)}, 400)
     
-    def require_auth(self, allowed_types, levels=[-1, 0, 1, 2, 3], scopes=[], check_suspension=False):
+    def require_auth(self, allowed_types, levels=[-1, 0, 1, 2, 3], scope=None, check_suspension=False):
         if self.request.method != "OPTIONS":
             # Check if session is valid
             if not self.request.session.authed:
@@ -181,10 +181,8 @@ class Utils:
                 return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403)
             
             # Check session scopes
-            if (self.request.session.type == 5) and ("all" not in self.request.session.scopes):
-                for scope in scopes:
-                    if scope not in self.request.session.scopes:
-                        return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403)
+            if (self.request.session.type == 5) and (scope not in self.request.session.scopes):
+                return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403)
 
             # Check if session is verified (only for certain types)
             if (self.request.session.verified != None) and (self.request.session.verified != True):
