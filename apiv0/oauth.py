@@ -62,7 +62,7 @@ def create_account():
 
     # Check if account exists
     if meower.db["usersv0"].find_one({"lower_username": username.lower()}) is not None:
-        return meower.respond({"type": "accountAlreadyExists"}, 401, error=True)
+        return meower.respond({"type": "usernameAlreadyExists", "message": "That username is already taken"}, 409, error=True)
 
     # Create userdata
     userdata = {
