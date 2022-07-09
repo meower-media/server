@@ -11,16 +11,24 @@ from apiv0.utils import Utils, Session
 utils = Utils(meower, request)
 meower.log = utils.log
 meower.timestamp = utils.timestamp
+meower.create_session = utils.create_session
+meower.foundation_session = utils.foundation_session
 meower.check_for_spam = utils.check_for_spam
 meower.check_for_bad_chars_post = utils.check_for_bad_chars_post
 meower.check_for_bad_chars_username = utils.check_for_bad_chars_username
 meower.user_status = utils.user_status
 meower.send_payload = utils.send_payload
+meower.encrypt = utils.encrypt
+meower.decrypt = utils.decrypt
+meower.is_valid_email = utils.is_valid_email
 meower.send_email = utils.send_email
 meower.init_db = utils.init_db
 meower.check_for_json = utils.check_for_json
 meower.require_auth = utils.require_auth
 meower.Session = Session
+
+# Initialize encryption
+utils.init_encryption()
 
 # Initialize Responder
 from apiv0.respond import respond
@@ -42,6 +50,8 @@ from apiv0.admin import admin
 meower.register_blueprint(admin, url_prefix="/v0/admin")
 from apiv0.oauth import oauth
 meower.register_blueprint(oauth, url_prefix="/v0/oauth")
+from apiv0.settings import settings
+meower.register_blueprint(settings, url_prefix="/v0/settings")
 from apiv0.users import users
 meower.register_blueprint(users, url_prefix="/v0/users")
 from apiv0.home import home

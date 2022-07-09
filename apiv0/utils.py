@@ -5,6 +5,10 @@ import requests
 from threading import Thread
 import os
 import json
+import serial
+from cryptography.fernet import Fernet
+from uuid import uuid4
+import secrets
 
 class Utils:
     def __init__(self, meower, request):
@@ -57,6 +61,63 @@ class Utils:
             return str(today.strftime("%m/%d/%Y %H:%M.%S"))
         elif ttype == 5:    
             return str(today.strftime("%d%m%Y"))
+
+    def create_session(self, type, user, token, email=None, expires=None, action=None, app=None, scopes=None):
+        # Base session data
+        session_data = {
+            "_id": str(uuid4()),
+            "type": type,
+            "user": user,
+            "user_agent": (self.request.headers.get("User-Agent") if "User-Agent" in self.request.headers else None),
+            "token": token,
+            "expires": None,
+            "created": time.time()
+        }
+        
+        # Add specific data for each type
+        if type == 0:
+            session_data["action"] = action
+            session_data["email"] = email
+        elif type == 1:
+            session_data["verified"] = False
+        elif type == 4:
+            session_data["app"] = app
+            session_data["scopes"] = scopes
+        elif type == 5:
+            session_data["app"] = app
+            session_data["scopes"] = scopes
+            session_data["refresh_token"] = str(secrets.token_urlsafe(128))
+            session_data["refresh_expires"] = time.time() + 31556952
+            session_data["previous_refresh_tokens"] = []
+
+        # Add any missing data
+        for item in ["email", "action", "verified", "app", "scopes", "refresh_token", "refresh_expires", "previous_refresh_tokens"]:
+            if item not in session_data:
+                session_data[item] = None
+
+        # Set expiration time
+        if expires is not None:
+            session_data["expires"] = time.time() + expires
+        else:
+            session_data["expires"] = time.time() + {1: 300, 2: 300, 3: 31556952, 4: 1800}[session_data["type"]]
+
+        # Add session to database and return session data
+        self.meower.db["sessions"].insert_one(session_data)
+        return session_data
+
+    def foundation_session(self, user):
+        # Create session
+        session = self.create_session(3, user, secrets.token_urlsafe(64))
+        del session["previous_refresh_tokens"]
+
+        # Get user data and check if it's pending deletion
+        userdata = self.meower.db["usersv0"].find_one({"_id": user})
+        if userdata["security"]["delete_after"] is not None:
+            self.meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.delete_after": None}})
+        del userdata["security"] # Delete security before returning to user
+
+        # Return session data
+        return {"session": session, "user": userdata, "requires_totp": False}
 
     def check_for_spam(self, type, client, seconds=1):
         if not (type in self.meower.ratelimits):
@@ -112,13 +173,66 @@ class Utils:
                 for sock_client in self.meower.sock_clients[user]:
                     sock_client.client.send(payload)
 
-    def send_email(self, users, subject, body, type="text/plain", unverified_emails=False):
-        def run(payload):
-            return requests.post(os.getenv("EMAIL_WORKER_URL"), headers={"X-Auth-Token": os.getenv("EMAIL_WORKER_TOKEN")}, json=payload)
+    def init_encryption(self):
+        self.meower.meowkey = None
+        self.meower.encryption = None
+        try:
+            if os.environ["ENCRYPTION_KEY_FROM"] == "env":
+                key = os.environ["ENCRYPTION_KEY"]
+            elif os.environ["ENCRYPTION_KEY_FROM"] == "meowkey":
+                self.meower.meowkey = EasyUART(os.environ["MEOWKEY_PORT"])
+                self.meower.meowkey.connect()
+                self.meower.meowkey.rx()
+                self.meower.meowkey.tx(json.dumps({"cmd": "ACK?"}))
+                key = self.meower.meowkey.rx()
+            if key is not None:
+                self.meower.encryption = Fernet(key.encode())
+        except:
+            pass
+        if "encryption_keys" not in os.listdir():
+            os.mkdir("encryption_keys")
+        if self.meower.encryption is None:
+            self.log("Failed to initialize encryption -- Emails will not work")
 
-        template = {
+    def destroy_key_on_meowkey_disconnect(self):
+        while not self.meower.meowkey.bus.connected:
+            self.meower.meowkey = None
+            self.meower.encryption = None
+            self.meower.log("Disconnected from MeowKey -- Emails will no longer work")
+
+    def encrypt(self, data):
+        new_key = Fernet.generate_key()
+        encrypted_data = Fernet(new_key).encrypt(data.encode()).decode()
+        new_uuid = str(uuid4())
+        with open("encryption_keys/{0}".format(new_uuid), "w") as f:
+            f.write(self.meower.encryption.encrypt(new_key).decode())
+        return new_uuid, encrypted_data
+
+    def decrypt(self, id, data):
+        with open("encryption_keys/{0}".format(id), "r") as f:
+            encryption_key = self.meower.encryption.decrypt(f.read().encode()).decode()
+        decrypted_data = Fernet(encryption_key).decrypt(data.encode()).decode()
+        return decrypted_data
+
+    def is_valid_email(self, email):
+        # Check if the email contains an @
+        if "@" not in email:
+            return False
+        
+        # Check if the email address domain is valid
+        email = email.split("@")
+        if email[1].count(".") != 1:
+            return False
+        else:
+            return True
+
+    def send_email(self, email, username, subject, body, type="text/plain"):
+        payload = {
             "personalizations": [{
-                "to": [],
+                "to": [{
+                    "email": email,
+                    "name": username
+                }],
                 "dkim_domain": os.getenv("EMAIL_DOMAIN"),
                 "dkim_selector": "mailchannels",
                 "dkim_private_key": os.getenv("EMAIL_DKIM_KEY")
@@ -133,22 +247,8 @@ class Utils:
                 "value": body
             }]
         }
-        
-        for user in users:
-            userdata = self.meower.db["usersv0"].find_one({"_id": user})
-            if userdata is not None:
-                payload = template.copy()
-                for method in userdata["security"]["authentication_methods"]:
-                    if method["type"] != "email":
-                        continue
-                    elif not (unverified_emails or method["verified"]):
-                        continue
-                    else:
-                        payload["personalizations"][0]["to"].append({
-                            "email": method["encrypted_email"],
-                            "name": userdata["username"]
-                        })
-                Thread(target=run, args=(payload,)).start()
+
+        return requests.post(os.getenv("EMAIL_WORKER_URL"), headers={"X-Auth-Token": os.getenv("EMAIL_WORKER_TOKEN")}, json=payload)
 
     def init_db(self):
         with open("db_template.json", "r") as f:
@@ -225,3 +325,32 @@ class Session:
     def delete(self):
         # Delete session
         self.meower.db.sessions.delete_one({"_id": self._id})
+
+class EasyUART:
+    def __init__(self, port):
+        self.bus = serial.Serial(port = port, baudrate = 9600)
+        
+    def connect(self): # This code is platform specific
+        if not self.bus.connected:
+            while not self.bus.connected:
+                time.sleep(1)
+        self.bus.reset_input_buffer()
+        return True
+    
+    def tx(self, payload): # Leave encoding as ASCII since literally everything supports it
+        self.bus.write(bytes(payload + "\r", "ASCII"))
+    
+    def rx(self):
+        done = False
+        tmp = ""
+        while not done:
+            # Listen for new data
+            if self.bus.in_waiting != 0:
+                readin = self.bus.read(self.bus.in_waiting).decode("ASCII")
+                
+                for thing in readin:
+                    if thing == "\r":
+                        done = True
+                    else:
+                        tmp += thing
+        return tmp

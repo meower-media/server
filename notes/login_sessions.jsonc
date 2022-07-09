@@ -3,6 +3,7 @@
         "_id": "UUID to identify the session",
         "type": 0,
         "user": "User ID",
+        "email": "Encrypted email address",
         "action": "",
         "token": "Secure token/code",
         "expires": "Timestamp of access expiry",

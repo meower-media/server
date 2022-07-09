@@ -1,3 +1,4 @@
+from threading import Thread
 from jinja2 import Template
 from flask import Blueprint, request, abort
 from flask import current_app as meower
@@ -12,65 +13,6 @@ import string
 import pymongo
 
 oauth = Blueprint("oauth_blueprint", __name__)
-
-def generate_token(length):
-    return "{0}.{1}".format(str(secrets.token_urlsafe(length)), float(time.time()))
-
-def create_session(type, user, token, expires=None, action=None, app=None, scopes=None):
-    # Base session data
-    session_data = {
-        "_id": str(uuid4()),
-        "type": type,
-        "user": user,
-        "user_agent": (request.headers.get("User-Agent") if "User-Agent" in request.headers else None),
-        "token": token,
-        "expires": None,
-        "created": time.time()
-    }
-    
-    # Add specific data for each type
-    if type == 0:
-        session_data["action"] = action
-    elif type == 1:
-        session_data["verified"] = False
-    elif type == 4:
-        session_data["app"] = app
-        session_data["scopes"] = scopes
-    elif type == 5:
-        session_data["app"] = app
-        session_data["scopes"] = scopes
-        session_data["refresh_token"] = generate_token(128)
-        session_data["refresh_expires"] = time.time() + 31556952
-        session_data["previous_refresh_tokens"] = []
-
-    # Add any missing data
-    for item in ["_id", "type", "user", "action", "app", "scopes", "refresh_token", "refresh_expires", "previous_refresh_tokens", "user_agent", "token", "expires", "created"]:
-        if item not in session_data:
-            session_data[item] = None
-
-    # Set expiration time
-    if expires is not None:
-        session_data["expires"] = time.time() + expires
-    else:
-        session_data["expires"] = time.time() + {1: 300, 2: 300, 3: 31556952, 4: 1800}[session_data["type"]]
-
-    # Add session to database and return session data
-    meower.db["sessions"].insert_one(session_data)
-    return session_data
-
-def foundation_session(user):
-    # Create session
-    session = create_session(3, user, generate_token(64))
-    del session["previous_refresh_tokens"]
-
-    # Get user data and check if it's pending deletion
-    userdata = meower.db["usersv0"].find_one({"_id": user})
-    if userdata["security"]["delete_after"] is not None:
-        meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.delete_after": None}})
-    del userdata["security"] # Delete security before returning to user
-
-    # Return session data
-    return {"session": session, "user": userdata, "requires_totp": False}
 
 @oauth.before_app_request
 def before_request():
@@ -151,15 +93,13 @@ def create_account():
             "last_seen": int(time.time())
         },
         "security": {
-            "authentication_methods": [
-                {
-                    "id": str(uuid4()),
-                    "type": "password",
-                    "hash_type": "scrypt",
-                    "password_hash": scrypt.hash(sha256(password.encode()).hexdigest())
-                }
-            ],
-            "default_method": 0,
+            "email": None,
+            "password": {
+                "hash_type": "scrypt",
+                "hash": scrypt.hash(sha256(password.encode()).hexdigest())
+            },
+            "webauthn": [],
+            "default_method": "password",
             "totp": None,
             "oauth": {
                 "authorized": [],
@@ -180,6 +120,7 @@ def create_account():
             "banned": False
         }
     }
+    """
     if "email" in request.json:
         userdata["security"]["authentication_methods"].append({
             "id": str(uuid4()),
@@ -188,10 +129,11 @@ def create_account():
             "encrypted_email": "",
             "encryption_id": ""
         })
+    """
     meower.db["usersv0"].insert_one(userdata)
 
     # Generate new session and return to user
-    session = create_session(3, userdata["_id"], generate_token(64))
+    session = meower.create_session(3, userdata["_id"], secrets.token_urlsafe(64))
     del userdata["security"]
     return meower.respond({"session": session, "user": userdata, "requires_totp": False}, 200, error=False)
 
@@ -216,16 +158,19 @@ def get_auth_methods():
     if userdata is None:
         # Account does not exist
         return meower.respond({"type": "accountDoesNotExist"}, 401, error=True)
-    elif len(userdata["security"]["authentication_methods"]) == 0:
+    elif (userdata["security"]["email"] == None) and (userdata["security"]["password"] == None) and (len(userdata["security"]["webauthn"]) == 0):
         # Account doesn't have any authentication methods
         return meower.respond({"type": "noAuthenticationMethods"}, 401, error=True)
 
     # Give authentication methods
-    methods_payload = []
-    for method in userdata["security"]["authentication_methods"]:
-        if not (method["type"] in methods_payload):
-            methods_payload.append(method["type"])
-    return meower.respond({"methods": methods_payload, "default": userdata["security"]["default_method"]}, 200, error=False)
+    methods = []
+    if userdata["security"]["email"] is not None:
+        methods.append("email")
+    if userdata["security"]["password"] is not None:
+        methods.append("password")
+    if len(userdata["security"]["webauthn"]) > 0:
+        methods.append("webauthn")
+    return meower.respond({"methods": methods, "default": userdata["security"]["default_method"]}, 200, error=False)
 
 @oauth.route("/login", methods=["POST"])
 def login():
@@ -255,64 +200,57 @@ def login():
     elif userdata["security"]["banned"]:
         # Account is banned
         return meower.respond({"type": "accountBanned"}, 401, error=True)
-    elif len(userdata["security"]["authentication_methods"]) == 0:
-        # Account doesn't have any authentication methods
-        return meower.respond({"type": "noAuthenticationMethods"}, 401, error=True)
     
     # Check for valid authentication
-    valid = False
-    if auth_method == "password":
+    if (auth_method == "password") and (userdata["security"]["password"] is not None):
         meower.check_for_json(["password"])
         attempted_password = sha256(request.json["password"].strip().encode()).hexdigest()
-        for method in userdata["security"]["authentication_methods"]:
-            if method["type"] != "password":
-                continue
-            elif (method["hash_type"] == "scrypt") and scrypt.verify(attempted_password, method["password_hash"]):
-                valid = True
-                break
-            elif (method["hash_type"] == "bcrypt") and bcrypt.verify(str(request.json["password"]), method["password_hash"]):
-                # Legacy support for Meower Scratch 4.7-5.6 -- updates to scrypt on first login
-                meower.db["usersv0"].update_one({"_id": userdata["_id"], "security.authentication_methods": {"$elemMatch": {"hash_type": "bcrypt"}}}, {"$set": {"security.authentication_methods.$.hash_type": "scrypt", "security.authentication_methods.$.password_hash": scrypt.hash(attempted_password)}})
-                valid = True
-                break
-            elif (method["hash_type"] == "sha256") and (method["password_hash"] == sha256(attempted_password.encode()).hexdigest()):
-                # Legacy support for Meower Scratch 4.5-4.6 -- updates to scrypt on first login
-                meower.db["usersv0"].update_one({"_id": userdata["_id"], "security.authentication_methods": {"$elemMatch": {"hash_type": "sha256"}}}, {"$set": {"security.authentication_methods.$.hash_type": "scrypt", "security.authentication_methods.$.password_hash": scrypt.hash(attempted_password)}})
-                valid = True
-                break
+        password = userdata["security"]["password"]
+        valid = False
+        if (password["hash_type"] == "scrypt") and scrypt.verify(attempted_password, password["hash"]):
+            valid = True
+        elif (password["hash_type"] == "bcrypt") and bcrypt.verify(str(request.json["password"]), password["hash"]):
+            # Legacy support for Meower Scratch 4.7-5.6 -- updates to scrypt on first login
+            meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.password.hash_type": "scrypt", "security.password.hash": scrypt.hash(attempted_password)}})
+            valid = True
+        elif (password["hash_type"] == "sha256") and (password["hash"] == sha256(attempted_password.encode()).hexdigest()):
+            # Legacy support for Meower Scratch 4.5-4.6 -- updates to scrypt on first login
+            meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.password.hash_type": "scrypt", "security.password.hash": scrypt.hash(attempted_password)}})
+            valid = True
         if valid:
             # Return session
             if userdata["security"]["totp"] is not None:
-                session = create_session(2, userdata["_id"], generate_token(64), expires=300)
+                session = meower.create_session(2, userdata["_id"], secrets.token_urlsafe(64), expires=300)
                 del session["previous_refresh_tokens"]
                 minimal_userdata = {}
                 for key in ["username", "lower_username", "state", "deleted", "created"]:
                     minimal_userdata[key] = userdata[key]
                 return meower.respond({"session": session, "user": minimal_userdata, "requires_totp": True}, 200, error=False)
             else:
-                return meower.respond(foundation_session(userdata["_id"]), 200, error=False)
+                return meower.respond(meower.foundation_session(userdata["_id"]), 200, error=False)
         else:
             # Invalid password
             return meower.respond({"type": "invalidCredentials"}, 401, error=True)
-    elif auth_method == "email":
+    elif (auth_method == "email") and (userdata["security"]["email"] is not None):
         if meower.check_for_spam("email_login", userdata["_id"], 60):
             return meower.respond({"type": "tooManyRequests"}, 429, error=True)
         new_code = str("".join(secrets.choice(string.ascii_letters + string.digits) for i in range(8))).upper()
-        create_session(0, userdata["_id"], new_code, expires=600, action="login")
-        with open("apiv0/email_templates/verification_code.html", "r") as f:
-            email_template = f.read()
-        meower.send_email([userdata["_id"]], "Login Code", Template(email_template).render({"username": userdata["username"], "code": new_code}), type="text/html")
+        meower.create_session(0, userdata["_id"], new_code, email=userdata["security"]["email"], expires=600, action="login")
+        with open("apiv0/email_templates/confirmations/login_code.html", "r") as f:
+            email_template = Template(f.read()).render({"username": userdata["username"], "code": new_code})
+        email = meower.decrypt(userdata["security"]["email"]["encryption_id"], userdata["security"]["email"]["encrypted_email"])
+        Thread(target=meower.send_email, args=(email, userdata["username"], "Login confirmation code", email_template,), kwargs={"type": "text/html"}).start()
         return meower.respond({}, 200, error=False)
     elif auth_method == "device":
         new_code = str("".join(secrets.choice(string.ascii_letters + string.digits) for i in range(8))).upper()
-        session = create_session(1, userdata["_id"], new_code, expires=300)
+        session = meower.create_session(1, userdata["_id"], new_code, expires=300)
         del session["previous_refresh_tokens"]
         minimal_userdata = {}
         for key in ["username", "lower_username", "state", "deleted", "created"]:
             minimal_userdata[key] = userdata[key]
         return meower.respond({"session": session, "user": minimal_userdata, "requires_totp": False}, 200, error=False)
     else:
-        return meower.respond({"type": "unknownMethod"}, 400, error=True)
+        return meower.respond({"type": "unknownMethod", "message": "Authentication method unavailable"}, 400, error=True)
 
 @oauth.route("/login/totp", methods=["POST"])
 def login_totp():
@@ -326,15 +264,15 @@ def login_totp():
     userdata = meower.db["usersv0"].find_one({"_id": request.session.user})
 
     # Check for valid authentication
-    if (userdata["security"]["totp"] is None) or pyotp.TOTP(userdata["security"]["totp"]).verify(request.json["code"]):
+    if (userdata["security"]["totp"] is None) or pyotp.TOTP(userdata["security"]["totp"]["secret"]).verify(request.json["code"]) or (request.json["code"] in userdata["security"]["totp"]["recovery_codes"]):
         # Delete session
         request.session.delete()
     
         # Full account session
-        return meower.respond(foundation_session(request.session.user), 200, error=False)
+        return meower.respond(meower.foundation_session(request.session.user), 200, error=False)
     else:
         # Invalid TOTP code
-        return meower.respond({"type": "invalidCredentials"}, 401, error=True)
+        return meower.respond({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
 
 @oauth.route("/login/email", methods=["POST"])
 def login_email():
@@ -358,14 +296,14 @@ def login_email():
 
     # Get session data from database
     session_data = meower.db["sessions"].find_one({"token": code})
-    if (session_data is None) or (session_data["type"] != 0) or (session_data["user"] != userdata["_id"]) or (session_data["expires"] < time.time()):
+    if (session_data is None) or (session_data["type"] != 0) or (session_data["user"] != userdata["_id"]) or (session_data["expires"] < time.time()) or (session_data["email"] != userdata["security"]["email"]):
         return meower.respond({"type": "invalidCredentials"}, 401, error=True)
     else:
         # Delete session
         meower.db["sessions"].delete_one({"_id": session_data["_id"]})
     
         # Full account session
-        return meower.respond(foundation_session(userdata["_id"]), 200, error=False)
+        return meower.respond(meower.foundation_session(userdata["_id"]), 200, error=False)
 
 @oauth.route("/login/device", methods=["GET"])
 def login_device():
@@ -376,7 +314,7 @@ def login_device():
     request.session.delete()
 
     # Full account session
-    return meower.respond(foundation_session(request.session.user), 200, error=False)
+    return meower.respond(meower.foundation_session(request.session.user), 200, error=False)
 
 @oauth.route("/session", methods=["GET", "DELETE"])
 def current_session():
@@ -393,7 +331,7 @@ def current_session():
         del userdata["security"]
 
         # Return session data
-        return meower.respond({"session": session, "user": userdata, "foundation_session": (session["type"] == 3), "oauth_session": (session["type"] == 5)}, 200, error=False)
+        return meower.respond({"session": session, "user": userdata, "meower.foundation_session": (session["type"] == 3), "oauth_session": (session["type"] == 5)}, 200, error=False)
     elif request.method == "DELETE":
         # Delete session
         request.session.delete()
@@ -420,9 +358,9 @@ def refresh_session():
         return meower.respond({"type": "tokenDoesNotExist"}, 400, error=True)
     else:
         # Refresh token
-        session_data["token"] = generate_token(64)
+        session_data["token"] = secrets.token_urlsafe(64)
         session_data["expires"] = time.time() + 1800
-        session_data["refresh_token"] = generate_token(128)
+        session_data["refresh_token"] = secrets.token_urlsafe(128)
         session_data["previous_refresh_tokens"].append(session)
         meower.db["sessions"].update_one({"_id": session_data["_id"]}, {"$set": session_data})
         userdata = meower.db["usersv0"].find_one({"_id": session_data["user"]})
@@ -511,7 +449,7 @@ def authorize_app():
             meower.db["usersv0"].update_one({"_id": request.session.user}, {"$set": {"security.oauth.authorized": userdata["security"]["oauth"]["authorized"], "security.oauth.scopes": userdata["security"]["oauth"]["scopes"]}})
         
         # Return OAuth exchange session
-        session = create_session(4, request.session.user, secrets.token_urlsafe(16), 300, app=app_id, scopes=scopes)
+        session = meower.create_session(4, request.session.user, secrets.token_urlsafe(16), 300, app=app_id, scopes=scopes)
         del session["previous_refresh_tokens"]
         return meower.respond(session, 200, error=False)
 
@@ -556,7 +494,7 @@ def exchange_oauth_code():
     meower.db["sessions"].delete_one({"_id": session["_id"]})
 
     # Return OAuth full session
-    session = create_session(5, request.session.user, generate_token(32), 300, app=session["app"], scopes=session["scopes"])
+    session = meower.create_session(5, request.session.user, secrets.token_urlsafe(32), 300, app=session["app"], scopes=session["scopes"])
     del session["previous_refresh_tokens"]
     return meower.respond(session, 200, error=False)
 
@@ -566,7 +504,6 @@ def manage_oauth_apps():
     meower.require_auth([5], scope="foundation:oauth:apps")
 
     if request.method == "GET": # Get all OAuth apps
-        # Get OAuth apps
         apps = meower.db["oauth"].find({"owner": request.session.user}).sort("name", pymongo.ASCENDING)
         return meower.respond({"apps": list(apps)}, 200, error=False)
     elif request.method == "POST": # Create new OAuth app
@@ -596,7 +533,7 @@ def manage_oauth_apps():
             "first_party": False,
             "bans": [],
             "allowed_redirects": [],
-            "secret": generate_token(64),
+            "secret": secrets.token_urlsafe(64),
             "created": time.time()
         }
 
@@ -678,7 +615,7 @@ def manage_oauth_app(app_id):
 
         # Refresh secret
         if ("refresh_secret" in request.json) and (request.json["refresh_secret"] == True):
-            app_data["secret"] = generate_token(64)
+            app_data["secret"] = secrets.token_urlsafe(64)
             meower.db["oauth"].update_one({"_id": app_id}, {"$set": {"secret": app_data["secret"]}})
 
         # Return new app data
