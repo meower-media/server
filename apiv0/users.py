@@ -10,15 +10,14 @@ def get_profile(user):
     userdata = meower.db["usersv0"].find_one({"lower_username": user.lower()})
     if userdata is None:
         abort(404)
-    else:
-        if userdata["_id"] != request.session.user:
-            del userdata["config"]
-            del userdata["ratelimits"]
-        else:
-            userdata["config/mfa"] = (userdata["security"]["mfa_secret"] != None)
-        del userdata["security"]
+    
+    # Hide sensitive data
+    if userdata["_id"] != request.session.user:
         userdata["profile"]["status"] = meower.user_status(userdata["_id"])
+        del userdata["config"]
+    del userdata["security"]
 
+    # Return payload
     return meower.respond(userdata, 200, error=False)
 
 @users.route("/<user>/posts", methods=["GET"])
@@ -35,19 +34,18 @@ def search_user_posts(user):
         page = int(request.args.get("pages"))
 
     # Get index
-    query_get = meower.db["posts"].find({"origin": "home", "user": userdata["_id"], "deleted": False}).skip((page-1)*25).limit(25).sort("created", pymongo.ASCENDING)
-    pages_amount = (meower.db["posts"].count_documents({"origin": "home", "deleted": False}) // 25) + 1
+    query_get = meower.db["posts"].find({"post_origin": "home", "u": userdata["_id"], "isDeleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
+    pages_amount = (meower.db["posts"].count_documents({"post_origin": "home", "u": userdata["_id"], "isDeleted": False}) // 25) + 1
 
     # Convert query get
     payload_posts = []
     for post in query_get:
-        userdata = meower.db["usersv0"].find_one({"_id": post["user"]})
+        userdata = meower.db["usersv0"].find_one({"_id": post["u"]})
         if userdata is None:
-            post["user"] = "Deleted"
+            post["u"] = "Deleted"
         else:
-            post["user"] = userdata["username"]
+            post["u"] = userdata["username"]
         payload_posts.append(post)
-    payload_posts.reverse()
 
     # Create payload
     payload = {

@@ -148,20 +148,20 @@ class Utils:
         userdata = self.meower.db["usersv0"].find_one({"_id": user})
         if userdata is None:
             return "Offline"
+
+        status = userdata["profile"]["status"]
+        if userdata["security"]["banned"]:
+            return "Banned"
+        elif (userdata["security"]["suspended_until"] is not None) and (userdata["security"]["suspended_until"] > time.time()):
+            return "Suspended"
         else:
-            status = userdata["profile"]["status"]
-            if userdata["security"]["banned"]:
-                return "Banned"
-            elif userdata["security"]["suspended_until"] > time.time():
-                return "Suspended"
-            else:
-                if user in self.meower.sock_clients:
-                    if (status < 0) or (status > 3):
-                        return "Online"
-                    else:
-                        return ["Offline", "Online", "Away", "Do Not Disturb"][status]
+            if user in self.meower.sock_clients:
+                if (status < 0) or (status > 3):
+                    return "Online"
                 else:
-                    return "Offline"
+                    return ["Offline", "Online", "Away", "Do Not Disturb"][status]
+            else:
+                return "Offline"
 
     def send_payload(self, payload, user=None):
         if user is None:
@@ -295,7 +295,7 @@ class Utils:
                 return self.meower.respond({"type": "unauthorized", "message": "You are not authenticated."}, 401)
             elif userdata["state"] not in levels:
                 return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403)
-            elif check_suspension and (userdata["suspended_until"] > time.time()):
+            elif check_suspension and (userdata["security"]["suspended_until"] is not None) and (userdata["security"]["suspended_until"] > time.time()):
                 return self.meower.respond({"type": "forbidden", "message": "You are suspended from performing this action."}, 403)
 
 class Session:

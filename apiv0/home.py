@@ -41,7 +41,7 @@ def get_home():
         return meower.respond(payload, 200, error=False)
     elif request.method == "POST":
         # Check whether the client is authenticated
-        meower.require_auth([3], scope="meower:posts:create_posts")
+        meower.require_auth([5], scope="meower:posts:create_posts", check_suspension=True)
 
         # Check for required data
         meower.check_for_json(["p"])
@@ -57,11 +57,8 @@ def get_home():
         elif meower.check_for_bad_chars_post(content):
             return meower.respond({"type": "illegalCharacters"}, 400, error=True)
 
-        # Check if account is suspended or ratelimited
-        userdata = meower.db["usersv0"].find_one({"_id": request.session.user})
-        if (userdata["security"]["suspended_until"] > int(time.time())) or (userdata["security"]["suspended_until"] == -1):
-            return meower.respond({"type": "accountSuspended"}, 403, error=True)
-        elif meower.check_for_spam("posts-home", request.session.user):
+        # Check if account is ratelimited
+        if meower.check_for_spam("posts-home", request.session.user):
             return meower.respond({"type": "ratelimited"}, 429, error=True)
 
         # Create post

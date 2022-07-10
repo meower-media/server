@@ -65,11 +65,7 @@ meower.register_blueprint(search, url_prefix="/v0/search")
 from flask_sock import Sock
 from apiv0.socket import Socket
 sock = Sock(meower)
-meower.socket = {
-	"next_id": 0,
-	"clients": {},
-	"login_codes": {}
-}
+meower.sock_clients = {}
 @sock.route("/v0/socket")
 def socket_server(client):
 	Socket(meower, client)
