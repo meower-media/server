@@ -11,10 +11,10 @@ home = Blueprint("home_blueprint", __name__)
 def get_home():
     if request.method == "GET":
         # Get page
-        if not ("pages" in request.args):
+        if not ("page" in request.args):
             page = 1
         else:
-            page = int(request.args.get("pages"))
+            page = int(request.args["page"])
 
         # Get index
         query_get = meower.db["posts"].find({"post_origin": "home", "isDeleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
@@ -57,9 +57,9 @@ def get_home():
         elif meower.check_for_bad_chars_post(content):
             return meower.respond({"type": "illegalCharacters"}, 400, error=True)
 
-        # Check if account is ratelimited
-        if meower.check_for_spam("posts-home", request.session.user):
-            return meower.respond({"type": "ratelimited"}, 429, error=True)
+        # Check if account is spamming
+        if meower.check_for_spam("posts-home", request.session.user, burst=10, seconds=5):
+            abort(429)
 
         # Create post
         post_data = {
@@ -75,7 +75,7 @@ def get_home():
 
         # Send notification to all users
         userdata = meower.db["usersv0"].find_one({"_id": request.session.user})
-        post_data["user"] = userdata["username"]
+        post_data["username"] = userdata["username"]
         meower.send_payload(json.dumps({"cmd": "new_post", "val": post_data}))
 
         # Return payload

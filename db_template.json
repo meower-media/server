@@ -15,7 +15,8 @@
             {
                 "_id": "filter",
                 "whitelist": [],
-                "blacklist": []
+                "blacklist": [],
+                "blocked_usernames": []
             }
         ]
     },
@@ -36,13 +37,13 @@
                     "sfx": true,
                     "bgm": {
                         "enabled": true,
-                        "type": "default",
+                        "type": 0,
                         "data": 2
                     }
                 },
                 "profile": {
                     "pfp": {
-                        "type": "default",
+                        "type": 0,
                         "data": 1
                     },
                     "bio": "",
@@ -50,8 +51,10 @@
                     "last_seen": 0
                 },
                 "security": {
-                    "authentication_methods": [],
-                    "default_method": 0,
+                    "email": null,
+                    "password": null,
+                    "webauthn": [],
+                    "default_method": null,
                     "totp": null,
                     "oauth": {
                         "authorized": [],

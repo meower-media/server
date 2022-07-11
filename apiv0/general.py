@@ -11,3 +11,7 @@ def index():
 def get_status():
     data = meower.db["config"].find_one({"_id": "supported_versions"})
     return meower.respond({"isRepairMode": meower.repairMode, "scratchDeprecated": meower.scratchDeprecated, "supported": {"0": (0 in data["apis"])}, "supported_clients": data["clients"], "IPBlocked": (request.remote_addr in meower.ip_banlist)}, 200)
+
+@general.route('/favicon.ico', methods=['GET']) # Favicon, my ass. We need no favicon for an API.
+def favicon_my_ass():
+	return "", 200

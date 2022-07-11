@@ -28,10 +28,10 @@ def search_user_posts(user):
         abort(404)
 
     # Get page
-    if not ("pages" in request.args):
+    if not ("page" in request.args):
         page = 1
     else:
-        page = int(request.args.get("pages"))
+        page = int(request.args["page"])
 
     # Get index
     query_get = meower.db["posts"].find({"post_origin": "home", "u": userdata["_id"], "isDeleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)

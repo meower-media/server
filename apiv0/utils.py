@@ -9,6 +9,7 @@ import serial
 from cryptography.fernet import Fernet
 from uuid import uuid4
 import secrets
+from better_profanity import profanity
 
 class Utils:
     def __init__(self, meower, request):
@@ -16,6 +17,8 @@ class Utils:
         self.request = request
 
         # Create ratelimits
+        meower.last_packet = {}
+        meower.burst_amount = {}
         meower.ratelimits = {}
 
         # Create permitted lists of characters for posts
@@ -119,17 +122,35 @@ class Utils:
         # Return session data
         return {"session": session, "user": userdata, "requires_totp": False}
 
-    def check_for_spam(self, type, client, seconds=1):
-        if not (type in self.meower.ratelimits):
+    def check_for_spam(self, type, client, burst=1, seconds=1):
+        # Check if type and client are in ratelimit dictionary
+        if not (type in self.meower.last_packet):
+            self.meower.last_packet[type] = {}
+            self.meower.burst_amount[type] = {}
             self.meower.ratelimits[type] = {}
-
-        if not (client in self.meower.ratelimits[type]):
+        if client not in self.meower.last_packet[type]:
+            self.meower.last_packet[type][client] = 0
+            self.meower.burst_amount[type][client] = 0
             self.meower.ratelimits[type][client] = 0
-        
+
+        # Check if user is currently ratelimited
         if self.meower.ratelimits[type][client] > time.time():
             return True
+
+        # Check if max burst has expired
+        if (self.meower.last_packet[type][client] + seconds) < time.time():
+            self.meower.burst_amount[type][client] = 0
+
+        # Set last packet time and add to burst amount
+        self.meower.last_packet[type][client] = time.time()
+        self.meower.burst_amount[type][client] += 1
+
+        # Check if burst amount is over max burst
+        if self.meower.burst_amount[type][client] > burst:
+            self.meower.ratelimits[type][client] = (time.time() + seconds)
+            self.meower.burst_amount[type][client] = 0
+            return True
         else:
-            self.meower.ratelimits[type][client] = time.time() + seconds
             return False
 
     def check_for_bad_chars_username(self, message):
@@ -143,6 +164,12 @@ class Utils:
             if not char in self.permitted_chars_post:
                 return True
         return False
+
+    def filter(self, message):
+        message = self.meower.filter.censor(message)
+        for word in self.meower.filter.CENSOR_WORDSET:
+            message = message.replace(str(word), ("*" * len(word)))
+        return message
 
     def user_status(self, user):
         userdata = self.meower.db["usersv0"].find_one({"_id": user})
@@ -184,7 +211,15 @@ class Utils:
                 self.meower.meowkey.connect()
                 self.meower.meowkey.rx()
                 self.meower.meowkey.tx(json.dumps({"cmd": "ACK?"}))
-                key = self.meower.meowkey.rx()
+                signal = json.loads(self.meower.meowkey.rx())
+                if signal["cmd"] == "ACK!":
+                    self.meower.meowkey.tx(json.dumps({"cmd": "KEY?"}))
+                    key = json.loads(self.meower.meowkey.rx())
+                    if key["cmd"] == "KEY!":
+                        key = key["key"]
+                    else:
+                        key = None
+                        self.log("MeowKey refused to send encryption key")
             if key is not None:
                 self.meower.encryption = Fernet(key.encode())
         except:
@@ -269,6 +304,11 @@ class Utils:
         for item in data:
             if item not in self.request.json:
                 return self.meower.respond({"type": "missingField", "message": "Missing required data: {0}".format(item)}, 400)
+
+    def check_for_params(self, data=[]):
+        for item in data:
+            if item not in self.request.args:
+                return self.meower.respond({"type": "missingParam", "message": "Missing required param: {0}".format(item)}, 400)
     
     def require_auth(self, allowed_types, levels=[-1, 0, 1, 2, 3], scope=None, check_suspension=False):
         if self.request.method != "OPTIONS":

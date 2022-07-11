@@ -1,70 +1,112 @@
-from flask import Blueprint, request, abort
-from flask import current_app as app
+from flask import Blueprint, request
+from flask import current_app as meower
+import pymongo
 
 search = Blueprint("search_blueprint", __name__)
 
 @search.route("/profiles", methods=["GET"])
 def search_profiles():
-    if not ("q" in request.args):
-        return app.respond({"type": "missingField"}, 400, error=True)
+    # Check for required params
+    meower.check_for_params(["q"])
 
-    # Extract query and page for simplicity
-    query = str(request.args.get("q"))
-    if "page" in request.args:
-        page = int(request.args.get("page"))
-    else:
+    # Get query
+    query = request.args["q"]
+
+    # Get page
+    if not ("page" in request.args):
         page = 1
+    else:
+        page = int(request.args["page"])
 
     # Get index
-    index = app.meower.files.find_items("usersv0", {"lower_username": {"$regex": query.lower()}, "flags.isDeleted": False}, sort="lower_username", truncate=True, page=page)
-    del index["items"]
+    query_get = meower.db["usersv0"].find({"lower_username": {"$regex": query.lower()}, "deleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
+    pages_amount = (meower.db["usersv0"].count_documents({"lower_username": {"$regex": query.lower()}, "deleted": False}) // 25) + 1
 
-    # Reverse index so it's in order
-    index["index"].reverse()
+    # Convert query get
+    payload_users = []
+    for user in query_get:
+        user["profile"]["status"] = meower.user_status(user["_id"])
+        del user["config"]
+        del user["security"]
+        payload_users.append(user)
+
+    # Create payload
+    payload = {
+        "posts": list(payload_users),
+        "page#": int(page),
+        "pages": int(pages_amount)
+    }
 
     # Return payload
-    return app.respond(index, 200, error=False)
+    return meower.respond(payload, 200, error=False)
 
 @search.route("/posts", methods=["GET"])
 def search_home_posts():
-    if not ("q" in request.args):
-        return app.respond({"type": "missingField"}, 400, error=True)
-    
-    # Extract query and page for simplicity
-    query = str(request.args.get("q"))
-    if "page" in request.args:
-        page = int(request.args.get("page"))
-    else:
+    # Check for required params
+    meower.check_for_params(["q"])
+
+    # Get query
+    query = request.args["q"]
+
+    # Get page
+    if not ("page" in request.args):
         page = 1
+    else:
+        page = int(request.args["page"])
 
     # Get index
-    query_get = app.meower.files.find_items("posts", {"post_origin": "home", "p": {"$regex": query}, "isDeleted": False}, sort="t.e", truncate=True, page=page)
+    query_get = meower.db["posts"].find({"post_origin": "home", "p": {"$regex": query}, "isDeleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
+    pages_amount = (meower.db["posts"].count_documents({"post_origin": "home", "p": {"$regex": query}, "isDeleted": False}) // 25) + 1
 
-    # Auto get
-    if not ("autoget" in request.args):
-        del query_get["items"]
-    
+    # Convert query get
+    payload_posts = []
+    for post in query_get:
+        userdata = meower.db["usersv0"].find_one({"_id": post["u"]})
+        if userdata is None:
+            post["u"] = "Deleted"
+        else:
+            post["u"] = userdata["username"]
+        payload_posts.append(post)
+
+    # Create payload
+    payload = {
+        "posts": list(payload_posts),
+        "page#": int(page),
+        "pages": int(pages_amount)
+    }
+
     # Return payload
-    return app.respond(query_get, 200, error=False)
+    return meower.respond(payload, 200, error=False)
 
 @search.route("/chats", methods=["GET"])
 def search_public_chats():
-    if not ("q" in request.args):
-        return app.respond({"type": "missingField"}, 400, error=True)
-    
-    # Extract query and page for simplicity
-    query = str(request.args.get("q"))
-    if "page" in request.args:
-        page = int(request.args.get("page"))
-    else:
+    # Check for required params
+    meower.check_for_params(["q"])
+
+    # Get query
+    query = request.args["q"]
+
+    # Get page
+    if not ("page" in request.args):
         page = 1
+    else:
+        page = int(request.args["page"])
 
     # Get index
-    query_get = app.meower.files.find_items("chats", {"nickname": {"$regex": query}, "isPublic": True, "isDeleted": False}, sort="nickname", truncate=True, page=page)
-    
-    # Auto get
-    if not ("autoget" in request.args):
-        del query_get["items"]
+    query_get = meower.db["chats"].find({"nickname": {"$regex": query.lower()}, "public": True, "deleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
+    pages_amount = (meower.db["chats"].count_documents({"nickname": {"$regex": query.lower()}, "public": True, "deleted": False}) // 25) + 1
+
+    # Convert query get
+    payload_chat = []
+    for chat in query_get:
+        payload_chat.append(chat)
+
+    # Create payload
+    payload = {
+        "posts": list(payload_chat),
+        "page#": int(page),
+        "pages": int(pages_amount)
+    }
 
     # Return payload
-    return app.respond(query_get, 200, error=False)
+    return meower.respond(payload, 200, error=False)

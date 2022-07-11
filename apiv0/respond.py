@@ -3,14 +3,11 @@ import json
 
 def respond(resp, status, error=False):
     if (type(resp) == dict) and (type(status) == int) and (type(error) == bool):
-        messages = {
-            "200": "OK",
-            "400": "Bad request",
-            "401": "Not authenticated",
-            "405": "Method not allowed"
-        }
         if "message" not in resp:
-            resp["message"] = messages[str(status)]
+            if status == 200:
+                resp["message"] = "OK"
+            else:
+                resp["message"] = None
         resp["error"] = error
         resp["status"] = status
         return flask.abort(flask.Response(response=json.dumps(resp), content_type="text/json", status=status))

@@ -16,6 +16,7 @@ meower.foundation_session = utils.foundation_session
 meower.check_for_spam = utils.check_for_spam
 meower.check_for_bad_chars_post = utils.check_for_bad_chars_post
 meower.check_for_bad_chars_username = utils.check_for_bad_chars_username
+meower.filter = utils.filter
 meower.user_status = utils.user_status
 meower.send_payload = utils.send_payload
 meower.encrypt = utils.encrypt
@@ -24,6 +25,7 @@ meower.is_valid_email = utils.is_valid_email
 meower.send_email = utils.send_email
 meower.init_db = utils.init_db
 meower.check_for_json = utils.check_for_json
+meower.check_for_params = utils.check_for_params
 meower.require_auth = utils.require_auth
 meower.Session = Session
 
@@ -73,6 +75,15 @@ def socket_server(client):
 # Initialize CORS
 from flask_cors import CORS
 CORS(meower, resources={r'*': {'origins': '*'}})
+
+# Load profanity filter
+from better_profanity import profanity
+meower.profanity = profanity
+meower.log("Loading profanity filter...")
+filter = meower.db["config"].find_one({"_id": "filter"})
+meower.profanity.load_censor_words(whitelist_words=filter["whitelist"])
+meower.profanity.add_censor_words(custom_words=filter["blacklist"])
+meower.blocked_usernames = filter["blocked_usernames"]
 
 # Load IP bans into memory
 meower.log("Loading IP bans...")

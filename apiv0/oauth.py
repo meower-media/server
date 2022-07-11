@@ -60,6 +60,11 @@ def create_account():
     elif meower.check_for_bad_chars_username(username):
         return meower.respond({"type": "illegalCharacters"}, 400, error=True)
 
+    # Check if the username is allowed
+    for bad_username in meower.blocked_usernames:
+        if bad_username.lower() in username.lower():
+            return meower.respond({"type": "usernameBlocked", "message": "That username is blocked from being used"}, 400, error=True)
+
     # Check if account exists
     if meower.db["usersv0"].find_one({"lower_username": username.lower()}) is not None:
         return meower.respond({"type": "usernameAlreadyExists", "message": "That username is already taken"}, 409, error=True)
@@ -79,13 +84,13 @@ def create_account():
             "sfx": True,
             "bgm": {
                 "enabled": True,
-                "type": "default",
+                "type": 0,
                 "data": 2
             }
         },
         "profile": {
             "pfp": {
-                "type": "default",
+                "type": 0,
                 "data": 1
             },
             "bio": "",
