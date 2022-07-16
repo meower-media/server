@@ -24,14 +24,14 @@
         "indexes": ["_id", "username", "lower_username"],
         "items": [
             {
-                "_id": "0",
+                "_id": "deleted",
                 "username": "Deleted",
                 "lower_username": "deleted",
                 "state": 0,
                 "deleted": true,
                 "created": 0,
                 "config": {
-                    "unread_inbox": false,
+                    "unread_messages": 0,
                     "theme": "orange",
                     "mode": true,
                     "sfx": true,
@@ -46,7 +46,7 @@
                         "type": 0,
                         "data": 1
                     },
-                    "bio": "",
+                    "quote": "",
                     "status": 1,
                     "last_seen": 0
                 },

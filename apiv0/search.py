@@ -61,12 +61,10 @@ def search_home_posts():
     # Convert query get
     payload_posts = []
     for post in query_get:
-        userdata = meower.db["usersv0"].find_one({"_id": post["u"]})
-        if userdata is None:
-            post["u"] = "Deleted"
-        else:
-            post["u"] = userdata["username"]
-        payload_posts.append(post)
+        user = meower.User(meower, post["u"])
+        if user is not None:
+            post["u"] = user
+            payload_posts.append(post)
 
     # Create payload
     payload = {
@@ -99,11 +97,16 @@ def search_public_chats():
     # Convert query get
     payload_chat = []
     for chat in query_get:
+        for user_id in chat["members"]:
+            user = meower.User(meower, user_id)
+            chat["members"].remove(user_id)
+            if user is not None:
+                chat["members"].append(user.profile)
         payload_chat.append(chat)
 
     # Create payload
     payload = {
-        "posts": list(payload_chat),
+        "posts": list(query_get),
         "page#": int(page),
         "pages": int(pages_amount)
     }

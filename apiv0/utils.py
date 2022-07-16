@@ -16,19 +16,19 @@ class Utils:
         self.meower = meower
         self.request = request
 
-        # Create ratelimits
+        # Ratelimits
         meower.last_packet = {}
         meower.burst_amount = {}
         meower.ratelimits = {}
 
-        # Create permitted lists of characters for posts
+        # Permitted lists of characters for posts
         self.permitted_chars_post = []
         self.permitted_chars_post.extend(string.ascii_letters)
         self.permitted_chars_post.extend(string.digits)
         self.permitted_chars_post.extend(string.punctuation)
         self.permitted_chars_post.append(" ")
 
-        # Create permitted lists of characters for usernames
+        # Permitted lists of characters for usernames
         self.permitted_chars_username = self.permitted_chars_post.copy()
         for item in [
             '"',
@@ -37,6 +37,16 @@ class Utils:
             ";"
         ]:
             self.permitted_chars_username.remove(item)
+
+        # WebSocket status codes
+        self.sock_statuses = {
+            "OK": "I:100 | OK",
+            "Syntax": "E:101 | Syntax",
+            "Datatype": "E:102 | Datatype",
+            "TooLarge": "E:103 | Packet too large",
+            "Internal": "E:104 | Internal",
+            "InvalidToken": "E:106 | Invalid token",
+        }
 
     def log(self, msg, prefix=None):
         if prefix is None:
@@ -301,42 +311,61 @@ class Utils:
                     pass
 
     def check_for_json(self, data=[]):
+        """
+        id: JSON key
+        t: expected datatype
+        l_min: length minimum
+        l_max: length maximum
+        r_min: range minimum
+        r_max: range maximum
+        """
+
         for item in data:
-            if item not in self.request.json:
-                return self.meower.respond({"type": "missingField", "message": "Missing required data: {0}".format(item)}, 400)
+            if item["id"] not in self.request.json:
+                return self.meower.respond({"type": "missingField", "message": "Missing required JSON data: {0}".format(item["id"])}, 400, error=True)
+            elif ("t" in item) and (type(self.request.json[item["id"]]) is not item["t"]):
+                return self.meower.respond({"type": "datatype", "message": "Invalid datatype for JSON data: {0}".format(item["id"])}, 400, error=True)
+            elif ("l_min" in item) and (len(str(self.request.json[item["id"]])) < item["l_min"]):
+                return self.meower.respond({"type": "invalidLength", "message": "Invalid length for JSON data: {0}".format(item["id"])}, 400, error=True)
+            elif ("l_max" in item) and (len(str(self.request.json[item["id"]])) > item["l_max"]):
+                return self.meower.respond({"type": "invalidLength", "message": "Invalid length for JSON data: {0}".format(item["id"])}, 400, error=True)
+            elif (("r_min") in item) and (self.request.json[item["id"]] < item["r_min"]):
+                return self.meower.respond({"type": "outOfRange", "message": "Out of range value for JSON data: {0}".format(item["id"])}, 400, error=True)
+            elif (("r_max") in item) and (self.request.json[item["id"]] > item["r_max"]):
+                return self.meower.respond({"type": "outOfRange", "message": "Out of range value for JSON data: {0}".format(item["id"])}, 400, error=True)
 
     def check_for_params(self, data=[]):
         for item in data:
             if item not in self.request.args:
-                return self.meower.respond({"type": "missingParam", "message": "Missing required param: {0}".format(item)}, 400)
+                return self.meower.respond({"type": "missingParam", "message": "Missing required param: {0}".format(item)}, 400, error=True)
     
     def require_auth(self, allowed_types, levels=[-1, 0, 1, 2, 3], scope=None, check_suspension=False):
         if self.request.method != "OPTIONS":
             # Check if session is valid
             if not self.request.session.authed:
-                return self.meower.respond({"type": "unauthorized", "message": "You are not authenticated."}, 401)
+                return self.meower.respond({"type": "unauthorized", "message": "You are not authenticated."}, 401, error=True)
             
             # Check session type
             if self.request.session.type not in allowed_types:
-                return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403)
+                return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403, error=True)
             
             # Check session scopes
             if (self.request.session.type == 5) and (scope not in self.request.session.scopes):
-                return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403)
+                return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403, error=True)
 
             # Check if session is verified (only for certain types)
             if (self.request.session.verified != None) and (self.request.session.verified != True):
-                return self.meower.respond({"type": "unauthorized", "message": "Session has not been verified yet."}, 401)
+                return self.meower.respond({"type": "unauthorized", "message": "Session has not been verified yet."}, 401, error=True)
 
             # Check user
             userdata = self.meower.db["usersv0"].find_one({"_id": self.request.session.user})
             if (userdata is None) or userdata["deleted"] or userdata["security"]["banned"]:
                 self.request.session.delete()
-                return self.meower.respond({"type": "unauthorized", "message": "You are not authenticated."}, 401)
+                return self.meower.respond({"type": "unauthorized", "message": "You are not authenticated."}, 401, error=True)
             elif userdata["state"] not in levels:
-                return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403)
+                return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403, error=True)
             elif check_suspension and (userdata["security"]["suspended_until"] is not None) and (userdata["security"]["suspended_until"] > time.time()):
-                return self.meower.respond({"type": "forbidden", "message": "You are suspended from performing this action."}, 403)
+                return self.meower.respond({"type": "forbidden", "message": "You are suspended from performing this action."}, 403, error=True)
 
 class Session:
     def __init__(self, meower, token):
@@ -365,6 +394,35 @@ class Session:
     def delete(self):
         # Delete session
         self.meower.db.sessions.delete_one({"_id": self._id})
+
+class User:
+    def __init__(self, meower, user_id=None, username=None):
+        if user_id is not None:
+            self.raw = meower.db["usersv0"].find_one({"_id": user_id})
+        elif username is not None:
+            self.raw = meower.db["usersv0"].find_one({"lower_username": username.lower()})
+        else:
+            self.raw = None
+
+        if self.raw is None:
+            self = None
+            return
+        
+        for key, value in self.raw.items():
+            setattr(self, key, value)
+
+        self.profile = {
+            "_id": self._id,
+            "username": self.username,
+            "lower_username": self.lower_username,
+            "pfp": self.profile["pfp"],
+            "quote": self.profile["quote"],
+            "status": meower.user_status(self._id),
+            "created": self.created
+        }
+
+        self.client = self.raw.copy()
+        del self.client["security"]
 
 class EasyUART:
     def __init__(self, port):

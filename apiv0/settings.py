@@ -59,18 +59,10 @@ def email_address():
         meower.require_auth([5], scope="foundation:settings:authentication")
 
         # Check for required data
-        meower.check_for_json(["email"])
+        meower.check_for_json([{"id": "email", "t": str, "l_min": 5, "l_max": 100}])
 
         # Extract email for simplicity
         email = request.json["email"].strip()
-
-        # Check for bad datatypes and syntax
-        if not (type(email) == str):
-            return meower.respond({"type": "badDatatype"}, 400, error=True)
-        elif len(email) > 100:
-            return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
-        elif not meower.is_valid_email(email):
-            return meower.respond({"type": "badSyntax"}, 400, error=True)
 
         # Create email verification session
         encryption_id, encrypted_email = meower.encrypt(email)
@@ -95,30 +87,18 @@ def password():
         return meower.respond({"password": (userdata["security"]["password"] is not None)}, 200, error=False)
     elif request.method == "PATCH":
         # Check for required data
-        meower.check_for_json(["new_password"])
+        meower.check_for_json([{"id": "new_password", "t": str, "l_min": 0, "l_max": 256}])
 
         # Extract new password for simplicity
         new_password = request.json["new_password"].strip()
 
-        # Check for bad datatypes and syntax
-        if not (type(new_password) == str):
-            return meower.respond({"type": "badDatatype"}, 400, error=True)
-        elif len(new_password) > 100:
-            return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
-
         # Check if account has a current password
         if userdata["security"]["password"] is not None:
             # Check for required data
-            meower.check_for_json(["old_password"])
+            meower.check_for_json([{"id": "old_password", "t": str, "l_min": 0, "l_max": 256}])
 
             # Extract old password for simplicity
             old_password = request.json["old_password"].strip()
-
-            # Check for bad datatypes and syntax
-            if not (type(old_password) == str):
-                return meower.respond({"type": "badDatatype"}, 400, error=True)
-            elif len(old_password) > 100:
-                return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
 
             # Verify old password
             if not scrypt.verify(sha256(old_password.encode()).hexdigest(), userdata["security"]["password"]["hash"]):
@@ -146,16 +126,10 @@ def password():
             return meower.respond({"type": "noAuthenticationMethods"}, 400, error=True)
 
         # Check for required data
-        meower.check_for_json(["password"])
+        meower.check_for_json([{"id": "password", "t": str, "l_min": 0, "l_max": 256}])
 
         # Extract old password for simplicity
         password = request.json["password"].strip()
-
-        # Check for bad datatypes and syntax
-        if not (type(password) == str):
-            return meower.respond({"type": "badDatatype"}, 400, error=True)
-        elif len(password) > 100:
-            return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
 
         # Verify old password
         if not scrypt.verify(sha256(password.encode()).hexdigest(), userdata["security"]["password"]["hash"]):
@@ -194,17 +168,11 @@ def totp():
             return meower.respond({"type": "totpAlreadyEnabled", "message": "TOTP is already enabled"}, 400, error=True)
 
         # Check for required data
-        meower.check_for_json(["secret", "code"])
+        meower.check_for_json([{"id": "secret", "t": str, "l_min": 16, "l_max": 16}, {"id": "code", "t": str, "l_min": 6, "l_max": 6}])
 
         # Extract secret and code for simplicity
         secret = request.json["secret"].strip()
         code = request.json["code"].strip()
-
-        # Check for bad datatypes and syntax
-        if not ((type(secret) == str) and (type(code) == str)):
-            return meower.respond({"type": "badDatatype"}, 400, error=True)
-        elif (len(secret) > 16) or (len(code) > 6):
-            return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
 
         # Verify code
         if not pyotp.TOTP(secret).verify(code):

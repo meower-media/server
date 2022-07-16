@@ -1,127 +1,94 @@
+from flask import request
 from threading import Thread
-from uuid import uuid4
 import json
-import time
-import secrets
+from uuid import uuid4
 
-class Socket:
+class SocketClient:
     def __init__(self, meower, client):
         self.meower = meower
         self.client = client
 
-        self.client.id = self.meower.sock_next_id
-        self.meower.sock_next_id += 1
-        self.client.login_code = None
-        self.client.user = None
-        self.statuscodes = {
-            "OK": "I:100 | OK",
-            "Syntax": "E:101 | Syntax",
-            "Datatype": "E:102 | Datatype",
-            "TooLarge": "E:103 | Packet too large",
-            "Internal": "E:104 | Internal",
-            "InvalidToken": "E:106 | Invalid token",
-            "Refused": "E:107 | Refused",
-            "IDNotFound": "E:108 | ID not found",
-            "RateLimit": "E:109 | Too many requests"
-        }
+        self.client.id = str(uuid4())
+        self.client.session = None
+        self.client.current_listener = None
 
+        self.send("motd", "Meower Social Media Platform WebSocket Server")
+        self.send("vers", "0.0.1")
+        self.send("id", self.client.id)
+
+        self.meower.log("{0} connected to WebSocket".format(self.client.id))
+        Thread(target=self.handle_msg).start()
+        while self.client.connected:
+            pass
+        if self.client.session is not None:
+            self.meower.sock_clients[self.client.session.user].remove(self)
+            if len(self.meower.sock_clients[self.client.session.user]) == 0:
+                del self.meower.sock_clients[self.client.session.user]
+        self.meower.log("{0} disconnected from WebSocket".format(self.client.id))
+
+    def handle_msg(self):
         while True:
-            msg = self.client.receive(1024)
-            Thread(target=self.handle_msg, args=(msg,)).start()
-    
-    def handle_msg(self, msg):
-        try:
-            msg = json.loads(msg)
-        except:
-            return self.send_status("Datatype")
-        
-        if not (("cmd" in msg) and ("val" in msg)):
-            return self.send_status("Syntax")
+            msg = self.client.receive()
+            try:
+                msg = json.loads(msg)
+            except:
+                return self.send_status("Datatype")
+            
+            if not (("cmd" in msg) and ("val" in msg)):
+                return self.send_status("Syntax")
 
-        self.meower.log("Handling '{0}' from: {1}".format(msg["cmd"], self.client.id))
+            self.meower.log("Handling '{0}' from WebSocket client: {1}".format(msg["cmd"], self.client.id))
 
-        cmd = msg["cmd"]
-        val = msg["val"]
-        if "listener" in msg:
-            listener = msg["listener"]
-        else:
-            listener = None
-        
-        try:
-            {
-                "ping": self.ping,
-                "gen_code": self.gen_code,
-                "auth": self.auth,
-                "get_profile": self.get_profile,
-                "change_status": self.change_status
-            }[cmd](val, listener=listener)
-        except:
-            return self.send_status("Internal", listener=listener)
-
-    def send_status(self, status, listener=None):
-        if listener is None:
-            return self.client.send(json.dumps({"cmd": "statuscode", "val": self.statuscodes[status]}))
-        else:
-            return self.client.send(json.dumps({"cmd": "statuscode", "val": self.statuscodes[status], "listener": listener}))
-
-    def ping(self, val, listener=None):
-        return self.send_status("OK", listener=listener)
-
-    def gen_code(self, val, listener=None):
-        self.client.login_code = str(secrets.SystemRandom().randint(111111, 9999999))
-        self.meower.sock_login_codes[self.client.login_code] = self
-        self.client.send(json.dumps({"cmd": "gen_code", "val": self.client.login_code}))
-        return self.send_status("OK", listener=listener)
-
-    def auth(self, val, listener=None):
-        if type(val) is not str:
-            return self.send_status("Datatype", listener=listener)
-        elif len(val) > 64:
-            return self.send_status("TooLarge", listener=listener)
-        
-        session_data = self.meower.db["sessions"].find_one({"access_token": val, "access_expiry": {"$gt": int(time.time())}})
-        if session_data is None:
-            return self.send_status("InvalidToken", listener=listener)
-        else:
-            userdata = self.meower.db["usersv0"].find_one({"_id": session_data["user"]})
-            self.client.user = session_data["user"]
-            if not self.client.user in self.meower.sock_clients:
-                self.meower.sock_clients[self.client.user] = []
-            self.meower.sock_clients[self.client.user].append(self)
-            self.meower.log("WebSocket client {0} with user {1} authenticated".format(self.client.id, self.client.user))
-            self.client.send(json.dumps({"cmd": "auth", "val": {"user": self.client.user, "username": userdata["username"], "session": session_data["_id"]}}))
-            return self.send_status("OK", listener=listener)
-
-    def get_profile(self, val, listener=None):
-        if type(val) is not str:
-            return self.send_status("Datatype", listener=listener)
-        elif len(val) > 20:
-            return self.send_status("TooLarge", listener=listener)
-        
-        if val == "me":
-            userdata = self.meower.db["usersv0"].find_one({"_id": self.client.user})
-        else:
-            userdata = self.meower.db["usersv0"].find_one({"lower_username": val.lower()})
-        
-        if userdata is None:
-            return self.send_status("IDNotFound", listener=listener)
-        else:
-            if userdata["_id"] != self.client.user:
-                del userdata["config"]
-                del userdata["ratelimits"]
+            cmd = msg["cmd"]
+            val = msg["val"]
+            if ("listener" in msg) and (len(msg["listener"]) < 100):
+                self.client.current_listener = msg["listener"]
             else:
-                userdata["config/mfa"] = (userdata["security"]["mfa_secret"] != None)
-            del userdata["security"]
-            userdata["profile"]["status"] = self.meower.user_status(userdata["_id"])
+                self.client.current_listener = None
+            
+            try:
+                {
+                    "ping": self.ping,
+                    "auth": self.auth
+                }[cmd](val)
+            except:
+                self.send_status("Internal")
+            self.client.current_listener = None
 
-            self.client.send(json.dumps({"cmd": "get_profile", "val": userdata}))
-            return self.send_status("OK", listener=listener)
-    
-    def change_status(self, val, listener=None):
-        if type(val) is not int:
-            return self.send_status("Datatype", listener=listener)
-        elif not (val in [0, 1, 2, 3]):
-            return self.send_status("Refused", listener=listener)
-        self.meower.db["usersv0"].update_one({"_id": self.client.user}, {"$set": {"profile.status": val, "profile.last_seen": int(time.time())}})
-        self.meower.log("User {0} changed status to {1}".format(self.client.user, val))
-        return self.send_status("OK", listener=listener)
+    def send(self, cmd, val):
+        if self.client.current_listener is None:
+            self.client.send(json.dumps({"cmd": cmd, "val": val}))
+        else:
+            self.client.send(json.dumps({"cmd": cmd, "val": val, "listener": self.client.current_listener}))
+
+    def send_status(self, status):
+        if self.client.current_listener is None:
+            self.client.send(json.dumps({"cmd": "statuscode", "val": self.meower.sock_statuses[status]}))
+        else:
+            self.client.send(json.dumps({"cmd": "statuscode", "val": self.meower.sock_statuses[status], "listener": self.client.current_listener}))
+
+    def ping(self, val):
+        return self.send_status("OK")
+
+    def auth(self, val):
+        if self.client.session is not None:
+            return self.send_status("OK")
+        elif type(val) is not str:
+            return self.send_status("Datatype")
+        elif len(val) > 136:
+            return self.send_status("TooLarge")
+
+        val = val.replace("Bearer ", "").strip()
+        
+        session = self.meower.Session(self.meower, val)
+        if session.authed and ("meower:websocket:connect" in session.scopes):
+            self.client.session = session
+
+            if session.user not in self.meower.sock_clients:
+                self.meower.sock_clients[session.user] = []
+            self.meower.sock_clients[session.user].append(self)
+
+            # Return session data
+            return self.send("auth", {"_id": self.client.session._id, "user": self.client.session.user, "scopes": self.client.session.scopes})
+        else:
+            return self.send_status("InvalidToken")

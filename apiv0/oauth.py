@@ -38,6 +38,13 @@ def before_request():
             request.user = request.session.user
         else:
             request.user = None
+    else:
+        if ("Authorization" in request.cookies) or (len(str(request.cookies.get("Authorization"))) <= 136):
+            request.session = meower.Session(meower, str(request.cookies.get("Authorization")).replace("Bearer ", "").strip())
+            if request.session.authed:
+                request.user = request.session.user
+            else:
+                request.user = None
 
 @oauth.route("/create", methods=["POST"])
 def create_account():
@@ -46,18 +53,14 @@ def create_account():
         return meower.respond({"type": "accountCreationBlocked"}, 403, error=True)
 
     # Check for required data
-    meower.check_for_json(["username", "password"])
+    meower.check_for_json([{"id": "username", "t": str, "l_min": 1, "l_max": 20}, {"id": "password", "t": str, "l_max": 256}])
 
     # Extract username and password for simplicity
     username = request.json["username"].strip()
     password = request.json["password"].strip()
 
-    # Check for bad datatypes and syntax
-    if not ((type(password) == str) and (type(password) == str)):
-        return meower.respond({"type": "badDatatype"}, 400, error=True)
-    elif (len(username) > 20) or (len(password) > 72):
-        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
-    elif meower.check_for_bad_chars_username(username):
+    # Check for bad characters
+    if meower.check_for_bad_chars_username(username):
         return meower.respond({"type": "illegalCharacters"}, 400, error=True)
 
     # Check if the username is allowed
@@ -78,7 +81,7 @@ def create_account():
         "deleted": False,
         "created": int(time.time()),
         "config": {
-            "unread_inbox": False,
+            "unread_messages": 0,
             "theme": "orange",
             "mode": True,
             "sfx": True,
@@ -93,7 +96,7 @@ def create_account():
                 "type": 0,
                 "data": 1
             },
-            "bio": "",
+            "quote": "",
             "status": 1,
             "last_seen": int(time.time())
         },
@@ -145,17 +148,13 @@ def create_account():
 @oauth.route("/auth-methods", methods=["GET"])
 def get_auth_methods():
     # Check for required data
-    meower.check_for_json(["username"])
+    meower.check_for_json([{"id": "username", "t": str, "l_min": 1, "l_max": 20}])
 
     # Extract username for simplicity
     username = request.json["username"].strip()
 
-    # Check for bad datatypes and syntax
-    if not (type(username) == str):
-        return meower.respond({"type": "accountDoesNotExist"}, 400, error=True)
-    elif len(username) > 20:
-        return meower.respond({"type": "accountDoesNotExist"}, 400, error=True)
-    elif meower.check_for_bad_chars_username(username):
+    # Check for bad characters
+    if meower.check_for_bad_chars_username(username):
         return meower.respond({"type": "accountDoesNotExist"}, 400, error=True)
 
     # Make sure account exists and check if it is able to be accessed
@@ -180,19 +179,11 @@ def get_auth_methods():
 @oauth.route("/login", methods=["POST"])
 def login():
     # Check for required data
-    meower.check_for_json(["username", "auth_method"])
+    meower.check_for_json([{"id": "username", "t": str, "l_min": 1, "l_max": 20}, {"id": "auth_method", "t": str, "l_max": 20}])
 
     # Extract username and password for simplicity
     username = request.json["username"].strip()
     auth_method = request.json["auth_method"].strip().lower()
-
-    # Check for bad datatypes and syntax
-    if not ((type(username) == str) and (type(auth_method) == str)):
-        return meower.respond({"type": "badDatatype"}, 400, error=True)
-    elif len(username) > 20:
-        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
-    elif meower.check_for_bad_chars_username(username):
-        return meower.respond({"type": "illegalCharacters"}, 400, error=True)
 
     # Make sure the account exists and check account flags
     userdata = meower.db["usersv0"].find_one({"lower_username": username.lower()})
@@ -208,7 +199,7 @@ def login():
     
     # Check for valid authentication
     if (auth_method == "password") and (userdata["security"]["password"] is not None):
-        meower.check_for_json(["password"])
+        meower.check_for_json([{"id": "password", "t": str, "l_max": 256}])
         attempted_password = sha256(request.json["password"].strip().encode()).hexdigest()
         password = userdata["security"]["password"]
         valid = False
@@ -263,7 +254,7 @@ def login_totp():
     meower.require_auth([2])
 
     # Check for required data
-    meower.check_for_json(["code"])
+    meower.check_for_json([{"id": "code", "t": str, "l_min": 6, "l_max": 8}])
     
     # Get user data from database
     userdata = meower.db["usersv0"].find_one({"_id": request.session.user})
@@ -282,18 +273,14 @@ def login_totp():
 @oauth.route("/login/email", methods=["POST"])
 def login_email():
     # Check for required data
-    meower.check_for_json(["username", "code"])
+    meower.check_for_json([{"id": "username", "t": str, "l_min": 1, "l_max": 20}, {"id": "code", "t": str, "l_min": 8, "l_max": 8}])
 
     # Extract username and given code for simplicity
     username = request.json["username"].strip().lower()
     code = request.json["code"].strip().upper()
 
-    # Check for bad datatypes and syntax
-    if not ((type(username) == str) and (type(code) == str)):
-        return meower.respond({"type": "badDatatype"}, 400, error=True)
-    elif (len(username) > 20) or (len(code) > 8):
-        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
-    elif meower.check_for_bad_chars_username(username):
+    # Check for bad characters
+    if meower.check_for_bad_chars_username(username):
         return meower.respond({"type": "illegalCharacters"}, 400, error=True)
 
     # Get userdata from database
@@ -336,7 +323,7 @@ def current_session():
         del userdata["security"]
 
         # Return session data
-        return meower.respond({"session": session, "user": userdata, "meower.foundation_session": (session["type"] == 3), "oauth_session": (session["type"] == 5)}, 200, error=False)
+        return meower.respond({"session": session, "user": userdata, "foundation_session": (session["type"] == 3), "oauth_session": (session["type"] == 5)}, 200, error=False)
     elif request.method == "DELETE":
         # Delete session
         request.session.delete()
@@ -351,7 +338,7 @@ def refresh_session():
     # Check for bad datatypes and syntax
     if not (type(session) == str):
         return meower.respond({"type": "badDatatype"}, 400, error=True)
-    elif len(session) <= 100:
+    elif len(session) >= 128:
         return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
 
     # Check for token reuse
@@ -378,16 +365,10 @@ def authorize_device():
     meower.require_auth([3])
 
     # Check for required data
-    meower.check_for_json(["code"])
+    meower.check_for_json([{"id": "code", "t": str, "l_min": 8, "l_max": 8}])
 
     # Extract code for simplicity
     code = request.json["code"].strip().upper()
-
-    # Check for bad datatypes and syntax
-    if not (type(code) == str):
-        return meower.respond({"type": "badDatatype"}, 400, error=True)
-    elif len(code) > 8:
-        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
 
     # Get session data
     session = meower.db["sessions"].find_one({"token": code})
@@ -406,20 +387,12 @@ def authorize_app():
     meower.require_auth([3])
 
     # Check for required data
-    meower.check_for_json(["app", "scopes", "redirect_uri"])
+    meower.check_for_json([{"id": "app", "t": str, "l_min": 1, "l_max": 50}, {"id": "scopes", "t": str, "l_max": 1000}, {"id": "redirect_uri", "t": str, "l_max": 1000}])
  
     # Extract app ID and scopes for simplicity
     app_id = request.json["app"].strip()
     scopes = request.json["scopes"].strip().split(" ")
     redirect_uri = request.json["redirect_uri"].strip()
-
-    # Check for bad datatypes and syntax
-    if not ((type(app_id) == str) or (type(scopes) == list)):
-        return meower.respond({"type": "badDatatype"}, 400, error=True)
-    elif len(app_id) > 32:
-        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
-    elif len(scopes) > 32:
-        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
 
     # Get app data
     app_data = meower.db["oauth"].find_one({"_id": app_id})
@@ -461,18 +434,12 @@ def authorize_app():
 @oauth.route("/exchange", methods=["POST"])
 def exchange_oauth_code():
     # Check for required data
-    meower.check_for_json(["code", "app", "secret"])
+    meower.check_for_json([{"id": "code", "t": str, "l_max": 32}, {"id": "app", "t": str, "l_max": 50}, {"id": "secret", "t": str, "l_min": 64, "l_max": 64}])
  
     # Extract app ID and scopes for simplicity
     code = request.json["code"].strip()
     app_id = request.json["app"].strip()
     secret = request.json["secret"].strip()
-
-    # Check for bad datatypes and syntax
-    if not ((type(code) == str) or (type(app_id) == str) or (type(secret) == str)):
-        return meower.respond({"type": "badDatatype"}, 400, error=True)
-    elif (len(code) > 32) or (len(app_id) > 32) or (len(secret) > 64):
-        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
 
     # Get session data
     session = meower.db["sessions"].find_one({"token": code})
@@ -513,16 +480,10 @@ def manage_oauth_apps():
         return meower.respond({"apps": list(apps)}, 200, error=False)
     elif request.method == "POST": # Create new OAuth app
         # Check for required data
-        meower.check_for_json(["name"])
+        meower.check_for_json([{"id": "name", "t": str, "l_min": 1, "l_max": 20}])
 
         # Extract app name for simplicity
         name = request.json["name"].strip()
-
-        # Check for bad datatypes and syntax
-        if not (type(name) == str):
-            return meower.respond({"type": "badDatatype"}, 400, error=True)
-        elif len(name) > 20:
-            return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
 
         # Check if user has too many apps
         apps_count = meower.db["oauth"].count_documents({"owner": request.session.user})

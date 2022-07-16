@@ -7,18 +7,12 @@ users = Blueprint("users_blueprint", __name__)
 @users.route("/<user>", methods=["GET"])
 def get_profile(user):
     # Get user data
-    userdata = meower.db["usersv0"].find_one({"lower_username": user.lower()})
-    if userdata is None:
-        abort(404)
-    
-    # Hide sensitive data
-    if userdata["_id"] != request.session.user:
-        userdata["profile"]["status"] = meower.user_status(userdata["_id"])
-        del userdata["config"]
-    del userdata["security"]
+    user = meower.User(meower, username=user)
+    if user is None:
+        return meower.respond({"type": "notFound", "message": "Requested user was not found"}, 404, error=True)
 
-    # Return payload
-    return meower.respond(userdata, 200, error=False)
+    # Return profile
+    return meower.respond(user.profile, 200, error=False)
 
 @users.route("/<user>/posts", methods=["GET"])
 def search_user_posts(user):

@@ -44,18 +44,10 @@ def get_home():
         meower.require_auth([5], scope="meower:posts:create_posts", check_suspension=True)
 
         # Check for required data
-        meower.check_for_json(["p"])
+        meower.check_for_json([{"id": "p", "t": str, "l_min": 1, "l_max": 360}])
     
         # Extract content for simplicity
         content = request.json["p"]
-
-        # Check for bad datatypes and syntax
-        if type(content) != str:
-            return meower.respond({"type": "badDatatype"}, 400, error=True)
-        elif len(content) > 360:
-            return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
-        elif meower.check_for_bad_chars_post(content):
-            return meower.respond({"type": "illegalCharacters"}, 400, error=True)
 
         # Check if account is spamming
         if meower.check_for_spam("posts-home", request.session.user, burst=10, seconds=5):

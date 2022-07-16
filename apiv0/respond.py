@@ -9,7 +9,7 @@ def respond(resp, status, error=False):
             else:
                 resp["message"] = None
         resp["error"] = error
-        resp["status"] = status
+        resp["http_status"] = status
         return flask.abort(flask.Response(response=json.dumps(resp), content_type="text/json", status=status))
     elif (type(status) == int) and (type(error) == bool):
         return flask.abort(flask.Response(response=resp, content_type="text/plain", status=status))

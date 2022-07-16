@@ -7,8 +7,9 @@ from flask import Flask, request
 meower = Flask(__name__)
 
 # Initialize Utils
-from apiv0.utils import Utils, Session
+from apiv0.utils import Utils, Session, User
 utils = Utils(meower, request)
+meower.sock_statuses = utils.sock_statuses
 meower.log = utils.log
 meower.timestamp = utils.timestamp
 meower.create_session = utils.create_session
@@ -28,6 +29,7 @@ meower.check_for_json = utils.check_for_json
 meower.check_for_params = utils.check_for_params
 meower.require_auth = utils.require_auth
 meower.Session = Session
+meower.User = User
 
 # Initialize encryption
 utils.init_encryption()
@@ -63,14 +65,14 @@ meower.register_blueprint(chats, url_prefix="/v0/chats")
 from apiv0.search import search
 meower.register_blueprint(search, url_prefix="/v0/search")
 
-# Initialize Socket
+# Initialize WebSocket
 from flask_sock import Sock
-from apiv0.socket import Socket
-sock = Sock(meower)
+from apiv0.socket import SocketClient
+flask_sock = Sock(meower)
 meower.sock_clients = {}
-@sock.route("/v0/socket")
+@flask_sock.route("/v0/socket")
 def socket_server(client):
-	Socket(meower, client)
+	SocketClient(meower, client)
 
 # Initialize CORS
 from flask_cors import CORS
