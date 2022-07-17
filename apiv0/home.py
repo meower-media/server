@@ -9,6 +9,9 @@ home = Blueprint("home_blueprint", __name__)
 
 @home.route("/", methods=["GET", "POST"])
 def get_home():
+    # Check whether the client is authenticated
+    meower.require_auth([5], scope="meower:posts:read_posts")
+    
     if request.method == "GET":
         # Get page
         if not ("page" in request.args):
