@@ -4,12 +4,16 @@ import string
 import requests
 from threading import Thread
 import os
+import shutil
 import json
 import serial
 from cryptography.fernet import Fernet
 from uuid import uuid4
 import secrets
 from better_profanity import profanity
+import pymongo
+from jinja2 import Template
+import copy
 
 class Utils:
     def __init__(self, meower, request):
@@ -81,12 +85,18 @@ class Utils:
             "_id": str(uuid4()),
             "type": type,
             "user": user,
-            "user_agent": (self.request.headers.get("User-Agent") if "User-Agent" in self.request.headers else None),
+            "user_agent": None,
             "token": token,
             "expires": None,
             "created": time.time()
         }
         
+        # Add user agent
+        try:
+            session_data["user_agent"] = self.request.headers["User-Agent"]
+        except:
+            pass
+
         # Add specific data for each type
         if type == 0:
             session_data["action"] = action
@@ -199,6 +209,84 @@ class Utils:
                     return ["Offline", "Online", "Away", "Do Not Disturb"][status]
             else:
                 return "Offline"
+
+    def export_data(self, user):
+        # Create export ID
+        export_id = str(uuid4())
+
+        # Create directory to store exported data
+        os.mkdir("apiv0/data_exports/{0}".format(export_id))
+        os.mkdir("apiv0/data_exports/{0}/sessions".format(export_id))
+        os.mkdir("apiv0/data_exports/{0}/posts".format(export_id))
+        os.mkdir("apiv0/data_exports/{0}/chats".format(export_id))
+        os.mkdir("apiv0/data_exports/{0}/oauth_apps".format(export_id))
+        os.mkdir("apiv0/data_exports/{0}/bots".format(export_id))
+
+        # Create user.json
+        userdata = self.meower.db["usersv0"].find_one({"_id": user})
+        if userdata is not None:
+            exported_userdata = copy.deepcopy(userdata)
+            for item in ["email", "password", "webauthn", "totp", "moderation_history"]:
+                exported_userdata["security"][item] = None
+            with open("apiv0/data_exports/{0}/user.json".format(export_id), "w") as f:
+                json.dump(exported_userdata, f, indent=4)
+
+        # Get all sessions
+        sessions = self.meower.db["sessions"].find({"user": user})
+        for session in sessions:
+            del session["token"]
+            del session["email"]
+            del session["refresh_token"]
+            del session["previous_refresh_tokens"]
+            with open("apiv0/data_exports/{0}/sessions/{1}.json".format(export_id, session["_id"]), "w") as f:
+                json.dump(session, f, indent=4)
+
+        # Get all posts
+        index = {"order_key": "t", "order_mode": "Descending"}
+        posts = self.meower.db["posts"].find({"u": user}).sort("t", pymongo.DESCENDING)
+        for post in posts:
+            if post["post_origin"] not in os.listdir("apiv0/data_exports/{0}/posts".format(export_id)):
+                os.mkdir("apiv0/data_exports/{0}/posts/{1}".format(export_id, post["post_origin"]))
+                index[post["post_origin"]] = []
+            with open("apiv0/data_exports/{0}/posts/{1}/{2}.json".format(export_id, post["post_origin"], post["_id"]), "w") as f:
+                json.dump(post, f, indent=4)
+            index[post["post_origin"]].append(post["_id"])
+        with open("apiv0/data_exports/{0}/chats/index.json".format(export_id), "w") as f:
+            json.dump(index, f, indent=4)
+
+        # Get all chats
+        chats = self.meower.db["chats"].find({"members": {"$all": [user]}, "deleted": False}).sort("nickname", pymongo.DESCENDING)
+        for chat in chats:
+            with open("apiv0/data_exports/{0}/chats/{1}.json".format(export_id, chat["_id"]), "w") as f:
+                json.dump(chat, f, indent=4)
+
+        # Get OAuth apps
+        oauth_apps = self.meower.db["oauth"].find({"owner": user})
+        for app in oauth_apps:
+            app["secret"] = None
+            with open("apiv0/data_exports/{0}/oauth_apps/{1}.json".format(export_id, app["_id"]), "w") as f:
+                json.dump(app, f, indent=4)
+
+        # Create ZIP file
+        if "{0}.zip".format(user) in os.listdir("apiv0/data_exports"):
+            os.remove("apiv0/data_exports/{0}.zip".format(user))
+        shutil.make_archive("apiv0/data_exports/{0}".format(user), "zip", "apiv0/data_exports/{0}".format(export_id))
+
+        # Delete export directory
+        shutil.rmtree("apiv0/data_exports/{0}".format(export_id))
+
+        # Create session for downloading the package
+        session = self.meower.create_session(0, user, str(secrets.token_urlsafe(32)), expires=86400, action="download-data")
+
+        # Send email
+        if userdata["security"]["email"] is None:
+            email = None
+        else:
+            email = self.meower.decrypt(userdata["security"]["email"]["encryption_id"], userdata["security"]["email"]["encrypted_email"])
+        if email is not None:
+            with open("apiv0/email_templates/confirmations/download_data.html", "r") as f:
+                email_template = Template(f.read()).render({"username": userdata["username"], "token": session["token"]})
+            Thread(target=self.meower.send_email, args=(email, userdata["username"], "Your data package is ready", email_template,), kwargs={"type": "text/html"}).start()
 
     def send_payload(self, payload, user=None):
         if user is None:
@@ -381,7 +469,7 @@ class Session:
                 self.json = token_data
                 for key, value in token_data.items():
                     setattr(self, key, value)
-                if (not (self.expires < time.time())) or (self.expires == None):
+                if (self.expires == None) or (not (self.expires < time.time())):
                     self.authed = True
         except:
             pass

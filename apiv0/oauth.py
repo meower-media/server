@@ -38,13 +38,6 @@ def before_request():
             request.user = request.session.user
         else:
             request.user = None
-    else:
-        if ("Authorization" in request.cookies) or (len(str(request.cookies.get("Authorization"))) <= 136):
-            request.session = meower.Session(meower, str(request.cookies.get("Authorization")).replace("Bearer ", "").strip())
-            if request.session.authed:
-                request.user = request.session.user
-            else:
-                request.user = None
 
 @oauth.route("/create", methods=["POST"])
 def create_account():
@@ -121,29 +114,15 @@ def create_account():
                 }
             ],
             "moderation_history": [],
-            "last_changed_username": 0,
-            "last_requested_data": 0,
             "delete_after": None,
             "suspended_until": None,
             "banned": False
         }
     }
-    """
-    if "email" in request.json:
-        userdata["security"]["authentication_methods"].append({
-            "id": str(uuid4()),
-            "type": "email",
-            "verified": False,
-            "encrypted_email": "",
-            "encryption_id": ""
-        })
-    """
     meower.db["usersv0"].insert_one(userdata)
 
-    # Generate new session and return to user
-    session = meower.create_session(3, userdata["_id"], secrets.token_urlsafe(64))
-    del userdata["security"]
-    return meower.respond({"session": session, "user": userdata, "requires_totp": False}, 200, error=False)
+    # Return session
+    return meower.respond(meower.foundation_session(userdata["_id"]), 200, error=False)
 
 @oauth.route("/auth-methods", methods=["GET"])
 def get_auth_methods():
@@ -254,13 +233,13 @@ def login_totp():
     meower.require_auth([2])
 
     # Check for required data
-    meower.check_for_json([{"id": "code", "t": str, "l_min": 6, "l_max": 8}])
+    meower.check_for_json([{"id": "totp", "t": str, "l_min": 6, "l_max": 8}])
     
     # Get user data from database
     userdata = meower.db["usersv0"].find_one({"_id": request.session.user})
 
     # Check for valid authentication
-    if (userdata["security"]["totp"] is None) or pyotp.TOTP(userdata["security"]["totp"]["secret"]).verify(request.json["code"]) or (request.json["code"] in userdata["security"]["totp"]["recovery_codes"]):
+    if (userdata["security"]["totp"] is None) or pyotp.TOTP(userdata["security"]["totp"]["secret"]).verify(request.json["totp"]) or (request.json["totp"] in userdata["security"]["totp"]["recovery_codes"]):
         # Delete session
         request.session.delete()
     

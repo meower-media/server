@@ -61,6 +61,15 @@ def email_address():
         # Check for required data
         meower.check_for_json([{"id": "email", "t": str, "l_min": 5, "l_max": 100}])
 
+        # Check if TOTP is required and if it is valid
+        if userdata["security"]["totp"] is not None:
+            # Check for required data
+            meower.check_for_json({"id": "totp", "t": str, "l_min": 6, "l_max": 6})
+
+            # Check if it's valid
+            if not (pyotp.TOTP(userdata["security"]["totp"]["secret"]).verify(request.json["totp"]) or (request.json["totp"] in userdata["security"]["totp"]["recovery_codes"])):
+                return meower.respond({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
+
         # Extract email for simplicity
         email = request.json["email"].strip()
 
@@ -87,25 +96,22 @@ def password():
         return meower.respond({"password": (userdata["security"]["password"] is not None)}, 200, error=False)
     elif request.method == "PATCH":
         # Check for required data
-        meower.check_for_json([{"id": "new_password", "t": str, "l_min": 0, "l_max": 256}])
+        meower.check_for_json([{"id": "password", "t": str, "l_min": 0, "l_max": 256}])
+
+        # Check if TOTP is required and if it is valid
+        if userdata["security"]["totp"] is not None:
+            # Check for required data
+            meower.check_for_json({"id": "totp", "t": str, "l_min": 6, "l_max": 6})
+
+            # Check if it's valid
+            if not (pyotp.TOTP(userdata["security"]["totp"]["secret"]).verify(request.json["totp"]) or (request.json["totp"] in userdata["security"]["totp"]["recovery_codes"])):
+                return meower.respond({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
 
         # Extract new password for simplicity
-        new_password = request.json["new_password"].strip()
-
-        # Check if account has a current password
-        if userdata["security"]["password"] is not None:
-            # Check for required data
-            meower.check_for_json([{"id": "old_password", "t": str, "l_min": 0, "l_max": 256}])
-
-            # Extract old password for simplicity
-            old_password = request.json["old_password"].strip()
-
-            # Verify old password
-            if not scrypt.verify(sha256(old_password.encode()).hexdigest(), userdata["security"]["password"]["hash"]):
-                return meower.respond({"type": "invalidCredentials", "message": "Invalid password."}, 401, error=True)
+        password = request.json["password"].strip()
 
         # Change password
-        hashed_password = scrypt.hash(sha256(new_password.encode()).hexdigest())
+        hashed_password = scrypt.hash(sha256(password.encode()).hexdigest())
         meower.db["usersv0"].update_one({"_id": request.session.user}, {"$set": {"security.password": {"hash_type": "scrypt", "hash": hashed_password}}})
 
         # Render and send security alert email
@@ -121,6 +127,10 @@ def password():
         # Return success
         return meower.respond({}, 200, error=False)
     elif request.method == "DELETE":
+        # Check if account already has a password
+        if userdata["security"]["password"] is None:
+            return meower.respond({"type": "totpAlreadyDisabled", "message": "Password already disabled"}, 401, error=True)
+
         # Check if account is eligible for password removal
         if (userdata["security"]["email"] is None) and (len(userdata["security"]["webauthn"]) == 0):
             return meower.respond({"type": "noAuthenticationMethods"}, 400, error=True)
@@ -128,12 +138,17 @@ def password():
         # Check for required data
         meower.check_for_json([{"id": "password", "t": str, "l_min": 0, "l_max": 256}])
 
+        # Check if TOTP is required and if it is valid
+        if userdata["security"]["totp"] is not None:
+            # Check for required data
+            meower.check_for_json({"id": "totp", "t": str, "l_min": 6, "l_max": 6})
+
+            # Check if it's valid
+            if not (pyotp.TOTP(userdata["security"]["totp"]["secret"]).verify(request.json["totp"]) or (request.json["totp"] in userdata["security"]["totp"]["recovery_codes"])):
+                return meower.respond({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
+
         # Extract old password for simplicity
         password = request.json["password"].strip()
-
-        # Verify old password
-        if not scrypt.verify(sha256(password.encode()).hexdigest(), userdata["security"]["password"]["hash"]):
-            return meower.respond({"type": "invalidCredentials", "message": "Invalid password."}, 401, error=True)
 
         # Remove password
         meower.db["usersv0"].update_one({"_id": request.session.user}, {"$set": {"security.password": None}})
@@ -168,11 +183,11 @@ def totp():
             return meower.respond({"type": "totpAlreadyEnabled", "message": "TOTP is already enabled"}, 400, error=True)
 
         # Check for required data
-        meower.check_for_json([{"id": "secret", "t": str, "l_min": 16, "l_max": 16}, {"id": "code", "t": str, "l_min": 6, "l_max": 6}])
+        meower.check_for_json([{"id": "secret", "t": str, "l_min": 16, "l_max": 16}, {"id": "totp", "t": str, "l_min": 6, "l_max": 6}])
 
         # Extract secret and code for simplicity
         secret = request.json["secret"].strip()
-        code = request.json["code"].strip()
+        code = request.json["totp"].strip()
 
         # Verify code
         if not pyotp.TOTP(secret).verify(code):
@@ -197,13 +212,19 @@ def totp():
         # Return success
         return meower.respond({"recovery_codes": recovery_codes}, 200, error=False)
     elif request.method == "DELETE":
-        # Check if account has TOTP
-        if userdata["security"]["totp"] is None:
-            return meower.respond({"type": "totpNotEnabled", "message": "TOTP is not enabled"}, 400, error=True)
+        # Check for required data
+        meower.check_for_json({"id": "totp", "t": str, "l_min": 6, "l_max": 6})
 
-        # Verify code
-        if not (pyotp.TOTP(userdata["security"]["totp"]["secret"]).verify(request.json["code"]) or (request.json["code"] in userdata["security"]["totp"]["recovery_codes"])):
-            return meower.respond({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
+        # Check if TOTP is required and if it is valid
+        if userdata["security"]["totp"] is not None:
+            # Check for required data
+            meower.check_for_json({"id": "totp", "t": str, "l_min": 6, "l_max": 6})
+
+            # Check if it's valid
+            if not (pyotp.TOTP(userdata["security"]["totp"]["secret"]).verify(request.json["totp"]) or (request.json["totp"] in userdata["security"]["totp"]["recovery_codes"])):
+                return meower.respond({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
+        else:
+            return meower.respond({"type": "totpNotEnabled", "message": "TOTP is not enabled"}, 400, error=True)
 
         # Remove TOTP
         meower.db["usersv0"].update_one({"_id": request.session.user}, {"$set": {"security.totp": None}})
@@ -213,13 +234,51 @@ def totp():
             email = None
         else:
             email = meower.decrypt(userdata["security"]["email"]["encryption_id"], userdata["security"]["email"]["encrypted_email"])
-        if email is not None:
             with open("apiv0/email_templates/alerts/totp_removed.html", "r") as f:
                 email_template = Template(f.read()).render({"username": userdata["username"]})
             Thread(target=meower.send_email, args=(email, userdata["username"], "Security Alert", email_template,), kwargs={"type": "text/html"}).start()
 
         # Return success
         return meower.respond({}, 200, error=False)
+
+@settings.route("/export-data", methods=["POST"])
+def export_data():
+    # Check whether the client is authenticated
+    meower.require_auth([5], scope="foundation:settings:danger")
+
+    # Make sure user has a verified email
+    userdata = meower.db["usersv0"].find_one({"_id": request.session.user})
+    if userdata["security"]["email"] is None:
+        return meower.respond({"type": "emailNotVerified", "message": "Email is not verified"}, 400, error=True)
+
+    # Start thread to export data
+    Thread(target=meower.export_data, args=(request.session.user,)).start()
+
+    # Return success
+    return meower.respond({}, 200, error=False)
+
+@settings.route("/delete-account", methods=["POST"])
+def delete_account():
+    # Check whether the client is authenticated
+    meower.require_auth([5], scope="foundation:settings:danger")
+
+    # Get user's email address
+    userdata = meower.db["usersv0"].find_one({"_id": request.session.user})
+    if userdata["security"]["email"] is None:
+        return meower.respond({"type": "emailNotVerified", "message": "Email is not verified"}, 400, error=True)
+    else:
+        email = meower.decrypt(userdata["security"]["email"]["encryption_id"], userdata["security"]["email"]["encrypted_email"])
+
+    # Create confirmation session
+    session = meower.create_session(0, request.session.user, str(secrets.token_urlsafe(32)), expires=3600, action="delete-account")
+
+    # Send confirmation email
+    with open("apiv0/email_templates/confirmations/account_deletion.html", "r") as f:
+        email_template = Template(f.read()).render({"username": userdata["username"], "token": session["token"]})
+    Thread(target=meower.send_email, args=(email, userdata["username"], "Security Alert", email_template,), kwargs={"type": "text/html"}).start()
+
+    # Return success
+    return meower.respond({}, 200, error=False)
 
 @settings.route("/config", methods=["GET", "PATCH"])
 def get_config():
@@ -289,7 +348,7 @@ def get_config():
                     userdata["config"]["bgm"]["enabled"] = request.json["bgm"]["enabled"]
                 if ("type" in request.json["bgm"]) and (request.json["bgm"]["type"] in [0, 1]):
                     userdata["config"]["bgm"]["type"] = request.json["bgm"]["type"]
-                if ("data" in request.json["bgm"]) and ((type(request.json["bgm"]["data"]) == int) or (type(request.json["bgm"]["data"]) == string)):
+                if ("data" in request.json["bgm"]) and ((type(request.json["bgm"]["data"]) == int) or (type(request.json["bgm"]["data"]) == string)) and (len(str(request.json["bgm"]["data"])) <= 300):
                     userdata["config"]["bgm"]["data"] = request.json["bgm"]["data"]
 
         # Update config

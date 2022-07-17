@@ -19,6 +19,7 @@ meower.check_for_bad_chars_post = utils.check_for_bad_chars_post
 meower.check_for_bad_chars_username = utils.check_for_bad_chars_username
 meower.filter = utils.filter
 meower.user_status = utils.user_status
+meower.export_data = utils.export_data
 meower.send_payload = utils.send_payload
 meower.encrypt = utils.encrypt
 meower.decrypt = utils.decrypt

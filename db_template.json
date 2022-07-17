@@ -68,8 +68,6 @@
                         }
                     ],
                     "moderation_history": [],
-                    "last_changed_username": 0,
-                    "last_requested_data": 0,
                     "delete_after": null,
                     "suspended_until": null,
                     "banned": false
