@@ -28,7 +28,6 @@
                 "username": "Deleted",
                 "lower_username": "deleted",
                 "state": 0,
-                "deleted": true,
                 "created": 0,
                 "config": {
                     "unread_messages": 0,
@@ -60,6 +59,7 @@
                         "authorized": [],
                         "scopes": {}
                     },
+                    "blocked": [],
                     "username_history": [
                         {
                             "username": "Deleted",

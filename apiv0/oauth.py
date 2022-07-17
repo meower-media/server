@@ -1,6 +1,6 @@
 from threading import Thread
 from jinja2 import Template
-from flask import Blueprint, request, abort
+from flask import Blueprint, request
 from flask import current_app as meower
 from passlib.hash import scrypt, bcrypt
 from hashlib import sha256
@@ -71,7 +71,6 @@ def create_account():
         "username": username,
         "lower_username": username.lower(),
         "state": 0,
-        "deleted": False,
         "created": int(time.time()),
         "config": {
             "unread_messages": 0,
@@ -106,6 +105,7 @@ def create_account():
                 "authorized": [],
                 "scopes": {}
             },
+            "blocked": [],
             "username_history": [
                 {
                     "username": username,
@@ -169,9 +169,6 @@ def login():
     if userdata is None:
         # Account does not exist
         return meower.respond({"type": "accountDoesNotExist"}, 401, error=True)
-    elif userdata["deleted"]:
-        # Account is deleted
-        return meower.respond({"type": "accountDeleted"}, 401, error=True)
     elif userdata["security"]["banned"]:
         # Account is banned
         return meower.respond({"type": "accountBanned"}, 401, error=True)
@@ -196,9 +193,8 @@ def login():
             # Return session
             if userdata["security"]["totp"] is not None:
                 session = meower.create_session(2, userdata["_id"], secrets.token_urlsafe(64), expires=300)
-                del session["previous_refresh_tokens"]
                 minimal_userdata = {}
-                for key in ["username", "lower_username", "state", "deleted", "created"]:
+                for key in ["username", "lower_username", "state", "created"]:
                     minimal_userdata[key] = userdata[key]
                 return meower.respond({"session": session, "user": minimal_userdata, "requires_totp": True}, 200, error=False)
             else:
@@ -219,9 +215,8 @@ def login():
     elif auth_method == "device":
         new_code = str("".join(secrets.choice(string.ascii_letters + string.digits) for i in range(8))).upper()
         session = meower.create_session(1, userdata["_id"], new_code, expires=300)
-        del session["previous_refresh_tokens"]
         minimal_userdata = {}
-        for key in ["username", "lower_username", "state", "deleted", "created"]:
+        for key in ["username", "lower_username", "state", "created"]:
             minimal_userdata[key] = userdata[key]
         return meower.respond({"session": session, "user": minimal_userdata, "requires_totp": False}, 200, error=False)
     else:
@@ -295,14 +290,14 @@ def current_session():
     if request.method == "GET":
         # Get session data from database
         session = request.session.json.copy()
-        del session["previous_refresh_tokens"]
+        session["refresh_token"] = None
+        session["previous_refresh_tokens"] = None
 
-        # Get user data from database
-        userdata = meower.db["usersv0"].find_one({"_id": session["user"]})
-        del userdata["security"]
+        # Get user data
+        user = meower.User(meower, user_id=session["user"])
 
         # Return session data
-        return meower.respond({"session": session, "user": userdata, "foundation_session": (session["type"] == 3), "oauth_session": (session["type"] == 5)}, 200, error=False)
+        return meower.respond({"session": session, "user": user.client, "foundation_session": (session["type"] == 3), "oauth_session": (session["type"] == 5)}, 200, error=False)
     elif request.method == "DELETE":
         # Delete session
         request.session.delete()
@@ -407,13 +402,12 @@ def authorize_app():
         
         # Return OAuth exchange session
         session = meower.create_session(4, request.session.user, secrets.token_urlsafe(16), 300, app=app_id, scopes=scopes)
-        del session["previous_refresh_tokens"]
         return meower.respond(session, 200, error=False)
 
 @oauth.route("/exchange", methods=["POST"])
 def exchange_oauth_code():
     # Check for required data
-    meower.check_for_json([{"id": "code", "t": str, "l_max": 32}, {"id": "app", "t": str, "l_max": 50}, {"id": "secret", "t": str, "l_min": 64, "l_max": 64}])
+    meower.check_for_json([{"id": "code", "t": str, "l_max": 32}, {"id": "app", "t": str, "l_max": 50}, {"id": "secret", "t": str, "l_min": 0, "l_max": 64}])
  
     # Extract app ID and scopes for simplicity
     code = request.json["code"].strip()
@@ -422,11 +416,11 @@ def exchange_oauth_code():
 
     # Get session data
     session = meower.db["sessions"].find_one({"token": code})
-    if (session is None) or (session["type"] != 4) or (session["expires"] < time.time()) or (session["user"] != request.session.user) or (session["app"] != app_id):
+    if (session is None) or (session["type"] != 4) or (session["expires"] < time.time()) or (session["app"] != app_id):
         return meower.respond({"type": "codeDoesNotExist"}, 401, error=True)
 
     # Get user data
-    userdata = meower.db["usersv0"].find_one({"_id": request.session.user})
+    userdata = meower.db["usersv0"].find_one({"_id": session["user"]})
 
     # Get app data
     app_data = meower.db["oauth"].find_one({"_id": app_id})
@@ -436,7 +430,7 @@ def exchange_oauth_code():
     # Check if session is valid
     if app_data["secret"] != secret:
         return meower.respond({"type": "invalidSecret"}, 401, error=True)
-    elif request.session.user in app_data["bans"]:
+    elif session["user"] in app_data["bans"]:
         return meower.respond({"type": "userBannedFromApp"}, 403, error=True)
     elif not ((app_id in userdata["security"]["oauth"]["authorized"]) or (session["scopes"] != userdata["security"]["oauth"]["scopes"][app_id])):
         return meower.respond({"type": "userNotAuthorized"}, 401, error=True)
@@ -445,8 +439,8 @@ def exchange_oauth_code():
     meower.db["sessions"].delete_one({"_id": session["_id"]})
 
     # Return OAuth full session
-    session = meower.create_session(5, request.session.user, secrets.token_urlsafe(32), 300, app=session["app"], scopes=session["scopes"])
-    del session["previous_refresh_tokens"]
+    session = meower.create_session(5, session["user"], secrets.token_urlsafe(32), expires=1800, app=session["app"], scopes=session["scopes"])
+    session["previous_refresh_tokens"] = None
     return meower.respond(session, 200, error=False)
 
 @oauth.route("/apps", methods=["GET", "POST", "PATCH", "DELETE"])
@@ -499,10 +493,8 @@ def manage_oauth_app(app_id):
 
     # Get app data
     app_data = meower.db["oauth"].find_one({"_id": app_id})
-    if app_data is None:
-        abort(404)
-    elif app_data["owner"] != request.session.user:
-        abort(403)
+    if (app_data is None) or (app_data["owner"] != request.session.user):
+        return meower.respond({"type": "notFound", "message": "Requested OAuth app was not found"}, 404, error=True)
 
     # Check for required data
     if request.method == "GET": # Return app data
@@ -514,7 +506,7 @@ def manage_oauth_app(app_id):
             if userdata is None:
                 return meower.respond({"type": "userDoesNotExist"}, 400, error=True)
             elif userdata["_id"] == request.session.user:
-                return meower.respond({"type": "cannotChangeOwnerToSelf"}, 400, error=True)
+                return meower.respond({"type": "cannotChangeOwnerToSelf", "message": "You cannot change the owner to yourself"}, 400, error=True)
             else:
                 app_data["owner"] = request.json["owner"]
                 meower.db["oauth"].update_one({"_id": app_id}, {"$set": {"owner": request.json["owner"]}})

@@ -19,16 +19,15 @@ def search_profiles():
         page = int(request.args["page"])
 
     # Get index
-    query_get = meower.db["usersv0"].find({"lower_username": {"$regex": query.lower()}, "deleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
-    pages_amount = (meower.db["usersv0"].count_documents({"lower_username": {"$regex": query.lower()}, "deleted": False}) // 25) + 1
+    query_get = meower.db["usersv0"].find({"lower_username": {"$regex": query.lower()}}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
+    pages_amount = (meower.db["usersv0"].count_documents({"lower_username": {"$regex": query.lower()}}) // 25) + 1
 
     # Convert query get
     payload_users = []
     for user in query_get:
-        user["profile"]["status"] = meower.user_status(user["_id"])
-        del user["config"]
-        del user["security"]
-        payload_users.append(user)
+        user = meower.User(meower, user_id=user["_id"])
+        if user is not None:
+            payload_users.append(user)
 
     # Create payload
     payload = {
@@ -61,10 +60,11 @@ def search_home_posts():
     # Convert query get
     payload_posts = []
     for post in query_get:
-        user = meower.User(meower, post["u"])
-        if user is not None:
-            post["u"] = user
-            payload_posts.append(post)
+        user = meower.User(meower, user_id=post["u"])
+        if user.raw is None:
+            continue
+        else:
+            post["u"] = user.profile
 
     # Create payload
     payload = {
@@ -98,7 +98,7 @@ def search_public_chats():
     payload_chat = []
     for chat in query_get:
         for user_id in chat["members"]:
-            user = meower.User(meower, user_id)
+            user = meower.User(meower, user_id=user_id)
             chat["members"].remove(user_id)
             if user is not None:
                 chat["members"].append(user.profile)

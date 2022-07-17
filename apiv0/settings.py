@@ -1,5 +1,5 @@
 from jinja2 import Template
-from flask import Blueprint, request, abort
+from flask import Blueprint, request
 from flask import current_app as meower
 from passlib.hash import scrypt
 from hashlib import sha256
@@ -356,3 +356,56 @@ def get_config():
 
         # Return new config
         return meower.respond({"username": userdata["username"], "config": userdata["config"], "profile": userdata["profile"]}, 200, error=False)
+
+@settings.route("/blocked", methods=["GET", "PUT", "DELETE"])
+def blocked_users():
+    # Check whether the client is authenticated
+    meower.require_auth([5], scope="foundation:settings:blocked")
+
+    # Get user data
+    userdata = meower.db["usersv0"].find_one({"_id": request.session.user})
+    
+    if request.method == "GET":
+        # Convert blocked users
+        payload_blocked = []
+        for user_id in userdata["security"]["blocked"]:
+            user = meower.User(meower, user_id=user_id)
+            if user.raw is None:
+                continue
+            else:
+                payload_blocked.append(user.profile)
+
+        # Return blocked users
+        return meower.respond({"blocked": payload_blocked}, 200, error=False)
+    elif request.method == "PUT":
+        # Check for required data
+        meower.check_for_json([{"id": "username", "t": str, "l_min": 1, "l_max": 20}])
+
+        # Make sure user exists
+        blocked_user = meower.User(meower, username=request.json["username"])
+        if blocked_user.raw is None:
+            return meower.respond({"type": "userDoesNotExist"}, 404, error=True)
+
+        # Add user to blocked list
+        if blocked_user._id not in userdata["security"]["blocked"]:
+            userdata["security"]["blocked"].append(blocked_user._id)
+            meower.db["usersv0"].update_one({"_id": request.session.user}, {"$set": {"security.blocked": userdata["security"]["blocked"]}})
+
+        # Return payload
+        return meower.respond({}, 200, error=False)
+    elif request.method == "DELETE":
+        # Check for required data
+        meower.check_for_json([{"id": "username", "t": str, "l_min": 1, "l_max": 20}])
+
+        # Make sure user exists
+        blocked_user = meower.User(meower, username=request.json["username"])
+        if blocked_user.raw is None:
+            return meower.respond({"type": "userDoesNotExist"}, 404, error=True)
+
+        # Remove user from blocked list
+        if blocked_user._id in userdata["security"]["blocked"]:
+            userdata["security"]["blocked"].remove(blocked_user._id)
+            meower.db["usersv0"].update_one({"_id": request.session.user}, {"$set": {"security.blocked": userdata["security"]["blocked"]}})
+
+        # Return payload
+        return meower.respond({}, 200, error=False)

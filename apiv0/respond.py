@@ -14,4 +14,4 @@ def respond(resp, status, error=False):
     elif (type(status) == int) and (type(error) == bool):
         return flask.abort(flask.Response(response=resp, content_type="text/plain", status=status))
     else:
-        return flask.abort(500)
+        return respond({"type": "internal", "message": "Internal server error"}, 500, error=True)

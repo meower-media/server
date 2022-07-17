@@ -53,7 +53,9 @@ class Utils:
         }
 
         # Start background task
-        Thread(target=self.background).start()
+        background_thread = Thread(target=self.background)
+        background_thread.daemon = True
+        background_thread.start()
 
     def background(self):
         while True:
@@ -178,7 +180,7 @@ class Utils:
     def foundation_session(self, user):
         # Create session
         session = self.create_session(3, user, secrets.token_urlsafe(64))
-        del session["previous_refresh_tokens"]
+        session["previous_refresh_tokens"] = None
 
         # Get user data and check if it's pending deletion
         userdata = self.meower.db["usersv0"].find_one({"_id": user})
@@ -281,10 +283,10 @@ class Utils:
         # Get all sessions
         sessions = self.meower.db["sessions"].find({"user": user})
         for session in sessions:
-            del session["token"]
-            del session["email"]
-            del session["refresh_token"]
-            del session["previous_refresh_tokens"]
+            session["token"] = None
+            session["email"] = None
+            session["refresh_token"] = None
+            session["previous_refresh_tokens"] = None
             with open("apiv0/data_exports/{0}/sessions/{1}.json".format(export_id, session["_id"]), "w") as f:
                 json.dump(session, f, indent=4)
 
@@ -336,7 +338,7 @@ class Utils:
             Thread(target=self.meower.send_email, args=(email, userdata["username"], "Your data package is ready", email_template,), kwargs={"type": "text/html"}).start()
 
     def send_payload(self, payload, user=None):
-        if user is None:
+        if user.raw is None:
             for user, clients in self.meower.sock_clients.items():
                 for sock_client in clients:
                     sock_client.client.send(payload)
@@ -485,7 +487,7 @@ class Utils:
                 return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403, error=True)
             
             # Check session scopes
-            if (self.request.session.type == 5) and (scope not in self.request.session.scopes):
+            if (self.request.session.type == 5) and (scope is not None) and (scope not in self.request.session.scopes):
                 return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403, error=True)
 
             # Check if session is verified (only for certain types)
@@ -494,7 +496,7 @@ class Utils:
 
             # Check user
             userdata = self.meower.db["usersv0"].find_one({"_id": self.request.session.user})
-            if (userdata is None) or userdata["deleted"] or userdata["security"]["banned"]:
+            if (userdata is None) or userdata["security"]["banned"]:
                 self.request.session.delete()
                 return self.meower.respond({"type": "unauthorized", "message": "You are not authenticated."}, 401, error=True)
             elif userdata["state"] not in levels:
@@ -538,9 +540,8 @@ class User:
             self.raw = meower.db["usersv0"].find_one({"lower_username": username.lower()})
         else:
             self.raw = None
-
+        
         if self.raw is None:
-            self = None
             return
         
         for key, value in self.raw.items():

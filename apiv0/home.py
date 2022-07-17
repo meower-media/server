@@ -1,4 +1,4 @@
-from flask import Blueprint, request, abort
+from flask import Blueprint, request
 from flask import current_app as meower
 import time
 from uuid import uuid4
@@ -20,17 +20,17 @@ def get_home():
             page = int(request.args["page"])
 
         # Get index
-        query_get = meower.db["posts"].find({"post_origin": "home", "isDeleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
-        pages_amount = (meower.db["posts"].count_documents({"post_origin": "home", "isDeleted": False}) // 25) + 1
+        query_get = meower.db["posts"].find({"post_origin": "home", "parent": None, "isDeleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
+        pages_amount = (meower.db["posts"].count_documents({"post_origin": "home", "parent": None, "isDeleted": False}) // 25) + 1
 
         # Convert query get
         payload_posts = []
         for post in query_get:
-            userdata = meower.db["usersv0"].find_one({"_id": post["u"]})
-            if userdata is None:
-                post["u"] = "Deleted"
+            user = meower.User(meower, user_id=post["u"])
+            if user.raw is None:
+                continue
             else:
-                post["u"] = userdata["username"]
+                post["u"] = user.profile
             payload_posts.append(post)
 
         # Create payload
@@ -54,7 +54,7 @@ def get_home():
 
         # Check if account is spamming
         if meower.check_for_spam("posts-home", request.session.user, burst=10, seconds=5):
-            abort(429)
+            return meower.respond({"type": "ratelimited", "message": "You are being ratelimited"}, 429, error=True)
 
         # Create post
         post_data = {
@@ -69,8 +69,8 @@ def get_home():
         meower.db["posts"].insert_one(post_data)
 
         # Send notification to all users
-        userdata = meower.db["usersv0"].find_one({"_id": request.session.user})
-        post_data["username"] = userdata["username"]
+        user = meower.User(meower, user_id=post_data["u"])
+        post_data["u"] = user.profile
         meower.send_payload(json.dumps({"cmd": "new_post", "val": post_data}))
 
         # Return payload
