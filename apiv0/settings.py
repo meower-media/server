@@ -275,7 +275,7 @@ def delete_account():
     # Send confirmation email
     with open("apiv0/email_templates/confirmations/account_deletion.html", "r") as f:
         email_template = Template(f.read()).render({"username": userdata["username"], "token": session["token"]})
-    Thread(target=meower.send_email, args=(email, userdata["username"], "Security Alert", email_template,), kwargs={"type": "text/html"}).start()
+    Thread(target=meower.send_email, args=(email, userdata["username"], "Delete your Meower account", email_template,), kwargs={"type": "text/html"}).start()
 
     # Return success
     return meower.respond({}, 200, error=False)

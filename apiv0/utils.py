@@ -52,6 +52,53 @@ class Utils:
             "InvalidToken": "E:106 | Invalid token",
         }
 
+        # Start background task
+        Thread(target=self.background).start()
+
+    def background(self):
+        while True:
+            # Background task runs every 60 seconds
+            time.sleep(60)
+
+            # Purge any expired sessions
+            self.meower.db["sessions"].delete_many({"type": {"$in": [0,1,3,4,6]}, "expires": {"$lt": time.time()}})
+            self.meower.db["sessions"].delete_many({"refresh_expires": {"$lt": time.time()}})
+
+            # Purge accounts pending deletion
+            users = self.meower.db["usersv0"].find({"security.delete_after": {"$lt": time.time()}})
+            for user in users:
+                # Delete posts
+                self.meower.db["posts"].delete_many({"u": user["_id"]})
+
+                # Delete sessions
+                self.meower.db["sessions"].delete_many({"user": user["_id"]})
+
+                # Delete OAuth apps
+                oauth_apps = self.meower.db["oauth"].find({"owner": user["_id"]})
+                for app in oauth_apps:
+                    oauth_users = self.meower.db["usersv0"].find({"security.oauth.authorized": {"$all": [app["_id"]]}})
+                    for oauth_user in oauth_users:
+                        oauth_user["security"]["oauth"]["authorized"].remove(app["_id"])
+                        del oauth_user["security"]["oauth"]["scopes"][app["_id"]]
+                        self.meower.db["usersv0"].update_one({"_id": oauth_user["_id"]}, {"$set": {"security.oauth": oauth_user["security"]["oauth"]}})
+                    self.meower.db["oauth"].delete_one({"_id": app["_id"]})
+
+                # Delete chats
+                chats = self.meower.db["chats"].find({"members": {"$all": [user["_id"]]}})
+                for chat in chats:
+                    if chat["permissions"][user["_id"]] >= 3:
+                        self.meower.db["chats"].delete_one({"_id": chat["_id"]})
+                    else:
+                        chat["members"].remove(user["_id"])
+                        del chat["permissions"][user["_id"]]
+                        self.meower.db["chats"].update_one({"_id": chat["_id"]}, {"$set": {"members": chat["members"]}})
+
+                # Schedule bots for deletion
+                self.meower.db["usersv0"].update_many({"owner": user["_id"]}, {"$set": {"security.delete_after": time.time()}})
+
+                # Delete userdata
+                self.meower.db["usersv0"].delete_one({"_id": user["_id"]})
+
     def log(self, msg, prefix=None):
         if prefix is None:
             print("{0}: {1}".format(self.timestamp(4), msg))
