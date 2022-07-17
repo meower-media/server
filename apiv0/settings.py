@@ -53,7 +53,7 @@ def email_address():
             email = meower.decrypt(userdata["security"]["email"]["encryption_id"], userdata["security"]["email"]["encrypted_email"])
 
         # Return the email address
-        return meower.respond(email, 200, error=False)
+        return meower.respond({"email": email}, 200, error=False)
     elif request.method == "PATCH":
         # Check whether the client is authenticated
         meower.require_auth([5], scope="foundation:settings:authentication")
@@ -82,6 +82,9 @@ def email_address():
         with open("apiv0/email_templates/confirmations/email_verification.html", "r") as f:
             email_template = Template(f.read()).render({"username": userdata["username"], "token": token})
         Thread(target=meower.send_email, args=(email, userdata["username"], "Verify your email address", email_template,), kwargs={"type": "text/html"}).start()
+
+        # Return payload
+        return meower.respond({}, 200, error=False)
 
 @settings.route("/password", methods=["GET", "PATCH", "DELETE"])
 def password():

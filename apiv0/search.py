@@ -26,7 +26,7 @@ def search_profiles():
     payload_users = []
     for user in query_get:
         user = meower.User(meower, user_id=user["_id"])
-        if user is not None:
+        if user.raw is not None:
             payload_users.append(user)
 
     # Create payload
@@ -100,7 +100,7 @@ def search_public_chats():
         for user_id in chat["members"]:
             user = meower.User(meower, user_id=user_id)
             chat["members"].remove(user_id)
-            if user is not None:
+            if user.raw is not None:
                 chat["members"].append(user.profile)
         payload_chat.append(chat)
 

@@ -3,3 +3,4 @@ tests
 archived
 .env
 encryption_keys
+data_exports

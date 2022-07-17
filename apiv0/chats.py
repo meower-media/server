@@ -18,13 +18,14 @@ def my_chats():
 
         # Convert query get
         payload_chat = []
-        for chat in query_get:
-            for user_id in chat["members"]:
+        for chat_data in query_get:
+            new_members = []
+            for user_id in chat_data["members"]:
                 user = meower.User(meower, user_id=user_id)
-                chat["members"].remove(user_id)
-                if user is not None:
-                    chat["members"].append(user.profile)
-            payload_chat.append(chat)
+                if user.raw is not None:
+                    new_members.append(user.profile)
+            chat_data["members"] = new_members
+            payload_chat.append(chat_data)
 
         # Create payload
         payload = {
@@ -54,11 +55,12 @@ def my_chats():
         meower.db["chats"].insert_one(chat_data)
 
         # Convert members list
+        new_members = []
         for user_id in chat_data["members"]:
             user = meower.User(meower, user_id=user_id)
-            chat_data["members"].remove(user_id)
-            if user is not None:
-                chat_data["members"].append(user.profile)
+            if user.raw is not None:
+                new_members.append(user.profile)
+        chat_data["members"] = new_members
 
         # Alert client that chat was created
         #app.meower.ws.sendPayload("update_config", "", username=request.session.user)
@@ -84,11 +86,12 @@ def chat_data(chat_id):
     
     if request.method == "GET":
         # Convert members list
+        new_members = []
         for user_id in chat_data["members"]:
             user = meower.User(meower, user_id=user_id)
-            chat_data["members"].remove(user_id)
-            if user is not None:
-                chat_data["members"].append(user.profile)
+            if user.raw is not None:
+                new_members.append(user.profile)
+        chat_data["members"] = new_members
 
         # Return payload
         return meower.respond(chat_data, 200, error=False)
@@ -109,7 +112,7 @@ def chat_data(chat_id):
         if "owner" in request.json:
             if type(request.json["owner"]) == str:
                 user = meower.User(meower, username=request.json["owner"])
-                if user is not None:
+                if user.raw is not None:
                     return meower.respond({"type": "notFound", "message": "Requested user was not found"}, 404, error=True)
                 elif user._id not in chat_data["members"]:
                     return meower.respond({"type": "notFound", "message": "Requested user was not found"}, 404, error=True)
@@ -123,11 +126,12 @@ def chat_data(chat_id):
         meower.db["chats"].update_one({"_id": chat_id}, {"$set": {"public": chat_data["public"], "permissions": chat_data["permissions"]}})
 
         # Convert members list
+        new_members = []
         for user_id in chat_data["members"]:
             user = meower.User(meower, user_id=user_id)
-            chat_data["members"].remove(user_id)
-            if user is not None:
-                chat_data["members"].append(user.profile)
+            if user.raw is not None:
+                new_members.append(user.profile)
+        chat_data["members"] = new_members
 
         # Return payload
         return meower.respond(chat_data, 200, error=False)
@@ -181,7 +185,7 @@ def add_member(chat_id):
             chat_data["permissions"][user._id] = 1
 
         # Update chat
-        meower.db["chats"].update_one({"_id": chat_id}, {"$set": {"members": chat_data["members"]}})
+        meower.db["chats"].update_one({"_id": chat_id}, {"$set": {"members": chat_data["members"], "permissions": chat_data["permissions"]}})
 
         # Return payload
         return meower.respond({}, 200, error=False)
@@ -212,17 +216,20 @@ def add_member(chat_id):
         # Check whether the client is authenticated
         meower.require_auth([5], scope="meower:chats:edit")
 
+        # Check if user is in chat
+        if user._id not in chat_data["members"]:
+            return meower.respond({"type": "userNotInChat", "message": "Requested user not in chat"}, 404, error=True)
+
         # Check if the user has permission to remove the user
         if not ((request.session.user != user._id) and (chat_data["permissions"][request.session.user] >= 2) and (chat_data["permissions"][request.session.user] > chat_data["permissions"][user._id])):
             return meower.respond({"type": "forbidden", "message": "You do not have permission to remove this user"}, 403, error=True)
 
         # Remove user from chat
-        if user._id in chat_data["members"]:
-            chat_data["members"].remove(user._id)
-            del chat_data["permissions"][user._id]
+        chat_data["members"].remove(user._id)
+        del chat_data["permissions"][user._id]
 
         # Update chat
-        meower.db["chats"].update_one({"_id": chat_id}, {"$set": {"members": chat_data["members"]}})
+        meower.db["chats"].update_one({"_id": chat_id}, {"$set": {"members": chat_data["members"], "permissions": chat_data["permissions"]}})
 
         # Return payload
         return meower.respond({}, 200, error=False)

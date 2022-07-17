@@ -2,6 +2,8 @@ from flask import Blueprint, request, send_file
 from flask import current_app as meower
 import os
 import time
+from jinja2 import Template
+from threading import Thread
 
 general = Blueprint("general_blueprint", __name__)
 
@@ -59,18 +61,18 @@ def email_action():
         # Return data package
         return send_file("apiv0/data_exports/{0}.zip".format(session["user"]), as_attachment=True)
     elif session["action"] == "delete-account":
-        # Get user
-        userdata = meower.db["usersv0"].find_one({"_id": session["user"]})
+        # Delete sessions
+        meower.db["sessions"].delete_many({"user": session["user"]})
 
-        # Check if user exists
-        if userdata is None:
-            return meower.respond({"type": "unauthorized", "message": "You are not authenticated."}, 401, error=True)
-
-        # Delete user
+        # Schedule user for deletion
         meower.db["usersv0"].update_one({"_id": session["user"]}, {"$set": {"security.delete_after": time.time()+172800}})
 
-        # Delete session
-        meower.db["sessions"].delete_one({"_id": session["_id"]})
+        # Send alert to user
+        userdata = meower.db["usersv0"].find_one({"_id": session["user"]})
+        email = meower.decrypt(userdata["security"]["email"]["encryption_id"], userdata["security"]["email"]["encrypted_email"])
+        with open("apiv0/email_templates/alerts/account_deletion.html", "r") as f:
+            email_template = Template(f.read()).render({"username": userdata["username"]})
+        Thread(target=meower.send_email, args=(email, userdata["username"], "Account scheduled for deletion", email_template,), kwargs={"type": "text/html"}).start()
 
         # Return payload
         return meower.respond({}, 200, error=False)

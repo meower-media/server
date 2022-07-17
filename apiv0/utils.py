@@ -14,6 +14,7 @@ from better_profanity import profanity
 import pymongo
 from jinja2 import Template
 import copy
+import geocoder
 
 class Utils:
     def __init__(self, meower, request):
@@ -186,7 +187,20 @@ class Utils:
         userdata = self.meower.db["usersv0"].find_one({"_id": user})
         if userdata["security"]["delete_after"] is not None:
             self.meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.delete_after": None}})
-        del userdata["security"] # Delete security before returning to user
+
+        # Alert user of new login
+        if userdata["security"]["email"] is None:
+            email = None
+        else:
+            email = self.meower.decrypt(userdata["security"]["email"]["encryption_id"], userdata["security"]["email"]["encrypted_email"])
+        if email is not None:
+            ip_details = geocoder.ip(self.request.remote_addr)
+            with open("apiv0/email_templates/alerts/new_login.html", "r") as f:
+                email_template = Template(f.read()).render({"username": userdata["username"], "ip": self.request.remote_addr, "city": ip_details.city, "country": ip_details.country})
+            Thread(target=self.meower.send_email, args=(email, userdata["username"], "Security Alert", email_template,), kwargs={"type": "text/html"}).start()
+
+        # Delete security before returning to user
+        del userdata["security"]
 
         # Return session data
         return {"session": session, "user": userdata, "requires_totp": False}
@@ -540,7 +554,7 @@ class User:
             self.raw = meower.db["usersv0"].find_one({"lower_username": username.lower()})
         else:
             self.raw = None
-        
+
         if self.raw is None:
             return
         
