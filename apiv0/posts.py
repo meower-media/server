@@ -155,21 +155,18 @@ def report_post(post_id):
         report_status = {
             "_id": post_id,
             "type": 1,
-            "users": [],
-            "ips": [],
-            "comments": [],
+            "users": [request.user._id],
+            "ips": [request.remote_addr],
+            "comments": [{"u": request.user._id, "t": int(time.time()), "p": request.json["comment"]}],
             "t": int(time.time()),
             "review_status": 0,
             "auto_censored": False
         }
-        report_status["users"].append(request.user._id)
-        report_status["comments"].append({"u": request.user._id, "t": int(time.time()), "p": request.json["comment"]})
-        report_status["ips"].append(request.remote_addr)
         meower.db["reports"].insert_one(report_status)
     elif request.user._id not in report_status["users"]:
         report_status["users"].append(request.user._id)
         report_status["comments"].append({"u": request.user._id, "t": int(time.time()), "p": request.json["comment"]})
-        if request.remote_addr not in report_status["ips"]:
+        if (request.remote_addr not in report_status["ips"]) and (request.user.state >= 1):
             report_status["ips"].append(request.remote_addr)
             if (len(report_status["ips"]) > 3) and (report_status["review_status"] == 0):
                 report_status["auto_censored"] = True

@@ -2,7 +2,6 @@ from flask import Blueprint, request
 from flask import current_app as meower
 import pymongo
 import time
-from threading import Thread
 
 users = Blueprint("users_blueprint", __name__)
 
@@ -68,7 +67,7 @@ def report_user(username):
     if report_status is None:
         report_status = {
             "_id": userdata["_id"],
-            "type": 1,
+            "type": 0,
             "users": [],
             "ips": [],
             "comments": [],
@@ -82,7 +81,7 @@ def report_user(username):
     elif request.user._id not in report_status["users"]:
         report_status["users"].append(request.user._id)
         report_status["comments"].append({"u": request.user._id, "t": int(time.time()), "p": request.json["comment"]})
-        if request.remote_addr not in report_status["ips"]:
+        if (request.remote_addr not in report_status["ips"]) and (request.user.state >= 1):
             report_status["ips"].append(request.remote_addr)
         meower.db["reports"].find_one_and_replace({"_id": userdata["_id"]}, report_status)
 
