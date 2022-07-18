@@ -1,3 +1,4 @@
+from threading import Thread
 from flask import Blueprint, request
 from flask import current_app as meower
 import time
@@ -20,10 +21,10 @@ def get_post(post_id):
     # Make sure the user has permission
     if not ((post["post_origin"] == "home") or (post["post_origin"] == "inbox")):
         chat_data = meower.db["chats"].find_one({"_id": post["post_origin"], "deleted": False})
-        if (chat_data is None) or (request.session.user not in chat_data["members"]):
+        if (chat_data is None) or (request.user._id not in chat_data["members"]):
             return meower.respond({"type": "notFound", "message": "Requested post was not found"}, 404, error=True)
     elif post["post_origin"] == "inbox":
-        if post["u"] != request.session.user:
+        if post["u"] != request.user._id:
             return meower.respond({"type": "notFound", "message": "Requested post was not found"}, 404, error=True)
         else:
             # Check whether the client is authenticated
@@ -62,10 +63,10 @@ def get_post_comments(post_id):
     # Make sure the user has permission
     if not ((post["post_origin"] == "home") or (post["post_origin"] == "inbox")):
         chat_data = meower.db["chats"].find_one({"_id": post["post_origin"], "deleted": False})
-        if (chat_data is None) or (request.session.user not in chat_data["members"]):
+        if (chat_data is None) or (request.user._id not in chat_data["members"]):
             return meower.respond({"type": "notFound", "message": "Requested post was not found"}, 404, error=True)
     elif post["post_origin"] == "inbox":
-        if post["u"] != request.session.user:
+        if post["u"] != request.user._id:
             return meower.respond({"type": "notFound", "message": "Requested post was not found"}, 404, error=True)
         else:
             # Check whether the client is authenticated
@@ -112,7 +113,7 @@ def get_post_comments(post_id):
         content = request.json["p"]
 
         # Check if account is spamming
-        if meower.check_for_spam("comments-{0}".format(post_id), request.session.user, burst=10, seconds=5):
+        if meower.check_for_spam("comments-{0}".format(post_id), request.user._id, burst=10, seconds=5):
             return meower.respond({"type": "ratelimited", "message": "You are being ratelimited"}, 429, error=True)
 
         # Create post
@@ -120,7 +121,7 @@ def get_post_comments(post_id):
             "_id": str(uuid4()),
             "post_origin": post["post_origin"],
             "parent": post_id,
-            "u": request.session.user,
+            "u": request.user._id,
             "p": content,
             "t": int(time.time()),
             "isDeleted": False
@@ -161,15 +162,20 @@ def report_post(post_id):
             "review_status": 0,
             "auto_censored": False
         }
-    if request.session.user not in report_status["users"]:
-        report_status["users"].append(request.session.user)
-        report_status["comments"].append({"u": request.session.user, "t": int(time.time()), "p": request.json["comment"]})
+        report_status["users"].append(request.user._id)
+        report_status["comments"].append({"u": request.user._id, "t": int(time.time()), "p": request.json["comment"]})
+        report_status["ips"].append(request.remote_addr)
+        meower.db["reports"].insert_one(report_status)
+    elif request.user._id not in report_status["users"]:
+        report_status["users"].append(request.user._id)
+        report_status["comments"].append({"u": request.user._id, "t": int(time.time()), "p": request.json["comment"]})
         if request.remote_addr not in report_status["ips"]:
             report_status["ips"].append(request.remote_addr)
-            if len(report_status["ips"]) > 3:
+            if (len(report_status["ips"]) > 3) and (report_status["review_status"] == 0):
                 report_status["auto_censored"] = True
                 meower.db["posts"].update_one({"_id": post_id}, {"$set": {"isDeleted": True}})
-    meower.db["users"].update_one({"_id": request.session.user}, report_status)
+        meower.db["reports"].find_one_and_replace({"_id": post_id}, report_status)
+        Thread(target=meower.check_for_auto_suspension, args=(post["u"],)).start()
 
     # Return payload
     return meower.respond({}, 200, error=False)

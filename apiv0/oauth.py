@@ -231,7 +231,7 @@ def login_totp():
     meower.check_for_json([{"id": "totp", "t": str, "l_min": 6, "l_max": 8}])
     
     # Get user data from database
-    userdata = meower.db["usersv0"].find_one({"_id": request.session.user})
+    userdata = meower.db["usersv0"].find_one({"_id": request.user._id})
 
     # Check for valid authentication
     if (userdata["security"]["totp"] is None) or pyotp.TOTP(userdata["security"]["totp"]["secret"]).verify(request.json["totp"]) or (request.json["totp"] in userdata["security"]["totp"]["recovery_codes"]):
@@ -239,7 +239,7 @@ def login_totp():
         request.session.delete()
     
         # Full account session
-        return meower.respond(meower.foundation_session(request.session.user), 200, error=False)
+        return meower.respond(meower.foundation_session(request.user._id), 200, error=False)
     else:
         # Invalid TOTP code
         return meower.respond({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
@@ -280,7 +280,7 @@ def login_device():
     request.session.delete()
 
     # Full account session
-    return meower.respond(meower.foundation_session(request.session.user), 200, error=False)
+    return meower.respond(meower.foundation_session(request.user._id), 200, error=False)
 
 @oauth.route("/session", methods=["GET", "DELETE"])
 def current_session():
@@ -348,7 +348,7 @@ def authorize_device():
     session = meower.db["sessions"].find_one({"token": code})
 
     # Check if the session is invalid
-    if (session is None) or (session["type"] != 1) or (session["expires"] < time.time()) or (session["user"] != request.session.user) or session["verified"]:
+    if (session is None) or (session["type"] != 1) or (session["expires"] < time.time()) or (session["user"] != request.user._id) or session["verified"]:
         return meower.respond({"type": "codeDoesNotExist"}, 400, error=True)
     else:
         # Verify session
@@ -365,7 +365,7 @@ def authorize_app():
  
     # Extract app ID and scopes for simplicity
     app_id = request.json["app"].strip()
-    scopes = request.json["scopes"].strip().split(" ")
+    scopes = set(request.json["scopes"].strip().split(" "))
     redirect_uri = request.json["redirect_uri"].strip()
 
     # Get app data
@@ -374,8 +374,25 @@ def authorize_app():
     if app_data is None:
         return meower.respond({"type": "appDoesNotExist"}, 400, error=True)
 
+    # Apply the "all" scope
+    if "all" in scopes:
+        scopes = scopes.union(meower.all_oauth_scopes)
+        if app_data["first_party"]:
+            scopes = scopes.union(meower.first_party_oauth_scopes)
+
+    # Validate all scopes
+    remove_scopes = []
+    for scope in scopes:
+        if (scope != "all") and (scope not in meower.all_oauth_scopes) and (app_data["first_party"] and (scope not in meower.first_party_oauth_scopes)):
+            remove_scopes.append(scope)
+    for scope in remove_scopes:
+        scopes.remove(scope)
+
+    # Convert scopes back to list from set
+    scopes = list(scopes)
+
     # Get user data
-    userdata = meower.db["usersv0"].find_one({"_id": request.session.user})
+    userdata = meower.db["usersv0"].find_one({"_id": request.user._id})
 
     if request.method == "GET":
         # Return app information
@@ -384,24 +401,24 @@ def authorize_app():
         del payload["allowed_redirects"]
         del payload["secret"]
         payload["authorized"] = ((app_id in userdata["security"]["oauth"]["authorized"]) and (userdata["security"]["oauth"]["scopes"][app_id] == scopes))
-        payload["banned"] = (request.session.user in app_data["bans"])
+        payload["banned"] = (request.user._id in app_data["bans"])
         payload["scopes"] = scopes
         payload["redirect_uri"] = redirect_uri
         payload["redirect_allowed"] = ((redirect_uri in app_data["allowed_redirects"]) or ("*" in app_data["allowed_redirects"]))
         return meower.respond(payload, 200, error=False)
     elif request.method == "POST":
         # Check if user is banned
-        if request.session.user in app_data["bans"]:
+        if request.user._id in app_data["bans"]:
             return meower.respond({"type": "userBannedFromApp"}, 403, error=True)
 
         # Authorize app
         if not (app_id in userdata["security"]["oauth"]["authorized"]):
             userdata["security"]["oauth"]["authorized"].append(app_id)
             userdata["security"]["oauth"]["scopes"][app_id] = scopes
-            meower.db["usersv0"].update_one({"_id": request.session.user}, {"$set": {"security.oauth.authorized": userdata["security"]["oauth"]["authorized"], "security.oauth.scopes": userdata["security"]["oauth"]["scopes"]}})
+            meower.db["usersv0"].update_one({"_id": request.user._id}, {"$set": {"security.oauth.authorized": userdata["security"]["oauth"]["authorized"], "security.oauth.scopes": userdata["security"]["oauth"]["scopes"]}})
         
         # Return OAuth exchange session
-        session = meower.create_session(4, request.session.user, secrets.token_urlsafe(16), 300, app=app_id, scopes=scopes)
+        session = meower.create_session(4, request.user._id, secrets.token_urlsafe(16), 300, app=app_id, scopes=scopes)
         return meower.respond(session, 200, error=False)
 
 @oauth.route("/exchange", methods=["POST"])
@@ -449,7 +466,7 @@ def manage_oauth_apps():
     meower.require_auth([5], scope="foundation:oauth:apps")
 
     if request.method == "GET": # Get all OAuth apps
-        apps = meower.db["oauth"].find({"owner": request.session.user}).sort("name", pymongo.ASCENDING)
+        apps = meower.db["oauth"].find({"owner": request.user._id}).sort("name", pymongo.ASCENDING)
         return meower.respond({"apps": list(apps)}, 200, error=False)
     elif request.method == "POST": # Create new OAuth app
         # Check for required data
@@ -459,14 +476,14 @@ def manage_oauth_apps():
         name = request.json["name"].strip()
 
         # Check if user has too many apps
-        apps_count = meower.db["oauth"].count_documents({"owner": request.session.user})
+        apps_count = meower.db["oauth"].count_documents({"owner": request.user._id})
         if apps_count >= 50:
             return meower.respond({"type": "tooManyApps"}, 403, error=True)
 
         # Craete app data
         app_data = {
             "_id": str(uuid4()),
-            "owner": request.session.user,
+            "owner": request.user._id,
             "name": name,
             "description": "",
             "first_party": False,
@@ -493,7 +510,7 @@ def manage_oauth_app(app_id):
 
     # Get app data
     app_data = meower.db["oauth"].find_one({"_id": app_id})
-    if (app_data is None) or (app_data["owner"] != request.session.user):
+    if (app_data is None) or (app_data["owner"] != request.user._id):
         return meower.respond({"type": "notFound", "message": "Requested OAuth app was not found"}, 404, error=True)
 
     # Check for required data
@@ -505,7 +522,7 @@ def manage_oauth_app(app_id):
             userdata = meower.db["usersv0"].find_one({"_id": request.json["owner"]})
             if userdata is None:
                 return meower.respond({"type": "userDoesNotExist"}, 400, error=True)
-            elif userdata["_id"] == request.session.user:
+            elif userdata["_id"] == request.user._id:
                 return meower.respond({"type": "cannotChangeOwnerToSelf", "message": "You cannot change the owner to yourself"}, 400, error=True)
             else:
                 app_data["owner"] = request.json["owner"]

@@ -53,6 +53,30 @@ class Utils:
             "InvalidToken": "E:106 | Invalid token",
         }
 
+        # OAuth scopes
+        self.all_oauth_scopes = set([
+            "foundation:profile:view_profile",
+            "foundation:settings:read_email",
+            "foundation:settings:read_config",
+            "foundation:settings:edit_config",
+            "foundation:inbox:read_messages",
+            "meower:websocket:connect",
+            "meower:chats:access",
+            "meower:chats:edit",
+            "meower:posts:read_posts",
+            "meower:posts:create_posts",
+            "meower:posts:edit_posts",
+            "meower:posts:comments"
+        ])
+        self.first_party_oauth_scopes = set([
+            "foundation:settings:authentication",
+            "foundation:settings:sessions",
+            "foundation:settings:blocked",
+            "foundation:settings:danger",
+            "foundation:oauth:authorized",
+            "foundation:oauth:apps"
+        ])
+
         # Start background task
         background_thread = Thread(target=self.background)
         background_thread.daemon = True
@@ -247,6 +271,33 @@ class Utils:
             if not char in self.permitted_chars_post:
                 return True
         return False
+
+    def check_for_auto_suspension(self, user):
+        # Check how many posts have been auto censored
+        total_auto_censored = 4
+        deleted_posts = self.meower.db["posts"].find({"u": user, "isDeleted": True})
+        for post in deleted_posts:
+            report_status = self.meower.db["reports"].find_one({"_id": post["_id"]})
+            if report_status["auto_suspended"] and (report_status["review_status"] == 0):
+                total_auto_censored += 1
+                if total_auto_censored > 3:
+                    break
+        
+        # Suspend user if they have more than 3 auto-censored posts that are not reviewed
+        if total_auto_censored > 3:
+            # Set suspension time
+            self.meower.db["usersv0"].update_one({"_id": user}, {"$set": {"security.suspended_until": time.time() + 43200}})
+
+            # Render and send alert email
+            userdata = self.meower.db["usersv0"].find_one({"_id": user})
+            if userdata["security"]["email"] is None:
+                email = None
+            else:
+                email = self.meower.decrypt(userdata["security"]["email"]["encryption_id"], userdata["security"]["email"]["encrypted_email"])
+            if email is not None:
+                with open("apiv0/email_templates/moderation/suspension.html", "r") as f:
+                    email_template = Template(f.read()).render({"username": userdata["username"], "reason": "Automatic suspension due to too many posts flagged for moderation.", "expires": "In 12 hours or when the flagged posts are reviewed"})
+                Thread(target=self.meower.send_email, args=(email, userdata["username"], "Notice of temporary account suspension", email_template,), kwargs={"type": "text/html"}).start()
 
     def filter(self, message):
         message = self.meower.filter.censor(message)
@@ -509,7 +560,7 @@ class Utils:
                 return self.meower.respond({"type": "unauthorized", "message": "Session has not been verified yet."}, 401, error=True)
 
             # Check user
-            userdata = self.meower.db["usersv0"].find_one({"_id": self.request.session.user})
+            userdata = self.meower.db["usersv0"].find_one({"_id": self.request.user._id})
             if (userdata is None) or userdata["security"]["banned"]:
                 self.request.session.delete()
                 return self.meower.respond({"type": "unauthorized", "message": "You are not authenticated."}, 401, error=True)
@@ -532,7 +583,8 @@ class Session:
                 self.json = token_data
                 for key, value in token_data.items():
                     setattr(self, key, value)
-                if (self.expires == None) or (not (self.expires < time.time())):
+                self.user = self.meower.User(self.meower, user_id=self.user)
+                if (self.expires == None) or (not (self.expires < time.time())) and (self.user.raw is not None):
                     self.authed = True
         except:
             pass

@@ -28,6 +28,7 @@ def get_home():
         for post in query_get:
             user = meower.User(meower, user_id=post["u"])
             if user.raw is None:
+                meower.db["posts"].update_one({"_id": post["_id"]}, {"$set": {"isDeleted": True}})
                 continue
             else:
                 post["u"] = user.profile
@@ -53,7 +54,7 @@ def get_home():
         content = request.json["p"]
 
         # Check if account is spamming
-        if meower.check_for_spam("posts-home", request.session.user, burst=10, seconds=5):
+        if meower.check_for_spam("posts-home", request.user._id, burst=10, seconds=5):
             return meower.respond({"type": "ratelimited", "message": "You are being ratelimited"}, 429, error=True)
 
         # Create post
@@ -61,7 +62,7 @@ def get_home():
             "_id": str(uuid4()),
             "post_origin": "home",
             "parent": None,
-            "u": request.session.user,
+            "u": request.user._id,
             "p": content,
             "t": int(time.time()),
             "isDeleted": False
@@ -69,9 +70,8 @@ def get_home():
         meower.db["posts"].insert_one(post_data)
 
         # Send notification to all users
-        user = meower.User(meower, user_id=post_data["u"])
-        post_data["u"] = user.profile
-        meower.send_payload(json.dumps({"cmd": "new_post", "val": post_data}))
+        post_data["u"] = request.user.profile
+        #meower.send_payload(json.dumps({"cmd": "new_post", "val": post_data}))
 
         # Return payload
         return meower.respond(post_data, 200, error=False)

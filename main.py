@@ -10,6 +10,8 @@ meower = Flask(__name__)
 from apiv0.utils import Utils, Session, User
 utils = Utils(meower, request)
 meower.sock_statuses = utils.sock_statuses
+meower.all_oauth_scopes = utils.all_oauth_scopes
+meower.first_party_oauth_scopes = utils.first_party_oauth_scopes
 meower.log = utils.log
 meower.timestamp = utils.timestamp
 meower.create_session = utils.create_session
@@ -17,6 +19,7 @@ meower.foundation_session = utils.foundation_session
 meower.check_for_spam = utils.check_for_spam
 meower.check_for_bad_chars_post = utils.check_for_bad_chars_post
 meower.check_for_bad_chars_username = utils.check_for_bad_chars_username
+meower.check_for_auto_suspension = utils.check_for_auto_suspension
 meower.filter = utils.filter
 meower.user_status = utils.user_status
 meower.export_data = utils.export_data
@@ -63,6 +66,8 @@ from apiv0.home import home
 meower.register_blueprint(home, url_prefix="/v0/home")
 from apiv0.chats import chats
 meower.register_blueprint(chats, url_prefix="/v0/chats")
+from apiv0.posts import posts
+meower.register_blueprint(posts, url_prefix="/v0/posts")
 from apiv0.search import search
 meower.register_blueprint(search, url_prefix="/v0/search")
 
