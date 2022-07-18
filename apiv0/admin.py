@@ -1,7 +1,7 @@
 from flask import Blueprint, request, render_template
 from flask import current_app as app
 
-admin = Blueprint("admin_blueprint", __name__, static_folder="admin", static_url_path="/", template_folder="admin")
+admin = Blueprint("admin_blueprint", __name__)
 
 @admin.route("/login", methods=["GET", "POST"])
 def index():
