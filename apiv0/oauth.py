@@ -1,3 +1,4 @@
+import re
 from threading import Thread
 from jinja2 import Template
 from flask import Blueprint, request
@@ -29,7 +30,7 @@ def before_request():
 
     # Check if IP is banned
     if (request.remote_addr in meower.ip_banlist) and (not (request.path in ["/v0", "/v0/status", "/status"] or request.path.startswith("/admin"))):
-        return meower.respond({"type": "IPBlocked"}, 403)
+        return meower.respond({"type": "IPBlocked", "message": "Your IP address has been blocked."}, 403)
 
     # Attempt to authorize the user
     if ("Authorization" in request.headers) or (len(str(request.headers.get("Authorization"))) <= 136):
@@ -114,6 +115,7 @@ def create_account():
                 }
             ],
             "moderation_history": [],
+            "last_ip": None,
             "delete_after": None,
             "suspended_until": None,
             "banned": False
@@ -122,7 +124,7 @@ def create_account():
     meower.db["usersv0"].insert_one(userdata)
 
     # Return session
-    return meower.respond(meower.foundation_session(userdata["_id"]), 200, error=False)
+    return meower.respond(meower.foundation_session(userdata["_id"], "your password"), 200, error=False)
 
 @oauth.route("/auth-methods", methods=["GET"])
 def get_auth_methods():
@@ -198,7 +200,7 @@ def login():
                     minimal_userdata[key] = userdata[key]
                 return meower.respond({"session": session, "user": minimal_userdata, "requires_totp": True}, 200, error=False)
             else:
-                return meower.respond(meower.foundation_session(userdata["_id"]), 200, error=False)
+                return meower.respond(meower.foundation_session(userdata["_id"], "your password"), 200, error=False)
         else:
             # Invalid password
             return meower.respond({"type": "invalidCredentials"}, 401, error=True)
@@ -239,7 +241,7 @@ def login_totp():
         request.session.delete()
     
         # Full account session
-        return meower.respond(meower.foundation_session(request.user._id), 200, error=False)
+        return meower.respond(meower.foundation_session(request.user._id, "your password"), 200, error=False)
     else:
         # Invalid TOTP code
         return meower.respond({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
@@ -269,7 +271,7 @@ def login_email():
         meower.db["sessions"].delete_one({"_id": session_data["_id"]})
     
         # Full account session
-        return meower.respond(meower.foundation_session(userdata["_id"]), 200, error=False)
+        return meower.respond(meower.foundation_session(userdata["_id"], "your email"), 200, error=False)
 
 @oauth.route("/login/device", methods=["GET"])
 def login_device():
@@ -280,7 +282,7 @@ def login_device():
     request.session.delete()
 
     # Full account session
-    return meower.respond(meower.foundation_session(request.user._id), 200, error=False)
+    return meower.respond(meower.foundation_session(request.user._id, "another device"), 200, error=False)
 
 @oauth.route("/session", methods=["GET", "DELETE"])
 def current_session():

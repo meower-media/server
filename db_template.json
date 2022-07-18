@@ -68,16 +68,13 @@
                         }
                     ],
                     "moderation_history": [],
+                    "last_ip": null,
                     "delete_after": null,
                     "suspended_until": null,
                     "banned": false
                 }
             }
         ]
-    },
-    "usersv1": {
-        "indexes": ["_id"],
-        "items": []
     },
     "sessions": {
         "indexes": ["_id", "token", "refresh_token", "previous_refresh_tokens", "app", "user"],
@@ -100,7 +97,7 @@
         ]
     },
     "netlog": {
-        "indexes": ["_id", "blocked", "creation_blocked", "poisoned", "users"],
+        "indexes": ["_id", "blocked", "creation_blocked", "users"],
         "items": []
     },
     "chats": {

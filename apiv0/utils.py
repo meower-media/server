@@ -202,7 +202,7 @@ class Utils:
         self.meower.db["sessions"].insert_one(session_data)
         return session_data
 
-    def foundation_session(self, user):
+    def foundation_session(self, user, method):
         # Create session
         session = self.create_session(3, user, secrets.token_urlsafe(64))
         session["previous_refresh_tokens"] = None
@@ -212,16 +212,35 @@ class Utils:
         if userdata["security"]["delete_after"] is not None:
             self.meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.delete_after": None}})
 
-        # Alert user of new login
-        if userdata["security"]["email"] is None:
-            email = None
-        else:
-            email = self.meower.decrypt(userdata["security"]["email"]["encryption_id"], userdata["security"]["email"]["encrypted_email"])
-        if email is not None:
-            ip_details = geocoder.ip(self.request.remote_addr)
-            with open("apiv0/email_templates/alerts/new_login.html", "r") as f:
-                email_template = Template(f.read()).render({"username": userdata["username"], "ip": self.request.remote_addr, "city": ip_details.city, "country": ip_details.country})
-            Thread(target=self.meower.send_email, args=(email, userdata["username"], "Security Alert", email_template,), kwargs={"type": "text/html"}).start()
+        # Check and update netlog
+        self.meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.last_ip": self.request.remote_addr}})
+        network = self.meower.db["netlog"].find_one({"_id": self.request.remote_addr})
+        if network is None:
+            network = {
+                "_id": self.request.remote_addr,
+                "users": [],
+                "last_user": None,
+                "blocked": False,
+                "creation_blocked": False,
+                "created": int(time.time())
+            }
+            self.meower.db["netlog"].insert_one(network)
+        if user not in network["users"]:
+            # Add user to netlog
+            network["users"].append(user)
+            network["last_user"] = user
+            self.meower.db["netlog"].update_one({"_id": network["_id"]}, {"$set": {"users": network["users"], "last_user": network["last_user"]}})
+
+            # Alert user of new login
+            if userdata["security"]["email"] is None:
+                email = None
+            else:
+                email = self.meower.decrypt(userdata["security"]["email"]["encryption_id"], userdata["security"]["email"]["encrypted_email"])
+            if email is not None:
+                ip_details = geocoder.ip(self.request.remote_addr)
+                with open("apiv0/email_templates/alerts/new_login.html", "r") as f:
+                    email_template = Template(f.read()).render({"username": userdata["username"], "method": method, "ip": self.request.remote_addr, "city": ip_details.city, "country": ip_details.country})
+                Thread(target=self.meower.send_email, args=(email, userdata["username"], "Security Alert", email_template,), kwargs={"type": "text/html"}).start()
 
         # Delete security before returning to user
         del userdata["security"]
@@ -495,7 +514,7 @@ class Utils:
             }]
         }
 
-        return requests.post(os.getenv("EMAIL_WORKER_URL"), headers={"X-Auth-Token": os.getenv("EMAIL_WORKER_TOKEN")}, json=payload)
+        return requests.post(os.getenv("EMAIL_WORKER_URL"), headers={"X-Auth-Token": os.getenv("EMAIL_WORKER_TOKEN")}, json=payload).text
 
     def init_db(self):
         with open("db_template.json", "r") as f:
