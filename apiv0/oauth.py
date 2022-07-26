@@ -47,7 +47,7 @@ def create_account():
         return meower.respond({"type": "accountCreationBlocked"}, 403, error=True)
 
     # Check for required data
-    meower.check_for_json([{"id": "username", "t": str, "l_min": 1, "l_max": 20}, {"id": "password", "t": str, "l_max": 256}])
+    meower.check_for_json([{"id": "username", "t": str, "l_min": 1, "l_max": 20}, {"id": "password", "t": str, "l_max": 256}, {"id": "captcha", "t": str, "l_min": 1, "l_max": 1024}])
 
     # Extract username and password for simplicity
     username = request.json["username"].strip()
@@ -65,6 +65,10 @@ def create_account():
     # Check if account exists
     if meower.db["usersv0"].find_one({"lower_username": username.lower()}) is not None:
         return meower.respond({"type": "usernameAlreadyExists", "message": "That username is already taken"}, 409, error=True)
+
+    # Check captcha
+    if not meower.check_captcha(request.json["captcha"]):
+        return meower.respond({"type": "invalidCaptcha", "message": "The captcha token is invalid"}, 403, error=True)
 
     # Create userdata
     userdata = {

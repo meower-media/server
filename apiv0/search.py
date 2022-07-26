@@ -91,8 +91,8 @@ def search_public_chats():
         page = int(request.args["page"])
 
     # Get index
-    query_get = meower.db["chats"].find({"nickname": {"$regex": query.lower()}, "public": True, "deleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
-    pages_amount = (meower.db["chats"].count_documents({"nickname": {"$regex": query.lower()}, "public": True, "deleted": False}) // 25) + 1
+    query_get = meower.db["chats"].find({"nickname_lower": {"$regex": query.lower()}, "public": True, "deleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
+    pages_amount = (meower.db["chats"].count_documents({"nickname_lower": {"$regex": query.lower()}, "public": True, "deleted": False}) // 25) + 1
 
     # Convert query get
     payload_chat = []

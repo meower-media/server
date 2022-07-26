@@ -318,6 +318,18 @@ class Utils:
                     email_template = Template(f.read()).render({"username": userdata["username"], "reason": "Automatic suspension due to too many posts flagged for moderation.", "expires": "In 12 hours or when the flagged posts are reviewed"})
                 Thread(target=self.meower.send_email, args=(email, userdata["username"], "Notice of temporary account suspension", email_template,), kwargs={"type": "text/html"}).start()
 
+    def check_captcha(self, captcha):
+        # Check if captcha is valid
+        resp = requests.post("https://hcaptcha.com/siteverify", data={"response": captcha, "secret": os.getenv("HCAPTCHA_SECRET")})
+        try:
+            resp = resp.json()
+            if resp["success"]:
+                return True
+            else:
+                return False
+        except:
+            return False
+
     def filter(self, message):
         message = self.meower.filter.censor(message)
         for word in self.meower.filter.CENSOR_WORDSET:
@@ -455,8 +467,8 @@ class Utils:
                 self.meower.encryption = Fernet(key.encode())
         except:
             pass
-        if "encryption_keys" not in os.listdir():
-            os.mkdir("encryption_keys")
+        if "encryption_keys" not in os.listdir("apiv0"):
+            os.mkdir("apiv0/encryption_keys")
         if self.meower.encryption is None:
             self.log("Failed to initialize encryption -- Emails will not work")
 
@@ -470,12 +482,12 @@ class Utils:
         new_key = Fernet.generate_key()
         encrypted_data = Fernet(new_key).encrypt(data.encode()).decode()
         new_uuid = str(uuid4())
-        with open("encryption_keys/{0}".format(new_uuid), "w") as f:
+        with open("apiv0/encryption_keys/{0}".format(new_uuid), "w") as f:
             f.write(self.meower.encryption.encrypt(new_key).decode())
         return new_uuid, encrypted_data
 
     def decrypt(self, id, data):
-        with open("encryption_keys/{0}".format(id), "r") as f:
+        with open("apiv0/encryption_keys/{0}".format(id), "r") as f:
             encryption_key = self.meower.encryption.decrypt(f.read().encode()).decode()
         decrypted_data = Fernet(encryption_key).decrypt(data.encode()).decode()
         return decrypted_data

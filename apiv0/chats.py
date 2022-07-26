@@ -14,7 +14,7 @@ def my_chats():
 
     if request.method == "GET":
         # Get index
-        query_get = meower.db["chats"].find({"members": {"$all": [request.user._id]}, "deleted": False}).sort("nickname", pymongo.DESCENDING)
+        query_get = meower.db["chats"].find({"members": {"$all": [request.user._id]}, "deleted": False}).sort("nickname_lower", pymongo.DESCENDING)
 
         # Convert query get
         payload_chat = []
@@ -47,6 +47,7 @@ def my_chats():
         chat_data = {
             "_id": str(uuid4()),
             "nickname": request.json["nickname"],
+            "nickname_lower": request.json["nickname"].lower(),
             "members": [request.user._id],
             "permissions": {request.user._id: 3},
             "public": False,

@@ -20,6 +20,7 @@ meower.check_for_spam = utils.check_for_spam
 meower.check_for_bad_chars_post = utils.check_for_bad_chars_post
 meower.check_for_bad_chars_username = utils.check_for_bad_chars_username
 meower.check_for_auto_suspension = utils.check_for_auto_suspension
+meower.check_captcha = utils.check_captcha
 meower.filter = utils.filter
 meower.user_status = utils.user_status
 meower.export_data = utils.export_data
