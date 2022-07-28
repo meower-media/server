@@ -314,54 +314,58 @@ class Meower:
                     password = val["pswd"]
                     
                     if ((type(username) == str) and (type(password) == str)):
-                        if not self.supporter.checkForBadCharsUsername(username):
-                            if not self.supporter.checkForBadCharsPost(password):
-                                FileCheck, FileWrite = self.accounts.create_account(username, password)
-                                
-                                if FileCheck and FileWrite:
-                                    self.supporter.kickBadUsers(username) # Kick bad clients missusing the username
-                                    self.filesystem.create_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]), {"users": [], "last_user": username})
-                                    status, netlog = self.filesystem.load_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]))
-                                    if status:
-                                        if not username in netlog["users"]:
-                                            netlog["users"].append(username)
-                                        netlog["last_user"] = username
-                                        self.filesystem.write_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]), netlog)
-                                        self.accounts.update_setting(username, {"last_ip": str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"])}, forceUpdate=True)
-                                        self.supporter.autoID(client, username) # If the client is JS-based then give them an AutoID
-                                        self.supporter.setAuthenticatedState(client, True) # Make the server know that the client is authed
-                                        
-                                        # Return info to sender
-                                        payload = {
-                                            "mode": "auth",
-                                            "payload": username
-                                        }
-                                        
-                                        self.sendPacket({"cmd": "direct", "val": payload, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
-                                        
-                                        # Tell the client it is authenticated
-                                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                                        
-                                        # Log peak users
-                                        self.supporter.log_peak_users()
+                        if not (len(username) > 20) or (password > 74):
+                            if not self.supporter.checkForBadCharsUsername(username):
+                                if not self.supporter.checkForBadCharsPost(password):
+                                    FileCheck, FileWrite = self.accounts.create_account(username, password)
+                                    
+                                    if FileCheck and FileWrite:
+                                        self.supporter.kickBadUsers(username) # Kick bad clients missusing the username
+                                        self.filesystem.create_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]), {"users": [], "last_user": username})
+                                        status, netlog = self.filesystem.load_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]))
+                                        if status:
+                                            if not username in netlog["users"]:
+                                                netlog["users"].append(username)
+                                            netlog["last_user"] = username
+                                            self.filesystem.write_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]), netlog)
+                                            self.accounts.update_setting(username, {"last_ip": str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"])}, forceUpdate=True)
+                                            self.supporter.autoID(client, username) # If the client is JS-based then give them an AutoID
+                                            self.supporter.setAuthenticatedState(client, True) # Make the server know that the client is authed
+                                            
+                                            # Return info to sender
+                                            payload = {
+                                                "mode": "auth",
+                                                "payload": username
+                                            }
+                                            
+                                            self.sendPacket({"cmd": "direct", "val": payload, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
+                                            
+                                            # Tell the client it is authenticated
+                                            self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                                            
+                                            # Log peak users
+                                            self.supporter.log_peak_users()
 
-                                        # Send welcome message
-                                        self.createPost(post_origin="inbox", user=username, content="Welcome to Meower! We welcome you with open arms! You can get started by making friends in the global chat or home, or by searching for people and adding them to a group chat. We hope you have fun!")
+                                            # Send welcome message
+                                            self.createPost(post_origin="inbox", user=username, content="Welcome to Meower! We welcome you with open arms! You can get started by making friends in the global chat or home, or by searching for people and adding them to a group chat. We hope you have fun!")
+                                        else:
+                                            self.returnCode(client = client, code = "Internal", listener_detected = listener_detected, listener_id = listener_id)
                                     else:
-                                        self.returnCode(client = client, code = "Internal", listener_detected = listener_detected, listener_id = listener_id)
+                                        if ((not FileCheck) and FileWrite):
+                                            # Account already exists
+                                            self.returnCode(client = client, code = "IDExists", listener_detected = listener_detected, listener_id = listener_id)
+                                        else:
+                                            # Some other error, raise an internal error.
+                                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                                 else:
-                                    if ((not FileCheck) and FileWrite):
-                                        # Account already exists
-                                        self.returnCode(client = client, code = "IDExists", listener_detected = listener_detected, listener_id = listener_id)
-                                    else:
-                                        # Some other error, raise an internal error.
-                                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                                    # Bad characters being used
+                                    self.returnCode(client = client, code = "IllegalChars", listener_detected = listener_detected, listener_id = listener_id)
                             else:
                                 # Bad characters being used
                                 self.returnCode(client = client, code = "IllegalChars", listener_detected = listener_detected, listener_id = listener_id)
                         else:
-                            # Bad characters being used
-                            self.returnCode(client = client, code = "IllegalChars", listener_detected = listener_detected, listener_id = listener_id)
+                            # Message too large
+                            self.returnCode(client = client, code = "TooLarge", listener_detected = listener_detected, listener_id = listener_id)
                     else:
                         # Bad datatype
                         self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
