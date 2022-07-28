@@ -250,7 +250,7 @@ class Security:
                             if key in accountData.keys():
                                 accountData[key] = value
                         else:
-                            if not key in ["lvl", "pswd", "banned", "quote", "email", "last_ip", "lower_username"]:
+                            if not key in ["lvl", "pswd", "banned", "email", "last_ip", "lower_username"]:
                                 if key in accountData.keys():
                                     accountData[key] = value
                             else:
