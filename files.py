@@ -1,4 +1,8 @@
 from pymongo import MongoClient
+import time
+from uuid import uuid4
+
+from requests import delete
 
 """
 
@@ -15,7 +19,7 @@ class Files:
         self.errorhandler = errorhandler
 
         mongo_ip = "mongodb://localhost:27017"
-        self.log("Connecting to database '{0}'\n(If it seems like the server is stuck, it probably means it couldn't connect to the database)".format(mongo_ip))
+        self.log("Connecting to database '{0}'\n(If it seems like the server is stuck or the server randomly crashes, it probably means it couldn't connect to the database)".format(mongo_ip))
         self.db = MongoClient(mongo_ip)["meowerserver"]
 
         # Check connection status
@@ -25,7 +29,7 @@ class Files:
             self.log("Connected to database")
 
         # Create database collections
-        for item in ["config", "usersv0", "usersv1", "netlog", "posts", "chats"]:
+        for item in ["config", "usersv0", "usersv1", "netlog", "posts", "chats", "reports"]:
             if not item in self.db.list_collection_names():
                 self.log("Creating collection {0}".format(item))
                 self.db.create_collection(name=item)
@@ -36,92 +40,43 @@ class Files:
         self.db["posts"].create_index("u")
         self.db["posts"].create_index("post_origin")
         self.db["posts"].create_index("type")
+        self.db["posts"].create_index("p")
         self.db["chats"].create_index("members")
         
         # Create reserved accounts
-        self.create_item("usersv0", "Server", {
-            "lower_username": "server",
-            "theme": "",
-            "mode": None,
-            "sfx": None,
-            "debug": None,
-            "bgm": None,
-            "bgm_song": None,
-            "layout": None,
-            "pfp_data": None,
-            "quote": None,
-            "email": None,
-            "pswd": None,
-            "lvl": None,
-            "banned": False
-        })
-        
-        self.create_item("usersv0", "Deleted", {
-            "lower_username": "deleted",
-            "theme": "",
-            "mode": None,
-            "sfx": None,
-            "debug": None,
-            "bgm": None,
-            "bgm_song": None,
-            "layout": None,
-            "pfp_data": None,
-            "quote": None,
-            "email": None,
-            "pswd": None,
-            "lvl": None,
-            "banned": False
-        })
-
-        self.create_item("usersv0", "username", {
-            "lower_username": "username",
-            "theme": "",
-            "mode": None,
-            "sfx": None,
-            "debug": None,
-            "bgm": None,
-            "bgm_song": None,
-            "layout": None,
-            "pfp_data": None,
-            "quote": None,
-            "email": None,
-            "pswd": None,
-            "lvl": None,
-            "banned": False
-        })
-
-        self.create_item("usersv0", "Meower", {
-            "lower_username": "meower",
-            "theme": "",
-            "mode": None,
-            "sfx": None,
-            "debug": None,
-            "bgm": None,
-            "bgm_song": None,
-            "layout": None,
-            "pfp_data": None,
-            "quote": None,
-            "email": None,
-            "pswd": None,
-            "lvl": None,
-            "banned": False
-        })
+        for username in ["Server", "Deleted", "Meower", "Admin", "username"]:
+            self.create_item("usersv0", username, {
+                "lower_username": username.lower(),
+                "created": int(time.time()),
+                "uuid": str(uuid4()),
+                "unread_inbox": False,
+                "theme": "",
+                "mode": None,
+                "sfx": None,
+                "debug": None,
+                "bgm": None,
+                "bgm_song": None,
+                "layout": None,
+                "pfp_data": None,
+                "quote": None,
+                "email": None,
+                "pswd": None,
+                "tokens": [],
+                "lvl": None,
+                "banned": False,
+                "last_ip": None
+            })
 
         # Create IP banlist file
         self.create_item("config", "IPBanlist", {
-            "wildcard": [
-                "127.0.0.1",
-            ],
-            "users": {
-                "Deleted": "127.0.0.1",
-                "Server": "127.0.0.1",
-            }
+            "wildcard": [],
+            "users": {}
         })
         
         # Create Version support file
         self.create_item("config", "supported_versions", {
             "index": [
-                "scratch-beta-5-r6",
+                "scratch-beta-5-r7",
             ]
         })
         
@@ -143,15 +98,6 @@ class Files:
             "repair_mode": False,
             "is_deprecated": False
         })
-        
-        # 'lower_username' patch
-        result, payload = self.load_item("usersv0", "Server")
-        if result:
-            if not "lower_username" in payload:
-                self.log("Updating users to include 'lower_username'")
-                payload = self.find_items("usersv0", {})
-                for item in payload:
-                    self.update_item("usersv0", str(item), {"lower_username": str(item).lower()})
 
         self.log("Files initialized!")
 
@@ -215,6 +161,12 @@ class Files:
             return payload
         else:
             return []
+
+    def count_items(self, collection, query):
+        if collection in self.db.list_collection_names():
+            return self.db[collection].count_documents(query)
+        else:
+            return 0
 
     def delete_item(self, collection, id):
         if collection in self.db.list_collection_names():

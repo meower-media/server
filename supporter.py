@@ -4,6 +4,7 @@ import time
 import traceback
 import sys
 import string
+from threading import Thread
 
 """
 
@@ -50,15 +51,9 @@ class Supporter:
             self.permitted_chars_username.append(char)
             self.permitted_chars_post.append(char)
         for char in string.punctuation:
-            self.permitted_chars_username.append(char)
             self.permitted_chars_post.append(char)
+        self.permitted_chars_username.extend(["_", "-"])
         self.permitted_chars_post.append(" ")
-
-        # Removes bad characters for username
-        self.permitted_chars_username.remove('"')
-        self.permitted_chars_username.remove("'")
-        self.permitted_chars_username.remove("*")
-        self.permitted_chars_username.remove(";")
         
         # Peak number of users logger
         self.peak_users_logger = {
@@ -289,13 +284,24 @@ class Supporter:
             self.sendPacket({"cmd": "ulist", "val": self.cl._get_ulist()})
             self.log("{0} autoID given".format(username))
     
-    def kickBadUsers(self, username):
+    def kickUser(self, username, status="Kicked"):
         if not self.cl == None:
-            # Check for clients that are trying to steal the ID and kick em' / Disconnect other sessions
             if username in self.cl.getUsernames():
-                self.log("Detected someone trying to use the username {0} wrongly".format(username))
-                self.cl.kickClient(username)
-                time.sleep(0.5)
+                self.log("Kicking {0}".format(username))
+
+                # Tell client it's going to get kicked
+                self.sendPacket({"cmd": "direct", "val": self.cl.codes[status], "id": username})
+
+                # Unauthenticate client
+                client = self.cl.statedata["ulist"]["objs"][self.cl.statedata["ulist"]["usernames"][username]]["object"]
+                self.cl._closed_connection_server(client, None)
+                self.sendPacket({"cmd": "ulist", "val": self.cl._get_ulist()})
+                
+                # Thread final closing
+                def run(client):
+                    time.sleep(1)
+                    client["handler"].send_close(1000, bytes('', encoding='utf-8'))
+                Thread(target=run, args=(client,)).start()
     
     def check_for_spam(self, client):
         if not self.cl == None:
