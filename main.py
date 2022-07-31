@@ -3,6 +3,8 @@ from supporter import Supporter
 from security import Security
 from files import Files
 from meower import Meower
+from rest_api import app as rest_api_app
+from threading import Thread
 
 """
 
@@ -35,6 +37,7 @@ class Main:
         )
         self.accounts = Security( # Security and account management
             files = self.filesystem,
+            supporter = self.supporter,
             logger = self.supporter.log,
             errorhandler = self.supporter.full_stack
         )
@@ -62,7 +65,10 @@ class Main:
         # Set server MOTD
         self.cl.setMOTD("Meower Social Media Platform Server", True)
         
-        # Run server
+        # Run REST API
+        Thread(target=rest_api_app.run, kwargs={"host": "0.0.0.0", "port": 3001, "debug": False, "use_reloader": False}).start()
+
+        # Run CloudLink server
         self.cl.server(port=3000, ip="0.0.0.0")
     
     def returnCode(self, client, code, listener_detected, listener_id):
@@ -77,6 +83,9 @@ class Main:
             elif cmd == "version_chk":
                 # Check client versions
                 self.meower.version_chk(client, val, listener_detected, listener_id)
+            elif cmd == "get_ulist":
+                # Get ulist manually
+                self.meower.get_ulist(client, listener_detected, listener_id)
             elif cmd == "authpswd":
                 # Authenticate client
                 self.meower.authpswd(client, val, listener_detected, listener_id)
@@ -89,18 +98,21 @@ class Main:
             elif cmd == "update_config":
                 # Update client settings
                 self.meower.update_config(client, val, listener_detected, listener_id)
+            elif cmd == "change_pswd":
+                # Change client password
+                self.meower.change_pswd(client, val, listener_detected, listener_id)
+            elif cmd == "del_tokens":
+                # Delete all tokens
+                self.meower.del_tokens(client, listener_detected, listener_id)
             elif cmd == "del_account":
                 # Delete user account
-                self.meower.del_account(client, listener_detected, listener_id)
+                self.meower.del_account(client, val, listener_detected, listener_id)
             elif cmd == "get_home":
                 # Get homepage index
                 self.meower.get_home(client, val, listener_detected, listener_id)
             elif cmd == "get_inbox":
                 # Get inbox posts
                 self.meower.get_inbox(client, val, listener_detected, listener_id)
-            elif cmd == "get_announcements":
-                # Get announcement posts
-                self.meower.get_announcements(client, val, listener_detected, listener_id)
             elif cmd == "post_home":
                 # Create post for homepage
                 self.meower.post_home(client, val, listener_detected, listener_id)
@@ -113,6 +125,12 @@ class Main:
             elif cmd == "search_user_posts":
                 # Get user's posts
                 self.meower.search_user_posts(client, val, listener_detected, listener_id)
+            elif cmd == "report":
+                # Report post/profile
+                self.meower.report(client, val, listener_detected, listener_id)
+            elif cmd == "close_report":
+                # Close report on post/profile
+                self.meower.close_report(client, val, listener_detected, listener_id)
             elif cmd == "clear_home":
                 # Clear a page of home
                 self.meower.clear_home(client, val, listener_detected, listener_id)
