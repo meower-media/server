@@ -1,7 +1,8 @@
 CloudLink>=0.1.7.4
 better-profanity
 bcrypt
-scratch2py
+requests
+flask-cors
 uuid
 flask
 pymongo
