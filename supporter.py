@@ -18,6 +18,11 @@ This keeps the main.py clean and more understandable.
 class Supporter:
     def __init__(self, cl=None, packet_callback=None):
         self.filter = None
+        self.last_packet = {}
+        self.burst_amount = {}
+        self.ratelimits = {}
+        self.good_ips = []
+        self.known_vpns = []
         self.status = {"repair_mode": True, "is_deprecated": False}
         self.cl = cl
         self.profanity = profanity
@@ -303,6 +308,33 @@ class Supporter:
                     client["handler"].send_close(1000, bytes('', encoding='utf-8'))
                 Thread(target=run, args=(client,)).start()
     
-    def check_for_spam(self, client):
-        if not self.cl == None:
-            return (((self.get_client_statedata(client)["last_packet"])+1) < (int(time.time())))
+    def check_for_spam(self, type, client, burst=1, seconds=1):
+        # Check if type and client are in ratelimit dictionary
+        if not (type in self.last_packet):
+            self.last_packet[type] = {}
+            self.burst_amount[type] = {}
+            self.ratelimits[type] = {}
+        if client not in self.last_packet[type]:
+            self.last_packet[type][client] = 0
+            self.burst_amount[type][client] = 0
+            self.ratelimits[type][client] = 0
+
+        # Check if user is currently ratelimited
+        if self.ratelimits[type][client] > time.time():
+            return True
+
+        # Check if max burst has expired
+        if (self.last_packet[type][client] + seconds) < time.time():
+            self.burst_amount[type][client] = 0
+
+        # Set last packet time and add to burst amount
+        self.last_packet[type][client] = time.time()
+        self.burst_amount[type][client] += 1
+
+        # Check if burst amount is over max burst
+        if self.burst_amount[type][client] > burst:
+            self.ratelimits[type][client] = (time.time() + seconds)
+            self.burst_amount[type][client] = 0
+            return True
+        else:
+            return False

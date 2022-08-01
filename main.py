@@ -58,9 +58,10 @@ class Main:
             self.cl.trustedAccess(True, payload["index"])
         
         # Load IP Banlist
-        result, payload = self.filesystem.load_item("config", "IPBanlist")
-        if result:
-            self.cl.loadIPBlocklist(payload["wildcard"])
+        ips = []
+        for netlog in self.filesystem.db["netlog"].find({"blocked": True}):
+            ips.append(netlog["_id"])
+        self.cl.loadIPBlocklist(ips)
         
         # Set server MOTD
         self.cl.setMOTD("Meower Social Media Platform Server", True)
@@ -76,147 +77,61 @@ class Main:
     
     def handle_packet(self, cmd, ip, val, listener_detected, listener_id, client, clienttype):
         try:
-            # Meower's Packet Interpreter goes here. All Requests to the server are handled here.
-            if cmd == "ping":
-                # Network heartbeat
-                self.meower.ping(client, listener_detected, listener_id)
-            elif cmd == "version_chk":
-                # Check client versions
-                self.meower.version_chk(client, val, listener_detected, listener_id)
-            elif cmd == "get_ulist":
-                # Get ulist manually
-                self.meower.get_ulist(client, listener_detected, listener_id)
-            elif cmd == "authpswd":
-                # Authenticate client
-                self.meower.authpswd(client, val, listener_detected, listener_id)
-            elif cmd == "gen_account":
-                # Authenticate client
-                self.meower.gen_account(client, val, listener_detected, listener_id)
-            elif cmd == "get_profile":
-                # Get user profile data
-                self.meower.get_profile(client, val, listener_detected, listener_id)
-            elif cmd == "update_config":
-                # Update client settings
-                self.meower.update_config(client, val, listener_detected, listener_id)
-            elif cmd == "change_pswd":
-                # Change client password
-                self.meower.change_pswd(client, val, listener_detected, listener_id)
-            elif cmd == "del_tokens":
-                # Delete all tokens
-                self.meower.del_tokens(client, listener_detected, listener_id)
-            elif cmd == "del_account":
-                # Delete user account
-                self.meower.del_account(client, val, listener_detected, listener_id)
-            elif cmd == "get_home":
-                # Get homepage index
-                self.meower.get_home(client, val, listener_detected, listener_id)
-            elif cmd == "get_inbox":
-                # Get inbox posts
-                self.meower.get_inbox(client, val, listener_detected, listener_id)
-            elif cmd == "post_home":
-                # Create post for homepage
-                self.meower.post_home(client, val, listener_detected, listener_id)
-            elif cmd == "get_post":
-                # Get post from homepage
-                self.meower.get_post(client, val, listener_detected, listener_id)
-            elif cmd == "get_peak_users":
-                # Get current peak # of users data
-                self.meower.get_peak_users(client, listener_detected, listener_id)
-            elif cmd == "search_user_posts":
-                # Get user's posts
-                self.meower.search_user_posts(client, val, listener_detected, listener_id)
-            elif cmd == "report":
-                # Report post/profile
-                self.meower.report(client, val, listener_detected, listener_id)
-            elif cmd == "close_report":
-                # Close report on post/profile
-                self.meower.close_report(client, val, listener_detected, listener_id)
-            elif cmd == "clear_home":
-                # Clear a page of home
-                self.meower.clear_home(client, val, listener_detected, listener_id)
-            elif cmd == "clear_user_posts":
-                # Clear all of a user's posts
-                self.meower.clear_user_posts(client, val, listener_detected, listener_id)
-            elif cmd == "alert":
-                # Send alert to a user
-                self.meower.alert(client, val, listener_detected, listener_id)
-            elif cmd == "announce":
-                # Send global announcement
-                self.meower.announce(client, val, listener_detected, listener_id)
-            elif cmd == "block":
-                # Block IP address (wildcard mode)
-                self.meower.block(client, val, listener_detected, listener_id)
-            elif cmd == "unblock":
-                # Unblock IP address (wildcard mode)
-                self.meower.unblock(client, val, listener_detected, listener_id)
-            elif cmd == "kick":
-                # Kick users
-                self.meower.kick(client, val, listener_detected, listener_id)
-            elif cmd == "get_user_ip":
-                # Get user IP addresses
-                self.meower.get_user_ip(client, val, listener_detected, listener_id)
-            elif cmd == "get_ip_data":
-                # Return netlog data of an IP
-                self.meower.get_ip_data(client, val, listener_detected, listener_id)
-            elif cmd == "get_user_data":
-                # Return full account data (excluding password hash)
-                self.meower.get_user_data(client, val, listener_detected, listener_id)
-            elif cmd == "ban":
-                # Ban users
-                self.meower.ban(client, val, listener_detected, listener_id)
-            elif cmd == "pardon":
-                # Pardon users
-                self.meower.pardon(client, val, listener_detected, listener_id)
-            elif cmd == "ip_ban":
-                # Ban IPs
-                self.meower.ip_ban(client, val, listener_detected, listener_id)
-            elif cmd == "ip_pardon":
-                # Pardon IPs
-                self.meower.ip_pardon(client, val, listener_detected, listener_id)
-            elif cmd == "terminate":
-                # Terminate users
-                self.meower.terminate(client, val, listener_detected, listener_id)
-            elif cmd == "repair_mode":
-                # Enable repair mode
-                self.meower.repair_mode(client, listener_detected, listener_id)
-            elif cmd == "delete_post":
-                # Delete posts
-                self.meower.delete_post(client, val, listener_detected, listener_id)
-            elif cmd == "post_chat":
-                # Post chat
-                self.meower.post_chat(client, val, listener_detected, listener_id)
-            elif cmd == "set_chat_state":
-                # Set chat state
-                self.meower.set_chat_state(client, val, listener_detected, listener_id)
-            elif cmd == "create_chat":
-                # Create group chat
-                self.meower.create_chat(client, val, listener_detected, listener_id)
-            elif cmd == "leave_chat":
-                # Leave group chat
-                self.meower.leave_chat(client, val, listener_detected, listener_id)
-            elif cmd == "get_chat_list":
-                # Get group chat list
-                self.meower.get_chat_list(client, listener_detected, listener_id)
-            elif cmd == "get_chat_data":
-                # Get group chat data
-                self.meower.get_chat_data(client, val, listener_detected, listener_id)
-            elif cmd == "get_chat_posts":
-                # Get group chat posts
-                self.meower.get_chat_posts(client, val, listener_detected, listener_id)
-            elif cmd == "add_to_chat":
-                # Add someone to group chat
-                self.meower.add_to_chat(client, val, listener_detected, listener_id)
-            elif cmd == "remove_from_chat":
-                # Remove someone from group chat
-                self.meower.remove_from_chat(client, val, listener_detected, listener_id)
-            
-            # Lol whitespace for future code
-
+            commands = set([
+                "ping",
+                "version_chk", 
+                "get_ulist", 
+                "authpswd", 
+                "gen_account", 
+                "get_profile", 
+                "update_config",
+                "change_pswd", 
+                "del_tokens",
+                "del_account",
+                "get_home", 
+                "get_inbox", 
+                "post_home",
+                "get_post", 
+                "get_peak_users", 
+                "search_user_posts",
+                "report",
+                "close_report",
+                "clear_home",
+                "clear_user_posts",
+                "alert",
+                "announce",
+                "block",
+                "unblock",
+                "kick",
+                "get_user_ip",
+                "get_ip_data",
+                "get_user_data",
+                "ban",
+                "pardon",
+                "terminate",
+                "impersonate",
+                "repair_mode",
+                "delete_post",
+                "post_chat",
+                "set_chat_state",
+                "create_chat",
+                "leave_chat",
+                "get_chat_list",
+                "get_chat_data",
+                "get_chat_posts",
+                "add_to_chat",
+                "remove_from_chat"
+            ])
+            if cmd in commands:
+                getattr(self.meower, cmd)(client, val, listener_detected, listener_id)
             else:
                 # Catch-all error code
                 self.returnCode(code = "Invalid", client = client, listener_detected = listener_detected, listener_id = listener_id)
         except Exception:
             self.supporter.log("{0}".format(self.supporter.full_stack()))
+
+            # Catch-all error code
+            self.returnCode(code = "InternalServerError", client = client, listener_detected = listener_detected, listener_id = listener_id)
 
 if __name__ == "__main__":
     Main(debug=True)
