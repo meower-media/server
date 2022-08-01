@@ -732,7 +732,12 @@ class Meower:
                         if ("username" in val) and ("p" in val):
                             if (type(val["username"]) == str) and (type(val["p"]) == str):
                                 if self.accounts.account_exists(val["username"]):
+                                    # Give report feedback
+                                    self.completeReport(val, True)
+
+                                    # Send alert
                                     self.createPost(post_origin="inbox", user=val["username"], content="Message from a moderator: {0}".format(val["p"]))
+
                                     self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                                 else:
                                     # Account not found
