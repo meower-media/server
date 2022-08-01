@@ -2,6 +2,11 @@ import time
 import uuid
 import secrets
 import pymongo
+import os
+from dotenv import load_dotenv
+import requests
+
+load_dotenv()  # take environment variables from .env.
 
 class Meower:
     def __init__(self, cl, supporter, logger, errorhandler, accounts, files):
@@ -177,7 +182,7 @@ class Meower:
     
     # Networking/client utilities
     
-    def ping(self, client, listener_detected, listener_id):
+    def ping(self, client, val, listener_detected, listener_id):
         # Returns your ping for my pong
         self.returnCode(client = client, code = "Pong", listener_detected = listener_detected, listener_id = listener_id)
     
@@ -196,7 +201,7 @@ class Meower:
             # Bad datatype
             self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
     
-    def get_ulist(self, client, listener_detected, listener_id):
+    def get_ulist(self, client, val, listener_detected, listener_id):
         self.sendPacket({"cmd": "ulist", "val": self.cl._get_ulist(), "id": client})
 
     # Accounts and security
@@ -210,58 +215,63 @@ class Meower:
                     # Extract username and password for simplicity
                     username = val["username"]
                     password = val["pswd"]
+                    ip = str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"])
                     
                     if ((type(username) == str) and (type(password) == str)):
                         if not self.supporter.checkForBadCharsUsername(username):
                             if not self.supporter.checkForBadCharsPost(password):
-                                FileCheck, FileRead, ValidAuth, Banned = self.accounts.authenticate(username, password)
-                                if FileCheck and FileRead:
-                                    if ValidAuth:
-                                        self.supporter.kickUser(username, status="IDConflict") # Kick bad clients missusing the username
-                                        self.filesystem.create_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]), {"users": [], "last_user": username})
-                                        status, netlog = self.filesystem.load_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]))
-                                        if status:
-                                            if not username in netlog["users"]:
-                                                netlog["users"].append(username)
-                                            netlog["last_user"] = username
-                                            self.filesystem.write_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]), netlog)
-                                            FileCheck, FileRead, accountData = self.accounts.get_account(username, False, False)
-                                            token = secrets.token_urlsafe(64)
-                                            accountData["tokens"].append(token)
-                                            self.accounts.update_setting(username, {"last_ip": str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]), "tokens": accountData["tokens"]}, forceUpdate=True)
-                                            self.supporter.autoID(client, username) # Give the client an AutoID
-                                            self.supporter.setAuthenticatedState(client, True) # Make the server know that the client is authed
-                                            # Return info to sender
-                                            payload = {
-                                                "mode": "auth",
-                                                "payload": {
-                                                    "username": username,
-                                                    "token": token
+                                if not (self.supporter.check_for_spam("login", ip, burst=5, seconds=60)) or (self.supporter.check_for_spam("login", username, burst=5, seconds=60)):
+                                    FileCheck, FileRead, ValidAuth, Banned = self.accounts.authenticate(username, password)
+                                    if FileCheck and FileRead:
+                                        if ValidAuth:
+                                            self.supporter.kickUser(username, status="IDConflict") # Kick bad clients missusing the username
+                                            self.filesystem.create_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]), {"users": [], "last_user": username})
+                                            status, netlog = self.filesystem.load_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]))
+                                            if status:
+                                                if not username in netlog["users"]:
+                                                    netlog["users"].append(username)
+                                                netlog["last_user"] = username
+                                                self.filesystem.write_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]), netlog)
+                                                FileCheck, FileRead, accountData = self.accounts.get_account(username, False, False)
+                                                token = secrets.token_urlsafe(64)
+                                                accountData["tokens"].append(token)
+                                                self.accounts.update_setting(username, {"last_ip": str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]), "tokens": accountData["tokens"]}, forceUpdate=True)
+                                                self.supporter.autoID(client, username) # Give the client an AutoID
+                                                self.supporter.setAuthenticatedState(client, True) # Make the server know that the client is authed
+                                                # Return info to sender
+                                                payload = {
+                                                    "mode": "auth",
+                                                    "payload": {
+                                                        "username": username,
+                                                        "token": token
+                                                    }
                                                 }
-                                            }
-                                            self.sendPacket({"cmd": "direct", "val": payload, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
-                                            
-                                            # Tell the client it is authenticated
-                                            self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                                            
-                                            # Log peak users
-                                            self.supporter.log_peak_users()
+                                                self.sendPacket({"cmd": "direct", "val": payload, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
+                                                
+                                                # Tell the client it is authenticated
+                                                self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                                                
+                                                # Log peak users
+                                                self.supporter.log_peak_users()
+                                            else:
+                                                self.returnCode(client = client, code = "Internal", listener_detected = listener_detected, listener_id = listener_id)
                                         else:
-                                            self.returnCode(client = client, code = "Internal", listener_detected = listener_detected, listener_id = listener_id)
+                                            if Banned:
+                                                # Account banned
+                                                self.returnCode(client = client, code = "Banned", listener_detected = listener_detected, listener_id = listener_id)
+                                            else:
+                                                # Password invalid
+                                                self.returnCode(client = client, code = "PasswordInvalid", listener_detected = listener_detected, listener_id = listener_id)
                                     else:
-                                        if Banned:
-                                            # Account banned
-                                            self.returnCode(client = client, code = "Banned", listener_detected = listener_detected, listener_id = listener_id)
+                                        if ((not FileCheck) and FileRead):
+                                            # Account does not exist
+                                            self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
                                         else:
-                                            # Password invalid
-                                            self.returnCode(client = client, code = "PasswordInvalid", listener_detected = listener_detected, listener_id = listener_id)
+                                            # Some other error, raise an internal error.
+                                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                                 else:
-                                    if ((not FileCheck) and FileRead):
-                                        # Account does not exist
-                                        self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-                                    else:
-                                        # Some other error, raise an internal error.
-                                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                                    # Ratelimited
+                                    self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
                             else:
                                 # Bad characters being used
                                 self.returnCode(client = client, code = "IllegalChars", listener_detected = listener_detected, listener_id = listener_id)
@@ -290,11 +300,32 @@ class Meower:
                     # Extract username and password for simplicity
                     username = val["username"]
                     password = val["pswd"]
+                    ip = str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"])
                     
                     if ((type(username) == str) and (type(password) == str)):
                         if not (len(username) > 20) or (password > 74):
                             if not self.supporter.checkForBadCharsUsername(username):
-                                if not self.supporter.checkForBadCharsPost(password):
+                                # Check if the IP is a VPN/proxy
+                                if ip in self.supporter.known_vpns:
+                                    return self.returnCode(client = client, code = "Blocked", listener_detected = listener_detected, listener_id = listener_id)
+                                elif ip not in self.supporter.good_ips:
+                                    iphub_key = os.getenv("IPHUB_KEY")
+                                    if iphub_key != "":
+                                        ip_info = requests.get("http://v2.api.iphub.info/ip/{0}".format(ip), headers={"X-Key": iphub_key})
+                                        if ip_info.status_code == 200:
+                                            if ip_info.json()["block"] == 1:
+                                                self.log("{0} was detected as a VPN/proxy".format(ip))
+                                                self.supporter.known_vpns.append(ip)
+                                                return self.returnCode(client = client, code = "Blocked", listener_detected = listener_detected, listener_id = listener_id)
+                                            else:
+                                                self.supporter.good_ips.append(ip)
+                                        else:
+                                            self.log("{0} was detected using an invalid IP")
+                                            return self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                                    else:
+                                        self.log("No IPHub API key detected, skipping VPN/proxy check for {0}".format(ip))
+
+                                if not self.supporter.check_for_spam("signup", ip, burst=2, seconds=120):
                                     FileCheck, FileWrite = self.accounts.create_account(username, password)
                                     
                                     if FileCheck and FileWrite:
@@ -341,8 +372,8 @@ class Meower:
                                             # Some other error, raise an internal error.
                                             self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                                 else:
-                                    # Bad characters being used
-                                    self.returnCode(client = client, code = "IllegalChars", listener_detected = listener_detected, listener_id = listener_id)
+                                    # Ratelimited
+                                    self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
                             else:
                                 # Bad characters being used
                                 self.returnCode(client = client, code = "IllegalChars", listener_detected = listener_detected, listener_id = listener_id)
@@ -449,7 +480,7 @@ class Meower:
         if self.supporter.isAuthenticated(client):
             if type(val) == str:
                 if not len(val) > 360:
-                    if self.supporter.check_for_spam(client):
+                    if not self.supporter.check_for_spam("posts", client, burst=6, seconds=5):
                         # Create post
                         result = self.createPost(post_origin="home", user=client, content=val)
                         if result:
@@ -534,7 +565,7 @@ class Meower:
     
     # Logging and data management
     
-    def get_peak_users(self, client, listener_detected, listener_id):
+    def get_peak_users(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
         if self.supporter.isAuthenticated(client):
             payload = {
@@ -701,6 +732,8 @@ class Meower:
                             self.filesystem.write_item("posts", post["_id"], post)
                             self.completeReport(post["_id"], True)
                             self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": post["_id"]}})
+                        # Give report feedback
+                        self.completeReport(val, True)
                         # Send alert to user
                         self.createPost(post_origin="inbox", user=str(val), content="All your home posts have been deleted by a moderator. If you think this is a mistake, please contact the Meower moderation team.")
                         # Return to the client it's data
@@ -732,10 +765,14 @@ class Meower:
                         if ("username" in val) and ("p" in val):
                             if (type(val["username"]) == str) and (type(val["p"]) == str):
                                 if self.accounts.account_exists(val["username"]):
+                                    
+                                    self.completeReport(val["username"], True)
+                                    
                                     # Give report feedback
                                     self.completeReport(val, True)
-
+                                    
                                     # Send alert
+                                    
                                     self.createPost(post_origin="inbox", user=val["username"], content="Message from a moderator: {0}".format(val["p"]))
 
                                     self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
@@ -874,52 +911,6 @@ class Meower:
         else:
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-
-    """
-    def block_all_ips(self, client, val, listener_detected, listener_id):
-        # Check if the client is authenticated
-        if self.supporter.isAuthenticated(client):
-            FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
-            if FileCheck and FileRead:
-                if accountData["lvl"] >= 2:
-                    if type(val) == str:
-                        result, payload = self.filesystem.load_item("config", "IPBanlist")
-                        if result:
-                            netlog = self.filesystem.find_items("netlog", {"$all": [val]})
-                            for ip in netlog:
-                                if ip["_id"] not in payload["wildcard"]:
-                                    self.log("Wildcard blocking IP address {0}".format(ip["_id"]))
-                                    payload["wildcard"].append(ip["_id"])
-                                    self.cl.blockIP(ip["_id"])
-                                    for user in netlog["users"]:
-                                        if user in self.cl.getUsernames() and (self.cl.statedata["ulist"]["objs"][self.cl.statedata["ulist"]["usernames"][user]]["ip"] == ip["_id"]):
-                                            self.supporter.kickUser(user, "Blocked")
-                                    
-                            result = self.filesystem.write_item("config", "IPBanlist", payload)
-                            if result:
-                                self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                            else:
-                                # Some other error, raise an internal error.
-                                self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                        else:
-                            # Some other error, raise an internal error.
-                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                    else:
-                        # Bad datatype
-                        self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
-            else:
-                if ((not FileCheck) and FileRead):
-                    # Account not found
-                    self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    # Some other error, raise an internal error.
-                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-        else:
-            # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-    """
     
     def kick(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
@@ -1215,123 +1206,8 @@ class Meower:
         else:
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-
-    def ip_ban(self, client, val, listener_detected, listener_id):
-        # Check if the client is authenticated
-        if self.supporter.isAuthenticated(client):
-            FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
-            if FileCheck and FileRead:
-                if accountData["lvl"] >= 2:
-                    if type(val) == str:
-                        result, payload = self.filesystem.load_item("config", "IPBanlist")
-                        if result:
-                            FileCheck, FileRead, userdata = self.accounts.get_account(val)
-                            if FileCheck and FileRead:
-                                userIP = userdata["last_ip"]
-                                if not str(val) in payload["users"]:
-                                    payload["users"][str(val)] = str(userIP)
-                                    
-                                    if not str(userIP) in payload["wildcard"]:
-                                        payload["wildcard"].append(str(userIP))
-
-                                    result = self.filesystem.write_item("config", "IPBanlist", payload)
-                                    if result:
-                                        self.log("IP Banning {0}".format(val))
-                                        self.cl.blockIP(userIP)
-                                        # Tell client it's going to get IP blocked
-                                        self.sendPacket({"cmd": "direct", "val": self.cl.codes["Blocked"], "id": val})
-                                        
-                                        time.sleep(1)
-                                        self.log("Kicking {0}".format(val))
-                                        
-                                        self.cl.kickClient(val)
-                                        
-                                        # Tell client it banned the user
-                                        self.sendPacket({"cmd": "direct", "val": "", "id": client}, listener_detected = listener_detected, listener_id = listener_id)
-                                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                                    else:
-                                        # Some other error, raise an internal error.
-                                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                                else:
-                                    self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                            else:
-                                if ((not FileCheck) and FileRead):
-                                    # Account does not exist
-                                    self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-                                else:
-                                    # Some other error, raise an internal error.
-                                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                        else:
-                            # Some other error, raise an internal error.
-                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                    else:
-                        # Bad datatype
-                        self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
-            else:
-                if ((not FileCheck) and FileRead):
-                    # Account not found
-                    self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    # Some other error, raise an internal error.
-                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-        else:
-            # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
     
-    def ip_pardon(self, client, val, listener_detected, listener_id):
-        # Check if the client is authenticated
-        if self.supporter.isAuthenticated(client):
-            FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
-            if FileCheck and FileRead:
-                if accountData["lvl"] >= 2:
-                    if type(val) == str:
-                        result, payload = self.filesystem.load_item("config", "IPBanlist")
-                        if result:
-                            if val in payload["users"]:
-                                userIP = payload["users"][val]
-                                if str(val) in payload["users"]:
-                                    del payload["users"][str(val)]
-                                    
-                                    if str(userIP) in payload["wildcard"]:
-                                        payload["wildcard"].remove(str(userIP))
-                                    
-                                    result = self.filesystem.write_item("config", "IPBanlist", payload)
-                                    if result:
-                                        self.log("IP Pardoning {0}".format(val))
-                                        self.cl.unblockIP(userIP)
-                                        # Tell client it banned the user
-                                        self.sendPacket({"cmd": "direct", "val": "", "id": client}, listener_detected = listener_detected, listener_id = listener_id)
-                                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                                    else:
-                                        # Some other error, raise an internal error.
-                                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                                else:
-                                    self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                            else:
-                                # User not found
-                                self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-                        else:
-                            # Some other error, raise an internal error.
-                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                    else:
-                        # Bad datatype
-                        self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
-            else:
-                if ((not FileCheck) and FileRead):
-                    # Account not found
-                    self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    # Some other error, raise an internal error.
-                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-        else:
-            # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-    
-    def repair_mode(self, client, listener_detected, listener_id):
+    def repair_mode(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
         if self.supporter.isAuthenticated(client):
             FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
@@ -1499,7 +1375,7 @@ class Meower:
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
     
-    def get_chat_list(self, client, listener_detected, listener_id):
+    def get_chat_list(self, client, val, listener_detected, listener_id):
         # Check if the client is already authenticated
         if self.supporter.isAuthenticated(client):
             chat_index = self.getIndex(location="chats", query={"members": {"$all": [client]}}, truncate=True, sort="nickname")
@@ -1651,7 +1527,7 @@ class Meower:
                 post = val["p"]
                 chatid = val["chatid"]
                 if (not len(post) > 360) and (not len(chatid) > 50):
-                    if self.supporter.check_for_spam(client):
+                    if not self.supporter.check_for_spam("posts", client, burst=6, seconds=5):
                         if chatid == "livechat":
                             result = self.createPost(post_origin=chatid, user=client, content=post)
                             if result:
@@ -1799,17 +1675,20 @@ class Meower:
     def change_pswd(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
         if self.supporter.isAuthenticated(client):
-            if type(val) == str:                
-                if len(val) > 64:
-                    val = val[:64]
-                
-                # Change password
-                FileCheck, FileRead, FileWrite = self.accounts.change_password(client, val)
+            if type(val) == str:
+                if not self.supporter.check_for_spam("password-change", client, burst=2, seconds=120):         
+                    if len(val) > 64:
+                        val = val[:64]
+                    
+                    # Change password
+                    FileCheck, FileRead, FileWrite = self.accounts.change_password(client, val)
 
-                if FileCheck and FileRead and FileWrite:
-                    self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                    if FileCheck and FileRead and FileWrite:
+                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                    else:
+                        self.returnCode(client = client, code = "Internal", listener_detected = listener_detected, listener_id = listener_id)
                 else:
-                    self.returnCode(client = client, code = "Internal", listener_detected = listener_detected, listener_id = listener_id)
+                    self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
             else:
                 # Bad datatype
                 self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
@@ -1817,7 +1696,7 @@ class Meower:
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
 
-    def del_tokens(self, client, listener_detected, listener_id):
+    def del_tokens(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
         if self.supporter.isAuthenticated(client):
             FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
@@ -1836,7 +1715,7 @@ class Meower:
         if self.supporter.isAuthenticated(client):
             FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
             if FileCheck and FileRead:
-                if ((val == client) and (accountData["lvl"] == 0)) or (accountData["lvl"] >= 1):
+                if accountData["lvl"] == 0:
                     all_posts = self.getIndex(location="posts", query={"u": client}, truncate=False)["index"]
                     for post in all_posts:
                         self.filesystem.delete_item("posts", post["_id"])

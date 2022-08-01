@@ -5,3 +5,4 @@ scratch2py
 uuid
 flask
 pymongo
+python-dotenv
