@@ -14,7 +14,7 @@ def my_chats():
 
     if request.method == "GET":
         # Get index
-        query_get = meower.db["chats"].find({"members": {"$all": [request.user._id]}, "deleted": False}).sort("nickname_lower", pymongo.DESCENDING)
+        query_get = meower.db.chats.find({"members": {"$all": [request.user._id]}, "deleted": False}).sort("nickname_lower", pymongo.DESCENDING)
 
         # Convert query get
         payload_chat = []
@@ -53,7 +53,7 @@ def my_chats():
             "public": False,
             "deleted": False
         }
-        meower.db["chats"].insert_one(chat_data)
+        meower.db.chats.insert_one(chat_data)
 
         # Convert members list
         new_members = []
@@ -75,7 +75,7 @@ def chat_data(chat_id):
     meower.require_auth([5], scope="meower:chats:access")
 
     # Get chat data
-    chat_data = meower.db["chats"].find_one({"_id": chat_id, "deleted": False})
+    chat_data = meower.db.chats.find_one({"_id": chat_id, "deleted": False})
 
     # Check if chat exists
     if chat_data is None:
@@ -124,7 +124,7 @@ def chat_data(chat_id):
                     chat_data["permissions"][request.user._id] = 1
 
         # Update chat
-        meower.db["chats"].update_one({"_id": chat_id}, {"$set": {"public": chat_data["public"], "permissions": chat_data["permissions"]}})
+        meower.db.chats.update_one({"_id": chat_id}, {"$set": {"public": chat_data["public"], "permissions": chat_data["permissions"]}})
 
         # Convert members list
         new_members = []
@@ -141,11 +141,11 @@ def chat_data(chat_id):
         meower.require_auth([5], scope="meower:chats:edit")
 
         if chat_data["permissions"][request.user._id] >= 3:
-            meower.db["chats"].update_one({"_id": chat_id}, {"$set": {"deleted": True}})
+            meower.db.chats.update_one({"_id": chat_id}, {"$set": {"deleted": True}})
             return meower.respond({}, 200, error=False)
         else:
             chat_data["members"].remove(request.user._id)
-            meower.db["chats"].update_one({"_id": chat_id}, {"$set": {"members": chat_data["members"]}})
+            meower.db.chats.update_one({"_id": chat_id}, {"$set": {"members": chat_data["members"]}})
             return meower.respond({}, 200, error=False)
 
 @chats.route("/<chat_id>/members", methods=["PUT", "PATCH", "DELETE"])
@@ -157,7 +157,7 @@ def add_member(chat_id):
     meower.check_for_json([{"id": "username", "t": str, "l_min": 1, "l_max": 20}])
 
     # Get chat data
-    chat_data = meower.db["chats"].find_one({"_id": chat_id, "deleted": False})
+    chat_data = meower.db.chats.find_one({"_id": chat_id, "deleted": False})
 
     # Check if chat exists
     if chat_data is None:
@@ -186,7 +186,7 @@ def add_member(chat_id):
             chat_data["permissions"][user._id] = 1
 
         # Update chat
-        meower.db["chats"].update_one({"_id": chat_id}, {"$set": {"members": chat_data["members"], "permissions": chat_data["permissions"]}})
+        meower.db.chats.update_one({"_id": chat_id}, {"$set": {"members": chat_data["members"], "permissions": chat_data["permissions"]}})
 
         # Return payload
         return meower.respond({}, 200, error=False)
@@ -209,7 +209,7 @@ def add_member(chat_id):
         chat_data["permissions"][user._id] = request.json["level"]
 
         # Update chat
-        meower.db["chats"].update_one({"_id": chat_id}, {"$set": {"permissions": chat_data["permissions"]}})
+        meower.db.chats.update_one({"_id": chat_id}, {"$set": {"permissions": chat_data["permissions"]}})
 
         # Return payload
         return meower.respond({}, 200, error=False)
@@ -230,7 +230,7 @@ def add_member(chat_id):
         del chat_data["permissions"][user._id]
 
         # Update chat
-        meower.db["chats"].update_one({"_id": chat_id}, {"$set": {"members": chat_data["members"], "permissions": chat_data["permissions"]}})
+        meower.db.chats.update_one({"_id": chat_id}, {"$set": {"members": chat_data["members"], "permissions": chat_data["permissions"]}})
 
         # Return payload
         return meower.respond({}, 200, error=False)
@@ -241,7 +241,7 @@ def chat_posts(chat_id):
     meower.require_auth([5], scope="meower:chats:access")
 
     # Get chat data
-    chat_data = meower.db["chats"].find_one({"_id": chat_id, "deleted": False})
+    chat_data = meower.db.chats.find_one({"_id": chat_id, "deleted": False})
 
     # Check if chat exists
     if chat_data is None:
@@ -259,8 +259,8 @@ def chat_posts(chat_id):
             page = int(request.args["page"])
 
         # Get index
-        query_get = meower.db["posts"].find({"post_origin": chat_id, "parent": None, "isDeleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
-        pages_amount = (meower.db["posts"].count_documents({"post_origin": chat_id, "parent": None, "isDeleted": False}) // 25) + 1
+        query_get = meower.db.posts.find({"post_origin": chat_id, "parent": None, "isDeleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
+        pages_amount = (meower.db.posts.count_documents({"post_origin": chat_id, "parent": None, "isDeleted": False}) // 25) + 1
 
         # Convert query get
         payload_posts = []
@@ -305,7 +305,7 @@ def chat_posts(chat_id):
             "t": int(time.time()),
             "isDeleted": False
         }
-        meower.db["posts"].insert_one(post_data)
+        meower.db.posts.insert_one(post_data)
 
         # Send notification to all users
         user = meower.User(meower, user_id=request.user._id)

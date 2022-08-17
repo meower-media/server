@@ -20,7 +20,7 @@
             }
         ]
     },
-    "usersv0": {
+    "users": {
         "indexes": ["_id", "username", "lower_username"],
         "items": [
             {
@@ -53,7 +53,6 @@
                     "email": null,
                     "password": null,
                     "webauthn": [],
-                    "default_method": null,
                     "totp": null,
                     "oauth": {
                         "authorized": [],

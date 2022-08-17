@@ -20,15 +20,15 @@ def get_home():
             page = int(request.args["page"])
 
         # Get index
-        query_get = meower.db["posts"].find({"post_origin": "home", "parent": None, "isDeleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
-        pages_amount = (meower.db["posts"].count_documents({"post_origin": "home", "parent": None, "isDeleted": False}) // 25) + 1
+        query_get = meower.db.posts.find({"post_origin": "home", "parent": None, "isDeleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
+        pages_amount = (meower.db.posts.count_documents({"post_origin": "home", "parent": None, "isDeleted": False}) // 25) + 1
 
         # Convert query get
         payload_posts = []
         for post in query_get:
             user = meower.User(meower, user_id=post["u"])
             if user.raw is None:
-                meower.db["posts"].update_one({"_id": post["_id"]}, {"$set": {"isDeleted": True}})
+                meower.db.posts.update_one({"_id": post["_id"]}, {"$set": {"isDeleted": True}})
                 continue
             else:
                 post["u"] = user.profile
@@ -67,7 +67,7 @@ def get_home():
             "t": int(time.time()),
             "isDeleted": False
         }
-        meower.db["posts"].insert_one(post_data)
+        meower.db.posts.insert_one(post_data)
 
         # Send notification to all users
         post_data["u"] = request.user.profile

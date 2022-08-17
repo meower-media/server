@@ -14,13 +14,13 @@ def get_post(post_id):
     meower.require_auth([5], scope="meower:posts:read_posts")
 
     # Get post
-    post = meower.db["posts"].find_one({"_id": post_id, "isDeleted": False})
+    post = meower.db.posts.find_one({"_id": post_id, "isDeleted": False})
     if post is None:
         return meower.respond({"type": "notFound", "message": "Requested post was not found"}, 404, error=True)
 
     # Make sure the user has permission
     if not ((post["post_origin"] == "home") or (post["post_origin"] == "inbox")):
-        chat_data = meower.db["chats"].find_one({"_id": post["post_origin"], "deleted": False})
+        chat_data = meower.db.chats.find_one({"_id": post["post_origin"], "deleted": False})
         if (chat_data is None) or (request.user._id not in chat_data["members"]):
             return meower.respond({"type": "notFound", "message": "Requested post was not found"}, 404, error=True)
     elif post["post_origin"] == "inbox":
@@ -45,7 +45,7 @@ def get_post(post_id):
         meower.require_auth([5], scope="meower:posts:edit_posts")
 
         # Delete post
-        meower.db["posts"].update_one({"_id": post_id}, {"$set": {"isDeleted": True}})
+        meower.db.posts.update_one({"_id": post_id}, {"$set": {"isDeleted": True}})
 
         # Return payload
         return meower.respond({}, 200, error=False)
@@ -56,13 +56,13 @@ def get_post_comments(post_id):
     meower.require_auth([5], scope="meower:posts:read_posts")
 
     # Get post
-    post = meower.db["posts"].find_one({"_id": post_id, "isDeleted": False})
+    post = meower.db.posts.find_one({"_id": post_id, "isDeleted": False})
     if post is None:
         return meower.respond({"type": "notFound", "message": "Requested post was not found"}, 404, error=True)
 
     # Make sure the user has permission
     if not ((post["post_origin"] == "home") or (post["post_origin"] == "inbox")):
-        chat_data = meower.db["chats"].find_one({"_id": post["post_origin"], "deleted": False})
+        chat_data = meower.db.chats.find_one({"_id": post["post_origin"], "deleted": False})
         if (chat_data is None) or (request.user._id not in chat_data["members"]):
             return meower.respond({"type": "notFound", "message": "Requested post was not found"}, 404, error=True)
     elif post["post_origin"] == "inbox":
@@ -80,8 +80,8 @@ def get_post_comments(post_id):
             page = int(request.args["page"])
 
         # Get index
-        query_get = meower.db["posts"].find({"parent": post_id, "isDeleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
-        pages_amount = (meower.db["posts"].count_documents({"parent": post_id, "isDeleted": False}) // 25) + 1
+        query_get = meower.db.posts.find({"parent": post_id, "isDeleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
+        pages_amount = (meower.db.posts.count_documents({"parent": post_id, "isDeleted": False}) // 25) + 1
 
         # Convert query get
         payload_posts = []
@@ -126,7 +126,7 @@ def get_post_comments(post_id):
             "t": int(time.time()),
             "isDeleted": False
         }
-        meower.db["posts"].insert_one(post_data)
+        meower.db.posts.insert_one(post_data)
 
         # Send notification to all users
         user = meower.User(meower, user_id=post["u"])
@@ -145,12 +145,12 @@ def report_post(post_id):
     meower.check_for_json([{"id": "comment", "t": str, "l_min": 1, "l_max": 360}])
 
     # Get post
-    post = meower.db["posts"].find_one({"_id": post_id, "isDeleted": False})
+    post = meower.db.posts.find_one({"_id": post_id, "isDeleted": False})
     if post is None:
         return meower.respond({"type": "notFound", "message": "Requested post was not found"}, 404, error=True)
 
     # Add report
-    report_status = meower.db["reports"].find_one({"_id": post_id})
+    report_status = meower.db.reports.find_one({"_id": post_id})
     if report_status is None:
         report_status = {
             "_id": post_id,
@@ -162,7 +162,7 @@ def report_post(post_id):
             "review_status": 0,
             "auto_censored": False
         }
-        meower.db["reports"].insert_one(report_status)
+        meower.db.reports.insert_one(report_status)
     elif request.user._id not in report_status["users"]:
         report_status["users"].append(request.user._id)
         report_status["comments"].append({"u": request.user._id, "t": int(time.time()), "p": request.json["comment"]})
@@ -170,8 +170,8 @@ def report_post(post_id):
             report_status["ips"].append(request.remote_addr)
             if (len(report_status["ips"]) > 3) and (report_status["review_status"] == 0):
                 report_status["auto_censored"] = True
-                meower.db["posts"].update_one({"_id": post_id}, {"$set": {"isDeleted": True}})
-        meower.db["reports"].find_one_and_replace({"_id": post_id}, report_status)
+                meower.db.posts.update_one({"_id": post_id}, {"$set": {"isDeleted": True}})
+        meower.db.reports.find_one_and_replace({"_id": post_id}, report_status)
         Thread(target=meower.check_for_auto_suspension, args=(post["u"],)).start()
 
     # Return payload

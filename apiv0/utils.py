@@ -88,43 +88,43 @@ class Utils:
             time.sleep(60)
 
             # Purge any expired sessions
-            self.meower.db["sessions"].delete_many({"type": {"$in": [0,1,3,4,6]}, "expires": {"$lt": time.time()}})
-            self.meower.db["sessions"].delete_many({"refresh_expires": {"$lt": time.time()}})
+            self.meower.db.sessions.delete_many({"type": {"$in": [0,1,3,4,6]}, "expires": {"$lt": time.time()}})
+            self.meower.db.sessions.delete_many({"refresh_expires": {"$lt": time.time()}})
 
             # Purge accounts pending deletion
-            users = self.meower.db["usersv0"].find({"security.delete_after": {"$lt": time.time()}})
+            users = self.meower.db.users.find({"security.delete_after": {"$lt": time.time()}})
             for user in users:
                 # Delete posts
-                self.meower.db["posts"].delete_many({"u": user["_id"]})
+                self.meower.db.posts.delete_many({"u": user["_id"]})
 
                 # Delete sessions
-                self.meower.db["sessions"].delete_many({"user": user["_id"]})
+                self.meower.db.sessions.delete_many({"user": user["_id"]})
 
                 # Delete OAuth apps
-                oauth_apps = self.meower.db["oauth"].find({"owner": user["_id"]})
+                oauth_apps = self.meower.db.oauth.find({"owner": user["_id"]})
                 for app in oauth_apps:
-                    oauth_users = self.meower.db["usersv0"].find({"security.oauth.authorized": {"$all": [app["_id"]]}})
+                    oauth_users = self.meower.db.users.find({"security.oauth.authorized": {"$all": [app["_id"]]}})
                     for oauth_user in oauth_users:
                         oauth_user["security"]["oauth"]["authorized"].remove(app["_id"])
                         del oauth_user["security"]["oauth"]["scopes"][app["_id"]]
-                        self.meower.db["usersv0"].update_one({"_id": oauth_user["_id"]}, {"$set": {"security.oauth": oauth_user["security"]["oauth"]}})
-                    self.meower.db["oauth"].delete_one({"_id": app["_id"]})
+                        self.meower.db.users.update_one({"_id": oauth_user["_id"]}, {"$set": {"security.oauth": oauth_user["security"]["oauth"]}})
+                    self.meower.db.oauth.delete_one({"_id": app["_id"]})
 
                 # Delete chats
-                chats = self.meower.db["chats"].find({"members": {"$all": [user["_id"]]}})
+                chats = self.meower.db.chats.find({"members": {"$all": [user["_id"]]}})
                 for chat in chats:
                     if chat["permissions"][user["_id"]] >= 3:
-                        self.meower.db["chats"].delete_one({"_id": chat["_id"]})
+                        self.meower.db.chats.delete_one({"_id": chat["_id"]})
                     else:
                         chat["members"].remove(user["_id"])
                         del chat["permissions"][user["_id"]]
-                        self.meower.db["chats"].update_one({"_id": chat["_id"]}, {"$set": {"members": chat["members"]}})
+                        self.meower.db.chats.update_one({"_id": chat["_id"]}, {"$set": {"members": chat["members"]}})
 
                 # Schedule bots for deletion
-                self.meower.db["usersv0"].update_many({"owner": user["_id"]}, {"$set": {"security.delete_after": time.time()}})
+                self.meower.db.users.update_many({"owner": user["_id"]}, {"$set": {"security.delete_after": time.time()}})
 
                 # Delete userdata
-                self.meower.db["usersv0"].delete_one({"_id": user["_id"]})
+                self.meower.db.users.delete_one({"_id": user["_id"]})
 
     def log(self, msg, prefix=None):
         if prefix is None:
@@ -199,7 +199,7 @@ class Utils:
             session_data["expires"] = time.time() + {1: 300, 2: 300, 3: 31556952, 4: 1800}[session_data["type"]]
 
         # Add session to database and return session data
-        self.meower.db["sessions"].insert_one(session_data)
+        self.meower.db.sessions.insert_one(session_data)
         return session_data
 
     def foundation_session(self, user, method):
@@ -208,13 +208,13 @@ class Utils:
         session["previous_refresh_tokens"] = None
 
         # Get user data and check if it's pending deletion
-        userdata = self.meower.db["usersv0"].find_one({"_id": user})
+        userdata = self.meower.db.users.find_one({"_id": user})
         if userdata["security"]["delete_after"] is not None:
-            self.meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.delete_after": None}})
+            self.meower.db.users.update_one({"_id": userdata["_id"]}, {"$set": {"security.delete_after": None}})
 
         # Check and update netlog
-        self.meower.db["usersv0"].update_one({"_id": userdata["_id"]}, {"$set": {"security.last_ip": self.request.remote_addr}})
-        network = self.meower.db["netlog"].find_one({"_id": self.request.remote_addr})
+        self.meower.db.users.update_one({"_id": userdata["_id"]}, {"$set": {"security.last_ip": self.request.remote_addr}})
+        network = self.meower.db.netlog.find_one({"_id": self.request.remote_addr})
         if network is None:
             network = {
                 "_id": self.request.remote_addr,
@@ -224,12 +224,12 @@ class Utils:
                 "creation_blocked": False,
                 "created": int(time.time())
             }
-            self.meower.db["netlog"].insert_one(network)
+            self.meower.db.netlog.insert_one(network)
         if user not in network["users"]:
             # Add user to netlog
             network["users"].append(user)
             network["last_user"] = user
-            self.meower.db["netlog"].update_one({"_id": network["_id"]}, {"$set": {"users": network["users"], "last_user": network["last_user"]}})
+            self.meower.db.netlog.update_one({"_id": network["_id"]}, {"$set": {"users": network["users"], "last_user": network["last_user"]}})
 
             # Alert user of new login
             if userdata["security"]["email"] is None:
@@ -294,9 +294,9 @@ class Utils:
     def check_for_auto_suspension(self, user):
         # Check how many posts have been auto censored
         total_auto_censored = 4
-        deleted_posts = self.meower.db["posts"].find({"u": user, "isDeleted": True})
+        deleted_posts = self.meower.db.posts.find({"u": user, "isDeleted": True})
         for post in deleted_posts:
-            report_status = self.meower.db["reports"].find_one({"_id": post["_id"]})
+            report_status = self.meower.db.reports.find_one({"_id": post["_id"]})
             if report_status["auto_suspended"] and (report_status["review_status"] == 0):
                 total_auto_censored += 1
                 if total_auto_censored > 3:
@@ -305,10 +305,10 @@ class Utils:
         # Suspend user if they have more than 3 auto-censored posts that are not reviewed
         if total_auto_censored > 3:
             # Set suspension time
-            self.meower.db["usersv0"].update_one({"_id": user}, {"$set": {"security.suspended_until": time.time() + 43200}})
+            self.meower.db.users.update_one({"_id": user}, {"$set": {"security.suspended_until": time.time() + 43200}})
 
             # Render and send alert email
-            userdata = self.meower.db["usersv0"].find_one({"_id": user})
+            userdata = self.meower.db.users.find_one({"_id": user})
             if userdata["security"]["email"] is None:
                 email = None
             else:
@@ -337,7 +337,7 @@ class Utils:
         return message
 
     def user_status(self, user):
-        userdata = self.meower.db["usersv0"].find_one({"_id": user})
+        userdata = self.meower.db.users.find_one({"_id": user})
         if userdata is None:
             return "Offline"
 
@@ -368,7 +368,7 @@ class Utils:
         os.mkdir("apiv0/data_exports/{0}/bots".format(export_id))
 
         # Create user.json
-        userdata = self.meower.db["usersv0"].find_one({"_id": user})
+        userdata = self.meower.db.users.find_one({"_id": user})
         if userdata is not None:
             exported_userdata = copy.deepcopy(userdata)
             for item in ["email", "password", "webauthn", "totp", "moderation_history"]:
@@ -377,7 +377,7 @@ class Utils:
                 json.dump(exported_userdata, f, indent=4)
 
         # Get all sessions
-        sessions = self.meower.db["sessions"].find({"user": user})
+        sessions = self.meower.db.sessions.find({"user": user})
         for session in sessions:
             session["token"] = None
             session["email"] = None
@@ -388,7 +388,7 @@ class Utils:
 
         # Get all posts
         index = {"order_key": "t", "order_mode": "Descending"}
-        posts = self.meower.db["posts"].find({"u": user}).sort("t", pymongo.DESCENDING)
+        posts = self.meower.db.posts.find({"u": user}).sort("t", pymongo.DESCENDING)
         for post in posts:
             if post["post_origin"] not in os.listdir("apiv0/data_exports/{0}/posts".format(export_id)):
                 os.mkdir("apiv0/data_exports/{0}/posts/{1}".format(export_id, post["post_origin"]))
@@ -400,13 +400,13 @@ class Utils:
             json.dump(index, f, indent=4)
 
         # Get all chats
-        chats = self.meower.db["chats"].find({"members": {"$all": [user]}, "deleted": False}).sort("nickname", pymongo.DESCENDING)
+        chats = self.meower.db.chats.find({"members": {"$all": [user]}, "deleted": False}).sort("nickname", pymongo.DESCENDING)
         for chat in chats:
             with open("apiv0/data_exports/{0}/chats/{1}.json".format(export_id, chat["_id"]), "w") as f:
                 json.dump(chat, f, indent=4)
 
         # Get OAuth apps
-        oauth_apps = self.meower.db["oauth"].find({"owner": user})
+        oauth_apps = self.meower.db.oauth.find({"owner": user})
         for app in oauth_apps:
             app["secret"] = None
             with open("apiv0/data_exports/{0}/oauth_apps/{1}.json".format(export_id, app["_id"]), "w") as f:
@@ -499,33 +499,39 @@ class Utils:
         
         # Check if the email address domain is valid
         email = email.split("@")
-        if email[1].count(".") != 1:
+        if (email[1].count(".") == 0) or email[1].startswith(".") or email[1].endswith("."):
             return False
         else:
             return True
 
-    def send_email(self, email, username, subject, body, type="text/plain"):
+    def send_email(self, template, data):
+        # Render template
+        with open("apiv0/email_templates/{0}.html".format(template), "r") as f:
+            body = Template(f.read()).render(data)
+
+        # Create request payload
         payload = {
             "personalizations": [{
                 "to": [{
-                    "email": email,
-                    "name": username
+                    "email": data["email"],
+                    "name": data["username"]
                 }],
                 "dkim_domain": os.getenv("EMAIL_DOMAIN"),
                 "dkim_selector": "mailchannels",
                 "dkim_private_key": os.getenv("EMAIL_DKIM_KEY")
             }],
             "from": {
-                "email": "no-reply@{0}".format(os.getenv("EMAIL_DOMAIN")),
+                "email": os.getenv("NO_REPLY_EMAIL"),
                 "name": "Meower"
             },
-            "subject": subject,
+            "subject": data["subject"],
             "content": [{
-                "type": type,
+                "type": "text/html",
                 "value": body
             }]
         }
 
+        # Send email request
         return requests.post(os.getenv("EMAIL_WORKER_URL"), headers={"X-Auth-Token": os.getenv("EMAIL_WORKER_TOKEN")}, json=payload).text
 
     def init_db(self):
@@ -591,7 +597,7 @@ class Utils:
                 return self.meower.respond({"type": "unauthorized", "message": "Session has not been verified yet."}, 401, error=True)
 
             # Check user
-            userdata = self.meower.db["usersv0"].find_one({"_id": self.request.user._id})
+            userdata = self.meower.db.users.find_one({"_id": self.request.user._id})
             if (userdata is None) or userdata["security"]["banned"]:
                 self.request.session.delete()
                 return self.meower.respond({"type": "unauthorized", "message": "You are not authenticated."}, 401, error=True)
@@ -632,9 +638,9 @@ class Session:
 class User:
     def __init__(self, meower, user_id=None, username=None):
         if user_id is not None:
-            self.raw = meower.db["usersv0"].find_one({"_id": user_id})
+            self.raw = meower.db.users.find_one({"_id": user_id})
         elif username is not None:
-            self.raw = meower.db["usersv0"].find_one({"lower_username": username.lower()})
+            self.raw = meower.db.users.find_one({"lower_username": username.lower()})
         else:
             self.raw = None
 

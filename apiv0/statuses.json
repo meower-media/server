@@ -1,0 +1,17 @@
+{
+    "general.ok": {"msg": "ok", "http": 200},
+    "general.notFound": {"msg": "Endpoint not found", "http": 404},
+    "general.internal": {"msg": "Internal server error", "http": 500},
+    "general.notImplemented": {"msg": "Not implemented", "http": 501},
+    "general.ipBlocked": {"msg": "IP blocked", "http": 403},
+    "general.invalidCaptcha": {"msg": "Invalid captcha", "http": 403},
+    "text.empty": {"msg": "Text cannot be empty", "http": 400},
+    "text.tooLong": {"msg": "Text is too long", "http": 400},
+    "text.tooShort": {"msg": "Text is too short", "http": 400},
+    "text.illegalCharacters": {"msg": "Text contains illegal characters", "http": 400},
+    "auth.creationBlocked": {"msg": "Account creation is blocked on your IP", "http": 403},
+    "auth.usernameConflict": {"msg": "Username already exists", "http": 409},
+    "auth.usernameInvalid": {"msg": "Username not found", "http": 401},
+    "auth.passwordInvalid": {"msg": "Incorrect password", "http": 401},
+    "auth.codeInvalid": {"msg": "Invalid code", "http": 401}
+}

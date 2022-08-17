@@ -1,39 +1,81 @@
+<!doctype html>
 <html>
-    <div id="content" style="font-family: Helvetica;border: 0;margin: 0;padding: 40px 4.5%;background-color: #ffffff;">
-        <div id="header" style="border: 0;margin: 23px auto 0 auto;padding: 0;max-width: 550px;position: relative;z-index: 2">
-            <img id="logo" style="border: 0;margin: 0 auto;padding: 0;display: block" src="https://meower.org/assets/logo.png" alt="Meower Logo">
+    <head>
+        <meta charset="utf-8">
+        <style>
+            * {
+                font-family: Helvetica;
+            }
+            .center {
+                display: block;
+                margin: auto;
+                text-align: center;
+            }
+            .email-container {
+                text-align: left;
+                width: 600px;
+                border-radius: 14px;
+                background-color: #E8F3FD;
+                padding: 0px 20px;
+                border: none;
+                color: #000;
+                font-size: 20px;
+                text-align: left;
+            }
+            h2 {
+                padding-left: 10px;
+                padding-top: 20px;
+            }
+            p {
+                padding: 10px;
+                padding-bottom: 20px;
+            }
+            img {
+                margin-top: 20px; margin-bottom:10px;
+            }
+            .button1 {
+                border-radius: 14px;
+                background-color: #F9A637;
+                padding: 10px 50px 10px 50px;
+                border: none;
+                font-size: 20px;
+                color: #fff;
+                margin-right: 15px;
+                cursor: pointer;
+            }
+            .button2 {
+                border-radius: 14px;
+                background-color: #fff;
+                padding: 10px 20px 10px 20px;
+                border: none;
+                font-size: 20px;
+                color: #000;
+                margin-right: 15px;
+                cursor: pointer;
+            }
+        </style>
+    </head>
+
+    <body>
+        <img height="70px" src="https://meower.org/assets/logo_black.png" class="center">
+        <div class="email-container center">
+            <h2>Verify your Email</h2>
+
+            <p>Dear {{username}},<br><br>Someone named {{username}} (likely you) tried to create an account on Meower.<br>
+            <br><br>
+            To verify this email, press the button below.
+            <br><br>
+            <button class="button1">Verify Email</button>
+            <br><br>
+            <span style="font-size: 18px;"><em>Or copy and paste the link into your browser:<br>https://meower.org/...<br></em></span>
+            <br><br>
+            - Meower Media Co.</p>
         </div>
-        <div id="message-wrapper" style="border: 0;margin: 23px auto 0 auto;padding: 0;max-width: 550px;position: relative;z-index: 1;background-color: #fff;border-radius: 8px;box-shadow: 0 2px 2px 2px #ff5600">
-            <div id="top-border" style="border: 0;margin: 0;padding: 0;background-color: #ff5600;height: 20px;width: 100%;border-radius: 8px 8px 0 0;border-bottom: 3px solid #ff5600">
-        </div>
-        <div id="message" style="border: 1px;margin: 0;padding: 25px 4.5% 40px 4.5%">
-            <h1 style="font-size: 24px; width: 100%; border: 0;margin: 0;padding: 5px 0;">Verify Email Address</h1>
-            <br>
-            <p style="font-size: 16px;border: 0;margin: 0;padding: 5px 0;font-size: 14px;line-height: 22px">Dear {{username}},</p>
-            <br>
-            <p style="font-size: 16px;border: 0;margin: 0;padding: 5px 0;font-size: 14px;line-height: 22px">
-                Someone named {{username}} (likely you) has requested to add your email address to their <a href="https://meower.org" target="_blank">Meower</a> account.
-                <br><br>
-                To verify this email address, please go to this link: <a href="https://meower.org/email?token={{token}}", target="_blank">https://meower.org/email?token={{token}}</a>
-                <br><br>
-                This link will expire in 1 hour.
-            </p>
-            <br>
-            <p style="border: 0;margin: 0;padding: 5px 0;font-size: 14px;line-height: 22px">- Meower Media Co.</p>
-        </div>
-    </div>
-    <div id="footer" style="border: 0;margin: 0;padding: 0;text-align: center;color: #999999;">
-        <div id="footer-inner" style="border: 0;margin: 0 auto;padding: 40px 4.5%;max-width: 550px">
-            <p style="border: 0;margin: 0;padding: 5px 0;font-size: 12px;line-height: 22px;text-align: center">
-            <a href="https://meower.org/" style="color: #3978c6;text-decoration: none">Meower</a> is a free, open-source, and nonprofit social media platform, created by Meower Media Co.
-            </p>
-            <p style="border: 0;margin: 0;padding: 5px 0;font-size: 12px;line-height: 22px;text-align: center">
-                If you have questions about Meower or this email, feel free to contact us at <a href="mailto://support@meower.org/" style="color: #3978c6;text-decoration: none">support@meower.org</a>
-            </p>
-            <p style="border: 0;margin: 0;padding: 5px 0;font-size: 12px;line-height: 22px;text-align: center">
-                <a href="https://meower.org/legal" style="color: #3978c6;text-decoration: none">Legal Info</a> | 
-                <a href="https://meower.org" style="color: #3978c6;text-decoration: none">Meower</a> 
-            </p>
-        </div>
-    </div>
+
+        <p class="center"><a href="https://meower.org/">Meower</a> is a free, open-source, and non-profit social media platform, created by Meower Media Co.<br>
+        <br>
+        If you have questions about Meower or this email, feel free to contact us at <a href="mailto:support@meower.org">support@meower.org</a><br>
+        <br>
+        <a href="https://meower.org/legal">Legal info</a> | <a href="https://meower.org">Meower</a></p>
+    </body>
 </html>

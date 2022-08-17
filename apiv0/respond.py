@@ -1,17 +1,25 @@
 import flask
 import json
 
-def respond(resp, status, error=False):
-    if (type(resp) == dict) and (type(status) == int) and (type(error) == bool):
-        if "message" not in resp:
-            if status == 200:
-                resp["message"] = "OK"
-            else:
-                resp["message"] = None
-        resp["error"] = error
-        resp["http_status"] = status
-        return flask.abort(flask.Response(response=json.dumps(resp), content_type="text/json", status=status))
-    elif (type(status) == int) and (type(error) == bool):
-        return flask.abort(flask.Response(response=resp, content_type="text/plain", status=status))
+with open("apiv0/statuses.json", "r") as f:
+    statuses = json.load(f)
+
+def respond(status: str, data: dict=None):
+    # Add data to response
+    if data is None:
+        data = {}
+
+    # Get status code from statuses file
+    if status not in statuses:
+        status = statuses["general.internal"]
     else:
-        return respond({"type": "internal", "message": "Internal server error"}, 500, error=True)
+        status = statuses[status]
+
+    # Add status message to response
+    if status["http"] == 200:
+        data["ok"] = status["msg"]
+    else:
+        data["error"] = status["msg"]
+
+    # Return response
+    return flask.abort(flask.Response(json.dumps(data), content_type="text/json", status=status["http"]))

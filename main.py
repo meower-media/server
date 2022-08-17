@@ -89,7 +89,7 @@ CORS(meower, resources={r'*': {'origins': '*'}})
 from better_profanity import profanity
 meower.profanity = profanity
 meower.log("Loading profanity filter...")
-filter = meower.db["config"].find_one({"_id": "filter"})
+filter = meower.db.config.find_one({"_id": "filter"})
 meower.profanity.load_censor_words(whitelist_words=filter["whitelist"])
 meower.profanity.add_censor_words(custom_words=filter["blacklist"])
 meower.blocked_usernames = filter["blocked_usernames"]
@@ -102,7 +102,7 @@ for ip in ip_bans:
 	meower.ip_banlist.append(ip["_id"])
 
 # Set repair mode and scratch deprecated state
-status = meower.db["config"].find_one({"_id": "status"})
+status = meower.db.config.find_one({"_id": "status"})
 for key, value in status.items():
 	if key != "_id":
 		setattr(meower, key, value)

@@ -19,8 +19,8 @@ def search_profiles():
         page = int(request.args["page"])
 
     # Get index
-    query_get = meower.db["usersv0"].find({"lower_username": {"$regex": query.lower()}}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
-    pages_amount = (meower.db["usersv0"].count_documents({"lower_username": {"$regex": query.lower()}}) // 25) + 1
+    query_get = meower.db.users.find({"lower_username": {"$regex": query.lower()}}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
+    pages_amount = (meower.db.users.count_documents({"lower_username": {"$regex": query.lower()}}) // 25) + 1
 
     # Convert query get
     payload_users = []
@@ -54,8 +54,8 @@ def search_home_posts():
         page = int(request.args["page"])
 
     # Get index
-    query_get = meower.db["posts"].find({"post_origin": "home", "p": {"$regex": query}, "isDeleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
-    pages_amount = (meower.db["posts"].count_documents({"post_origin": "home", "p": {"$regex": query}, "isDeleted": False}) // 25) + 1
+    query_get = meower.db.posts.find({"post_origin": "home", "p": {"$regex": query}, "isDeleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
+    pages_amount = (meower.db.posts.count_documents({"post_origin": "home", "p": {"$regex": query}, "isDeleted": False}) // 25) + 1
 
     # Convert query get
     payload_posts = []
@@ -91,8 +91,8 @@ def search_public_chats():
         page = int(request.args["page"])
 
     # Get index
-    query_get = meower.db["chats"].find({"nickname_lower": {"$regex": query.lower()}, "public": True, "deleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
-    pages_amount = (meower.db["chats"].count_documents({"nickname_lower": {"$regex": query.lower()}, "public": True, "deleted": False}) // 25) + 1
+    query_get = meower.db.chats.find({"nickname_lower": {"$regex": query.lower()}, "public": True, "deleted": False}).skip((page-1)*25).limit(25).sort("t", pymongo.DESCENDING)
+    pages_amount = (meower.db.chats.count_documents({"nickname_lower": {"$regex": query.lower()}, "public": True, "deleted": False}) // 25) + 1
 
     # Convert query get
     payload_chat = []
