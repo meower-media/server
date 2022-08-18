@@ -25,7 +25,15 @@ Currently supported functions of the API:
 * /home?autoget - Automatically fetches all posts currently present on the page.
 * /ip - Gets the client's IP address and returns with plaintext. Only works if the server is communicating with a client over CF Argo Tunnels.
 * /posts?id=(Post ID) - Gets a Post ID, use /home to get an index of posts.
-* /status - Status for the Meower Server 
+* /status - Status for the Meower Server.
+* /posts/(Chat ID) - Gets the specified chat ID's index.
+* /reports - Gets the reports index (only accessable if a moderator or higher.
+* /inbox - Gets the specified user's inbox.
+* /search/home?q=(Query) - Searches home.
+* /search/users?q=(Query) - Searches users.
+* /users/(Username) - Gets the specified user's info.
+* /users/(Username)/posts - Gets the specified user's posts.
+* /statistics - Shows Meower's statistics (users, posts, and chats)
 ### Trust keys and access control
 
 In development, Meower is configured to use "meower" as a CloudLink Trust key. If you notice a forked server using this key, please request for it to be removed. This key is intended for development purposes only.
