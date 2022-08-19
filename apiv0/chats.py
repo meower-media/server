@@ -35,7 +35,7 @@ def my_chats():
         }
 
         # Return payload
-        return meower.respond(payload, 200, error=False)
+        return meower.resp(200, payload)
     elif request.method == "PUT":
         # Check whether the client is authenticated
         meower.require_auth([5], scope="meower:chats:edit")
@@ -67,7 +67,7 @@ def my_chats():
         #app.meower.ws.sendPayload("update_config", "", username=request.user._id)
 
         # Return payload
-        return meower.respond(chat_data, 200, error=False)
+        return meower.resp(200, chat_data)
 
 @chats.route("/<chat_id>", methods=["GET", "PATCH", "DELETE"])
 def chat_data(chat_id):
@@ -79,11 +79,11 @@ def chat_data(chat_id):
 
     # Check if chat exists
     if chat_data is None:
-        return meower.respond({"type": "notFound", "message": "Requested chat was not found"}, 404, error=True)
+        return meower.resp(404)
 
     # Check if user is in chat
     if request.user._id not in chat_data["members"]:
-        return meower.respond({"type": "notFound", "message": "Requested chat was not found"}, 404, error=True)
+        return meower.resp(404)
     
     if request.method == "GET":
         # Convert members list
@@ -95,14 +95,14 @@ def chat_data(chat_id):
         chat_data["members"] = new_members
 
         # Return payload
-        return meower.respond(chat_data, 200, error=False)
+        return meower.resp(200, chat_data)
     elif request.method == "PATCH":
         # Check whether the client is authenticated
         meower.require_auth([5], scope="meower:chats:edit")
 
         # Check if user has permission to edit chat
         if not (chat_data["permissions"][request.user._id] >= 3):
-            return meower.respond({"type": "forbidden", "message": "You do not have permission to edit this chat"}, 403, error=True)
+            return meower.resp(403)
 
         # Update public status
         if "public" in request.json:
@@ -114,11 +114,11 @@ def chat_data(chat_id):
             if type(request.json["owner"]) == str:
                 user = meower.User(meower, username=request.json["owner"])
                 if user.raw is not None:
-                    return meower.respond({"type": "notFound", "message": "Requested user was not found"}, 404, error=True)
+                    return meower.resp(404)
                 elif user._id not in chat_data["members"]:
-                    return meower.respond({"type": "notFound", "message": "Requested user was not found"}, 404, error=True)
+                    return meower.resp(404)
                 elif user._id == request.user._id:
-                    return meower.respond({"type": "cannotChangeOwnerToSelf", "message": "You cannot change the owner to yourself"}, 400, error=True)
+                    return meower.resp(400)
                 else:
                     chat_data["permissions"][user._id] = 3
                     chat_data["permissions"][request.user._id] = 1
@@ -135,18 +135,18 @@ def chat_data(chat_id):
         chat_data["members"] = new_members
 
         # Return payload
-        return meower.respond(chat_data, 200, error=False)
+        return meower.resp(200, chat_data)
     elif request.method == "DELETE":
         # Check whether the client is authenticated
         meower.require_auth([5], scope="meower:chats:edit")
 
         if chat_data["permissions"][request.user._id] >= 3:
             meower.db.chats.update_one({"_id": chat_id}, {"$set": {"deleted": True}})
-            return meower.respond({}, 200, error=False)
+            return meower.resp("empty")
         else:
             chat_data["members"].remove(request.user._id)
             meower.db.chats.update_one({"_id": chat_id}, {"$set": {"members": chat_data["members"]}})
-            return meower.respond({}, 200, error=False)
+            return meower.resp("empty")
 
 @chats.route("/<chat_id>/members", methods=["PUT", "PATCH", "DELETE"])
 def add_member(chat_id):
@@ -161,16 +161,16 @@ def add_member(chat_id):
 
     # Check if chat exists
     if chat_data is None:
-        return meower.respond({"type": "notFound", "message": "Requested chat was not found"}, 404, error=True)
+        return meower.resp(404)
 
     # Check if user is in chat
     if request.user._id not in chat_data["members"]:
-        return meower.respond({"type": "notFound", "message": "Requested chat was not found"}, 404, error=True)
+        return meower.resp(404)
 
     # Get requested user
     user = meower.User(meower, username=request.json["username"])
     if user.raw is None:
-        return meower.respond({"type": "notFound", "message": "Requested user was not found"}, 404, error=True)
+        return meower.resp(404)
     
     if request.method == "PUT":
         # Check whether the client is authenticated
@@ -178,7 +178,7 @@ def add_member(chat_id):
 
         # Make sure user is not blocked
         if request.user._id in user.security["blocked"]:
-            return meower.respond({"type": "notFound", "message": "Requested user does not exist"}, 404, error=True)
+            return meower.resp(404)
 
         # Add user to chat
         if user._id not in chat_data["members"]:
@@ -189,7 +189,7 @@ def add_member(chat_id):
         meower.db.chats.update_one({"_id": chat_id}, {"$set": {"members": chat_data["members"], "permissions": chat_data["permissions"]}})
 
         # Return payload
-        return meower.respond({}, 200, error=False)
+        return meower.resp("empty")
     elif request.method == "PATCH":
         # Check whether the client is authenticated
         meower.require_auth([5], scope="meower:chats:edit")
@@ -199,11 +199,11 @@ def add_member(chat_id):
 
         # Check if user is in chat
         if user._id not in chat_data["members"]:
-            return meower.respond({"type": "userNotInChat", "message": "Requested user not in chat"}, 404, error=True)
+            return meower.resp(404)
 
         # Check if the user has permission to edit user permissions
         if not ((request.user._id != user._id) and (chat_data["permissions"][request.user._id] >= 3)):
-            return meower.respond({"type": "forbidden", "message": "You do not have permission to edit this user"}, 403, error=True)
+            return meower.resp(403)
 
         # Update user permissions
         chat_data["permissions"][user._id] = request.json["level"]
@@ -212,18 +212,18 @@ def add_member(chat_id):
         meower.db.chats.update_one({"_id": chat_id}, {"$set": {"permissions": chat_data["permissions"]}})
 
         # Return payload
-        return meower.respond({}, 200, error=False)
+        return meower.resp("empty")
     elif request.method == "DELETE":
         # Check whether the client is authenticated
         meower.require_auth([5], scope="meower:chats:edit")
 
         # Check if user is in chat
         if user._id not in chat_data["members"]:
-            return meower.respond({"type": "userNotInChat", "message": "Requested user not in chat"}, 404, error=True)
+            return meower.resp(404)
 
         # Check if the user has permission to remove the user
         if not ((request.user._id != user._id) and (chat_data["permissions"][request.user._id] >= 2) and (chat_data["permissions"][request.user._id] > chat_data["permissions"][user._id])):
-            return meower.respond({"type": "forbidden", "message": "You do not have permission to remove this user"}, 403, error=True)
+            return meower.resp(403)
 
         # Remove user from chat
         chat_data["members"].remove(user._id)
@@ -233,7 +233,7 @@ def add_member(chat_id):
         meower.db.chats.update_one({"_id": chat_id}, {"$set": {"members": chat_data["members"], "permissions": chat_data["permissions"]}})
 
         # Return payload
-        return meower.respond({}, 200, error=False)
+        return meower.resp("empty")
 
 @chats.route("/<chat_id>/posts", methods=["GET", "POST"])
 def chat_posts(chat_id):
@@ -245,11 +245,11 @@ def chat_posts(chat_id):
 
     # Check if chat exists
     if chat_data is None:
-        return meower.respond({"type": "notFound", "message": "Requested chat does not exist"}, 404, error=True)
+        return meower.resp(404)
 
     # Check if user is in chat
     if request.user._id not in chat_data["members"]:
-        return meower.respond({"type": "notFound", "message": "Requested chat does not exist"}, 404, error=True)
+        return meower.resp(404)
 
     if request.method == "GET":
         # Get page
@@ -280,10 +280,10 @@ def chat_posts(chat_id):
         }
 
         # Return payload
-        return meower.respond(payload, 200, error=False)
+        return meower.resp(200, payload)
     elif request.method == "POST":
         # Check whether the client is authenticated
-        meower.require_auth([5], scope="meower:posts:create_posts", check_suspension=True)
+        meower.require_auth([5], scope="meower:posts:create_posts")
 
         # Check for required data
         meower.check_for_json([{"id": "p", "t": str, "l_min": 1, "l_max": 360}])
@@ -292,8 +292,10 @@ def chat_posts(chat_id):
         content = request.json["p"]
 
         # Check if account is spamming
-        if meower.check_for_spam("posts-{0}".format(chat_id), request.user._id, burst=10, seconds=5):
-            return meower.respond({"type": "ratelimited", "message": "You are being ratelimited"}, 429, error=True)
+        if meower.check_ratelimit("posts-{0}".format(chat_id), request.user._id):
+            return meower.resp(429)
+        else:
+            meower.ratelimit("posts-{0}".format(chat_id), request.user._id, burst=10, seconds=5)
 
         # Create post
         post_data = {
@@ -313,4 +315,4 @@ def chat_posts(chat_id):
         meower.send_payload(json.dumps({"cmd": "new_post", "val": post_data}))
 
         # Return payload
-        return meower.respond(post_data, 200, error=False)
+        return meower.resp(200, post_data)

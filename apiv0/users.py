@@ -10,17 +10,17 @@ def get_profile(username):
     # Get user data
     user = meower.User(meower, username=username)
     if user.raw is None:
-        return meower.respond({"type": "notFound", "message": "Requested user was not found"}, 404, error=True)
+        return meower.resp(404)
 
     # Return profile
-    return meower.respond(user.profile, 200, error=False)
+    return meower.resp(200, user.profile)
 
 @users.route("/<username>/posts", methods=["GET"])
 def search_user_posts(username):
     # Get user data
     userdata = meower.db.users.find_one({"lower_username": username.lower()})
     if userdata is None:
-        return meower.respond({"type": "notFound", "message": "Requested user was not found"}, 404, error=True)
+        return meower.resp(404)
 
     # Get page
     if not ("page" in request.args):
@@ -50,7 +50,7 @@ def search_user_posts(username):
     }
 
     # Return payload
-    return meower.respond(payload, 200, error=False)
+    return meower.resp(200, payload)
 
 @users.route("/<username>/report", methods=["POST"])
 def report_user(username):
@@ -60,7 +60,7 @@ def report_user(username):
     # Get user data
     userdata = meower.db.users.find_one({"lower_username": username.lower()})
     if userdata is None:
-        return meower.respond({"type": "notFound", "message": "Requested user was not found"}, 404, error=True)
+        return meower.resp(404)
 
     # Add report
     report_status = meower.db.reports.find_one({"_id": userdata["_id"]})
@@ -86,4 +86,4 @@ def report_user(username):
         meower.db.reports.find_one_and_replace({"_id": userdata["_id"]}, report_status)
 
     # Return payload
-    return meower.respond({}, 200, error=False)
+    return meower.resp("empty")

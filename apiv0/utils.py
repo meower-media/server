@@ -14,7 +14,6 @@ from better_profanity import profanity
 import pymongo
 from jinja2 import Template
 import copy
-import geocoder
 
 class Utils:
     def __init__(self, meower, request):
@@ -42,16 +41,6 @@ class Utils:
             ";"
         ]:
             self.permitted_chars_username.remove(item)
-
-        # WebSocket status codes
-        self.sock_statuses = {
-            "OK": "I:100 | OK",
-            "Syntax": "E:101 | Syntax",
-            "Datatype": "E:102 | Datatype",
-            "TooLarge": "E:103 | Packet too large",
-            "Internal": "E:104 | Internal",
-            "InvalidToken": "E:106 | Invalid token",
-        }
 
         # OAuth scopes
         self.all_oauth_scopes = set([
@@ -166,10 +155,8 @@ class Utils:
         }
         
         # Add user agent
-        try:
+        if "User-Agent" in self.request.headers:
             session_data["user_agent"] = self.request.headers["User-Agent"]
-        except:
-            pass
 
         # Add specific data for each type
         if type == 0:
@@ -237,7 +224,6 @@ class Utils:
             else:
                 email = self.meower.decrypt(userdata["security"]["email"]["encryption_id"], userdata["security"]["email"]["encrypted_email"])
             if email is not None:
-                ip_details = geocoder.ip(self.request.remote_addr)
                 with open("apiv0/email_templates/alerts/new_login.html", "r") as f:
                     email_template = Template(f.read()).render({"username": userdata["username"], "method": method, "ip": self.request.remote_addr, "city": ip_details.city, "country": ip_details.country})
                 Thread(target=self.meower.send_email, args=(email, userdata["username"], "Security Alert", email_template,), kwargs={"type": "text/html"}).start()
@@ -248,7 +234,18 @@ class Utils:
         # Return session data
         return {"session": session, "user": userdata, "requires_totp": False}
 
-    def check_for_spam(self, type, client, burst=1, seconds=1):
+    def check_ratelimit(self, type, client):
+        # Check if type and client are in ratelimit dictionary
+        if not (type in self.meower.ratelimits):
+            self.meower.ratelimits[type] = {}
+        if client not in self.meower.ratelimits[type]:
+            self.meower.ratelimits[type][client] = 0
+
+        # Check if user is currently ratelimited
+        if self.meower.ratelimits[type][client] > time.time():
+            return self.meower.resp(429, {"expires": self.meower.ratelimits[type][client]}, abort=True)
+
+    def ratelimit(self, type, client, burst=1, seconds=1):
         # Check if type and client are in ratelimit dictionary
         if not (type in self.meower.last_packet):
             self.meower.last_packet[type] = {}
@@ -258,10 +255,6 @@ class Utils:
             self.meower.last_packet[type][client] = 0
             self.meower.burst_amount[type][client] = 0
             self.meower.ratelimits[type][client] = 0
-
-        # Check if user is currently ratelimited
-        if self.meower.ratelimits[type][client] > time.time():
-            return True
 
         # Check if max burst has expired
         if (self.meower.last_packet[type][client] + seconds) < time.time():
@@ -275,9 +268,6 @@ class Utils:
         if self.meower.burst_amount[type][client] > burst:
             self.meower.ratelimits[type][client] = (time.time() + seconds)
             self.meower.burst_amount[type][client] = 0
-            return True
-        else:
-            return False
 
     def check_for_bad_chars_username(self, message):
         for char in message:
@@ -291,44 +281,10 @@ class Utils:
                 return True
         return False
 
-    def check_for_auto_suspension(self, user):
-        # Check how many posts have been auto censored
-        total_auto_censored = 4
-        deleted_posts = self.meower.db.posts.find({"u": user, "isDeleted": True})
-        for post in deleted_posts:
-            report_status = self.meower.db.reports.find_one({"_id": post["_id"]})
-            if report_status["auto_suspended"] and (report_status["review_status"] == 0):
-                total_auto_censored += 1
-                if total_auto_censored > 3:
-                    break
-        
-        # Suspend user if they have more than 3 auto-censored posts that are not reviewed
-        if total_auto_censored > 3:
-            # Set suspension time
-            self.meower.db.users.update_one({"_id": user}, {"$set": {"security.suspended_until": time.time() + 43200}})
-
-            # Render and send alert email
-            userdata = self.meower.db.users.find_one({"_id": user})
-            if userdata["security"]["email"] is None:
-                email = None
-            else:
-                email = self.meower.decrypt(userdata["security"]["email"]["encryption_id"], userdata["security"]["email"]["encrypted_email"])
-            if email is not None:
-                with open("apiv0/email_templates/moderation/suspension.html", "r") as f:
-                    email_template = Template(f.read()).render({"username": userdata["username"], "reason": "Automatic suspension due to too many posts flagged for moderation.", "expires": "In 12 hours or when the flagged posts are reviewed"})
-                Thread(target=self.meower.send_email, args=(email, userdata["username"], "Notice of temporary account suspension", email_template,), kwargs={"type": "text/html"}).start()
-
     def check_captcha(self, captcha):
         # Check if captcha is valid
-        resp = requests.post("https://hcaptcha.com/siteverify", data={"response": captcha, "secret": os.getenv("HCAPTCHA_SECRET")})
-        try:
-            resp = resp.json()
-            if resp["success"]:
-                return True
-            else:
-                return False
-        except:
-            return False
+        captcha_resp = requests.post("https://hcaptcha.com/siteverify", data={"response": captcha, "secret": os.getenv("HCAPTCHA_SECRET")}).json()
+        return captcha_resp["success"]
 
     def filter(self, message):
         message = self.meower.filter.censor(message)
@@ -561,50 +517,48 @@ class Utils:
 
         for item in data:
             if item["id"] not in self.request.json:
-                return self.meower.respond({"type": "missingField", "message": "Missing required JSON data: {0}".format(item["id"])}, 400, error=True)
+                return self.meower.resp(400, {"type": "missingField", "message": "Missing required JSON data: {0}".format(item["id"])}, abort=True)
             elif ("t" in item) and (type(self.request.json[item["id"]]) is not item["t"]):
-                return self.meower.respond({"type": "datatype", "message": "Invalid datatype for JSON data: {0}".format(item["id"])}, 400, error=True)
+                return self.meower.resp(400, {"type": "datatype", "message": "Invalid datatype for JSON data: {0}".format(item["id"])}, abort=True)
             elif ("l_min" in item) and (len(str(self.request.json[item["id"]])) < item["l_min"]):
-                return self.meower.respond({"type": "invalidLength", "message": "Invalid length for JSON data: {0}".format(item["id"])}, 400, error=True)
+                return self.meower.resp(400, {"type": "invalidLength", "message": "Invalid length for JSON data: {0}".format(item["id"])}, abort=True)
             elif ("l_max" in item) and (len(str(self.request.json[item["id"]])) > item["l_max"]):
-                return self.meower.respond({"type": "invalidLength", "message": "Invalid length for JSON data: {0}".format(item["id"])}, 400, error=True)
+                return self.meower.resp(400, {"type": "invalidLength", "message": "Invalid length for JSON data: {0}".format(item["id"])}, abort=True)
             elif (("r_min") in item) and (self.request.json[item["id"]] < item["r_min"]):
-                return self.meower.respond({"type": "outOfRange", "message": "Out of range value for JSON data: {0}".format(item["id"])}, 400, error=True)
+                return self.meower.resp(400, {"type": "outOfRange", "message": "Out of range value for JSON data: {0}".format(item["id"])}, abort=True)
             elif (("r_max") in item) and (self.request.json[item["id"]] > item["r_max"]):
-                return self.meower.respond({"type": "outOfRange", "message": "Out of range value for JSON data: {0}".format(item["id"])}, 400, error=True)
+                return self.meower.resp(400, {"type": "outOfRange", "message": "Out of range value for JSON data: {0}".format(item["id"])}, abort=True)
 
     def check_for_params(self, data=[]):
         for item in data:
             if item not in self.request.args:
-                return self.meower.respond({"type": "missingParam", "message": "Missing required param: {0}".format(item)}, 400, error=True)
+                return self.meower.resp(400, msg="Missing required param: {0}".format(item), abort=True)
     
-    def require_auth(self, allowed_types, levels=[-1, 0, 1, 2, 3], scope=None, check_suspension=False):
+    def require_auth(self, allowed_types, levels=[-1, 0, 1, 2, 3], scope=None):
         if self.request.method != "OPTIONS":
             # Check if session is valid
             if not self.request.session.authed:
-                return self.meower.respond({"type": "unauthorized", "message": "You are not authenticated."}, 401, error=True)
+                return self.meower.resp(401)
             
             # Check session type
             if self.request.session.type not in allowed_types:
-                return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403, error=True)
+                return self.meower.resp(403)
             
             # Check session scopes
             if (self.request.session.type == 5) and (scope is not None) and (scope not in self.request.session.scopes):
-                return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403, error=True)
+                return self.meower.resp(403)
 
             # Check if session is verified (only for certain types)
             if (self.request.session.verified != None) and (self.request.session.verified != True):
-                return self.meower.respond({"type": "unauthorized", "message": "Session has not been verified yet."}, 401, error=True)
+                return self.meower.resp(401)
 
             # Check user
             userdata = self.meower.db.users.find_one({"_id": self.request.user._id})
             if (userdata is None) or userdata["security"]["banned"]:
                 self.request.session.delete()
-                return self.meower.respond({"type": "unauthorized", "message": "You are not authenticated."}, 401, error=True)
+                return self.meower.resp(401)
             elif userdata["state"] not in levels:
-                return self.meower.respond({"type": "forbidden", "message": "You are not allowed to perform this action."}, 403, error=True)
-            elif check_suspension and (userdata["security"]["suspended_until"] is not None) and (userdata["security"]["suspended_until"] > time.time()):
-                return self.meower.respond({"type": "forbidden", "message": "You are suspended from performing this action."}, 403, error=True)
+                return self.meower.resp(403)
 
 class Session:
     def __init__(self, meower, token):

@@ -9,17 +9,16 @@ meower = Flask(__name__)
 # Initialize Utils
 from apiv0.utils import Utils, Session, User
 utils = Utils(meower, request)
-meower.sock_statuses = utils.sock_statuses
 meower.all_oauth_scopes = utils.all_oauth_scopes
 meower.first_party_oauth_scopes = utils.first_party_oauth_scopes
 meower.log = utils.log
 meower.timestamp = utils.timestamp
 meower.create_session = utils.create_session
 meower.foundation_session = utils.foundation_session
-meower.check_for_spam = utils.check_for_spam
+meower.check_ratelimit = utils.check_ratelimit
+meower.ratelimit = utils.ratelimit
 meower.check_for_bad_chars_post = utils.check_for_bad_chars_post
 meower.check_for_bad_chars_username = utils.check_for_bad_chars_username
-meower.check_for_auto_suspension = utils.check_for_auto_suspension
 meower.check_captcha = utils.check_captcha
 meower.filter = utils.filter
 meower.user_status = utils.user_status
@@ -41,7 +40,7 @@ utils.init_encryption()
 
 # Initialize Responder
 from apiv0.respond import respond
-meower.respond = respond
+meower.resp = respond
 
 # Initialize database
 import pymongo
@@ -71,15 +70,6 @@ from apiv0.posts import posts
 meower.register_blueprint(posts, url_prefix="/v0/posts")
 from apiv0.search import search
 meower.register_blueprint(search, url_prefix="/v0/search")
-
-# Initialize WebSocket
-from flask_sock import Sock
-from apiv0.socket import SocketClient
-flask_sock = Sock(meower)
-meower.sock_clients = {}
-@flask_sock.route("/v0/socket")
-def socket_server(client):
-	SocketClient(meower, client)
 
 # Initialize CORS
 from flask_cors import CORS

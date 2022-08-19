@@ -3,7 +3,6 @@ bcrypt
 uuid
 flask
 flask_cors
-flask_sock
 pymongo
 pyotp
 requests

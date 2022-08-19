@@ -16,16 +16,16 @@ def get_post(post_id):
     # Get post
     post = meower.db.posts.find_one({"_id": post_id, "isDeleted": False})
     if post is None:
-        return meower.respond({"type": "notFound", "message": "Requested post was not found"}, 404, error=True)
+        return meower.resp(404)
 
     # Make sure the user has permission
     if not ((post["post_origin"] == "home") or (post["post_origin"] == "inbox")):
         chat_data = meower.db.chats.find_one({"_id": post["post_origin"], "deleted": False})
         if (chat_data is None) or (request.user._id not in chat_data["members"]):
-            return meower.respond({"type": "notFound", "message": "Requested post was not found"}, 404, error=True)
+            return meower.resp(404)
     elif post["post_origin"] == "inbox":
         if post["u"] != request.user._id:
-            return meower.respond({"type": "notFound", "message": "Requested post was not found"}, 404, error=True)
+            return meower.resp(404)
         else:
             # Check whether the client is authenticated
             meower.require_auth([5], scope="meower:inbox:read_messages")
@@ -34,12 +34,12 @@ def get_post(post_id):
         # Convert post data
         user = meower.User(meower, user_id=post["u"])
         if user.raw is None:
-            return meower.respond({"type": "notFound", "message": "Requested post was not found"}, 404, error=True)
+            return meower.resp(404)
         else:
             post["u"] = user.profile
 
         # Return post
-        return meower.respond(post, 200, error=False)
+        return meower.resp(200, post)
     elif request.method == "DELETE":
         # Check whether the client is authenticated
         meower.require_auth([5], scope="meower:posts:edit_posts")
@@ -48,7 +48,7 @@ def get_post(post_id):
         meower.db.posts.update_one({"_id": post_id}, {"$set": {"isDeleted": True}})
 
         # Return payload
-        return meower.respond({}, 200, error=False)
+        return meower.resp("empty")
 
 @posts.route("/<post_id>/comments", methods=["GET", "POST"])
 def get_post_comments(post_id):
@@ -58,16 +58,16 @@ def get_post_comments(post_id):
     # Get post
     post = meower.db.posts.find_one({"_id": post_id, "isDeleted": False})
     if post is None:
-        return meower.respond({"type": "notFound", "message": "Requested post was not found"}, 404, error=True)
+        return meower.resp(404)
 
     # Make sure the user has permission
     if not ((post["post_origin"] == "home") or (post["post_origin"] == "inbox")):
         chat_data = meower.db.chats.find_one({"_id": post["post_origin"], "deleted": False})
         if (chat_data is None) or (request.user._id not in chat_data["members"]):
-            return meower.respond({"type": "notFound", "message": "Requested post was not found"}, 404, error=True)
+            return meower.resp(404)
     elif post["post_origin"] == "inbox":
         if post["u"] != request.user._id:
-            return meower.respond({"type": "notFound", "message": "Requested post was not found"}, 404, error=True)
+            return meower.resp(404)
         else:
             # Check whether the client is authenticated
             meower.require_auth([5], scope="meower:inbox:read_messages")
@@ -101,10 +101,10 @@ def get_post_comments(post_id):
         }
 
         # Return payload
-        return meower.respond(payload, 200, error=False)
+        return meower.resp(200, payload)
     elif request.method == "POST":
         # Check whether the client is authenticated
-        meower.require_auth([5], scope="meower:posts:create_posts", check_suspension=True)
+        meower.require_auth([5], scope="meower:posts:create_posts")
 
         # Check for required data
         meower.check_for_json([{"id": "p", "t": str, "l_min": 1, "l_max": 360}])
@@ -113,8 +113,10 @@ def get_post_comments(post_id):
         content = request.json["p"]
 
         # Check if account is spamming
-        if meower.check_for_spam("comments-{0}".format(post_id), request.user._id, burst=10, seconds=5):
-            return meower.respond({"type": "ratelimited", "message": "You are being ratelimited"}, 429, error=True)
+        if meower.check_ratelimit("comments-{0}".format(post_id), request.user._id):
+            return meower.resp(429)
+        else:
+            meower.ratelimit("comments-{0}".format(post_id), request.user._id, burst=3, seconds=10)
 
         # Create post
         post_data = {
@@ -134,7 +136,7 @@ def get_post_comments(post_id):
         meower.send_payload(json.dumps({"cmd": "new_post", "val": post_data}))
 
         # Return payload
-        return meower.respond(post_data, 200, error=False)
+        return meower.resp(200, post_data)
 
 @posts.route("/<post_id>/report", methods=["POST"])
 def report_post(post_id):
@@ -147,7 +149,7 @@ def report_post(post_id):
     # Get post
     post = meower.db.posts.find_one({"_id": post_id, "isDeleted": False})
     if post is None:
-        return meower.respond({"type": "notFound", "message": "Requested post was not found"}, 404, error=True)
+        return meower.resp(404)
 
     # Add report
     report_status = meower.db.reports.find_one({"_id": post_id})
@@ -175,4 +177,4 @@ def report_post(post_id):
         Thread(target=meower.check_for_auto_suspension, args=(post["u"],)).start()
 
     # Return payload
-    return meower.respond({}, 200, error=False)
+    return meower.resp("empty")

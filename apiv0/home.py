@@ -42,10 +42,10 @@ def get_home():
         }
 
         # Return payload
-        return meower.respond(payload, 200, error=False)
+        return meower.resp(200, payload)
     elif request.method == "POST":
         # Check whether the client is authenticated
-        meower.require_auth([5], scope="meower:posts:create_posts", check_suspension=True)
+        meower.require_auth([5], scope="meower:posts:create_posts")
 
         # Check for required data
         meower.check_for_json([{"id": "p", "t": str, "l_min": 1, "l_max": 360}])
@@ -54,8 +54,10 @@ def get_home():
         content = request.json["p"]
 
         # Check if account is spamming
-        if meower.check_for_spam("posts-home", request.user._id, burst=10, seconds=5):
-            return meower.respond({"type": "ratelimited", "message": "You are being ratelimited"}, 429, error=True)
+        if meower.check_ratelimit("posts-home", request.user._id):
+            return meower.resp(429)
+        else:
+            meower.ratelimit("posts-home", request.user._id, burst=3, seconds=15)
 
         # Create post
         post_data = {
@@ -74,4 +76,4 @@ def get_home():
         #meower.send_payload(json.dumps({"cmd": "new_post", "val": post_data}))
 
         # Return payload
-        return meower.respond(post_data, 200, error=False)
+        return meower.resp(200, post_data)

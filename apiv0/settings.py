@@ -35,7 +35,7 @@ def auth_methods():
         pass # To be implementated later
 
     # Return payload
-    return meower.respond({"email": email, "password": password, "totp": totp, "webauthn": webauthn}, 200, error=False)
+    return meower.resp(200, {"email": email, "password": password, "totp": totp, "webauthn": webauthn})
 
 @settings.route("/email", methods=["GET", "PATCH"])
 def email_address():
@@ -53,7 +53,7 @@ def email_address():
             email = meower.decrypt(userdata["security"]["email"]["encryption_id"], userdata["security"]["email"]["encrypted_email"])
 
         # Return the email address
-        return meower.respond({"email": email}, 200, error=False)
+        return meower.resp(200, {"email": email})
     elif request.method == "PATCH":
         # Check whether the client is authenticated
         meower.require_auth([5], scope="foundation:settings:authentication")
@@ -68,7 +68,7 @@ def email_address():
 
             # Check if it's valid
             if not (pyotp.TOTP(userdata["security"]["totp"]["secret"]).verify(request.json["totp"]) or (request.json["totp"] in userdata["security"]["totp"]["recovery_codes"])):
-                return meower.respond({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
+                return meower.resp({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
 
         # Extract email for simplicity
         email = request.json["email"].strip()
@@ -84,7 +84,7 @@ def email_address():
         Thread(target=meower.send_email, args=(email, userdata["username"], "Verify your email address", email_template,), kwargs={"type": "text/html"}).start()
 
         # Return payload
-        return meower.respond({}, 200, error=False)
+        return meower.resp("empty")
 
 @settings.route("/password", methods=["GET", "PATCH", "DELETE"])
 def password():
@@ -96,7 +96,7 @@ def password():
 
     if request.method == "GET":
         # Return whether the account has a password
-        return meower.respond({"password": (userdata["security"]["password"] is not None)}, 200, error=False)
+        return meower.resp(200, {"password": (userdata["security"]["password"] is not None)})
     elif request.method == "PATCH":
         # Check for required data
         meower.check_for_json([{"id": "password", "t": str, "l_min": 0, "l_max": 256}])
@@ -108,7 +108,7 @@ def password():
 
             # Check if it's valid
             if not (pyotp.TOTP(userdata["security"]["totp"]["secret"]).verify(request.json["totp"]) or (request.json["totp"] in userdata["security"]["totp"]["recovery_codes"])):
-                return meower.respond({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
+                return meower.resp({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
 
         # Extract new password for simplicity
         password = request.json["password"].strip()
@@ -128,15 +128,15 @@ def password():
             Thread(target=meower.send_email, args=(email, userdata["username"], "Security Alert", email_template,), kwargs={"type": "text/html"}).start()
 
         # Return success
-        return meower.respond({}, 200, error=False)
+        return meower.resp("empty")
     elif request.method == "DELETE":
         # Check if account already has a password
         if userdata["security"]["password"] is None:
-            return meower.respond({"type": "totpAlreadyDisabled", "message": "Password already disabled"}, 401, error=True)
+            return meower.resp({"type": "totpAlreadyDisabled", "message": "Password already disabled"}, 401, error=True)
 
         # Check if account is eligible for password removal
         if (userdata["security"]["email"] is None) and (len(userdata["security"]["webauthn"]) == 0):
-            return meower.respond({"type": "noAuthenticationMethods"}, 400, error=True)
+            return meower.resp({"type": "noAuthenticationMethods"}, 400, error=True)
 
         # Check for required data
         meower.check_for_json([{"id": "password", "t": str, "l_min": 0, "l_max": 256}])
@@ -148,7 +148,7 @@ def password():
 
             # Check if it's valid
             if not (pyotp.TOTP(userdata["security"]["totp"]["secret"]).verify(request.json["totp"]) or (request.json["totp"] in userdata["security"]["totp"]["recovery_codes"])):
-                return meower.respond({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
+                return meower.resp({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
 
         # Extract old password for simplicity
         password = request.json["password"].strip()
@@ -167,7 +167,7 @@ def password():
             Thread(target=meower.send_email, args=(email, userdata["username"], "Security Alert", email_template,), kwargs={"type": "text/html"}).start()
 
         # Return success
-        return meower.respond({}, 200, error=False)
+        return meower.resp("empty")
 
 @settings.route("/totp", methods=["GET", "PATCH", "DELETE"])
 def totp():
@@ -179,11 +179,11 @@ def totp():
 
     if request.method == "GET":
         # Return whether the account has TOTP enabled
-        return meower.respond({"totp": (userdata["security"]["totp"] is not None)}, 200, error=False)
+        return meower.resp(200, {"totp": (userdata["security"]["totp"] is not None)})
     elif request.method == "PATCH":
         # Check if account already has TOTP
         if userdata["security"]["totp"] is not None:
-            return meower.respond({"type": "totpAlreadyEnabled", "message": "TOTP is already enabled"}, 400, error=True)
+            return meower.resp({"type": "totpAlreadyEnabled", "message": "TOTP is already enabled"}, 400, error=True)
 
         # Check for required data
         meower.check_for_json([{"id": "secret", "t": str, "l_min": 16, "l_max": 16}, {"id": "totp", "t": str, "l_min": 6, "l_max": 6}])
@@ -194,7 +194,7 @@ def totp():
 
         # Verify code
         if not pyotp.TOTP(secret).verify(code):
-            return meower.respond({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
+            return meower.resp({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
         
         # Set new TOTP secret and recovery codes
         recovery_codes = []
@@ -213,7 +213,7 @@ def totp():
             Thread(target=meower.send_email, args=(email, userdata["username"], "Security Alert", email_template,), kwargs={"type": "text/html"}).start()
 
         # Return success
-        return meower.respond({"recovery_codes": recovery_codes}, 200, error=False)
+        return meower.resp(200, {"recovery_codes": recovery_codes})
     elif request.method == "DELETE":
         # Check for required data
         meower.check_for_json({"id": "totp", "t": str, "l_min": 6, "l_max": 6})
@@ -225,9 +225,9 @@ def totp():
 
             # Check if it's valid
             if not (pyotp.TOTP(userdata["security"]["totp"]["secret"]).verify(request.json["totp"]) or (request.json["totp"] in userdata["security"]["totp"]["recovery_codes"])):
-                return meower.respond({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
+                return meower.resp({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
         else:
-            return meower.respond({"type": "totpNotEnabled", "message": "TOTP is not enabled"}, 400, error=True)
+            return meower.resp({"type": "totpNotEnabled", "message": "TOTP is not enabled"}, 400, error=True)
 
         # Remove TOTP
         meower.db.users.update_one({"_id": request.user._id}, {"$set": {"security.totp": None}})
@@ -242,7 +242,7 @@ def totp():
             Thread(target=meower.send_email, args=(email, userdata["username"], "Security Alert", email_template,), kwargs={"type": "text/html"}).start()
 
         # Return success
-        return meower.respond({}, 200, error=False)
+        return meower.resp("empty")
 
 @settings.route("/export-data", methods=["POST"])
 def export_data():
@@ -252,13 +252,13 @@ def export_data():
     # Make sure user has a verified email
     userdata = meower.db.users.find_one({"_id": request.user._id})
     if userdata["security"]["email"] is None:
-        return meower.respond({"type": "emailNotVerified", "message": "Email is not verified"}, 400, error=True)
+        return meower.resp({"type": "emailNotVerified", "message": "Email is not verified"}, 400, error=True)
 
     # Start thread to export data
     Thread(target=meower.export_data, args=(request.user._id,)).start()
 
     # Return success
-    return meower.respond({}, 200, error=False)
+    return meower.resp("empty")
 
 @settings.route("/delete-account", methods=["POST"])
 def delete_account():
@@ -268,7 +268,7 @@ def delete_account():
     # Get user's email address
     userdata = meower.db.users.find_one({"_id": request.user._id})
     if userdata["security"]["email"] is None:
-        return meower.respond({"type": "emailNotVerified", "message": "Email is not verified"}, 400, error=True)
+        return meower.resp({"type": "emailNotVerified", "message": "Email is not verified"}, 400, error=True)
     else:
         email = meower.decrypt(userdata["security"]["email"]["encryption_id"], userdata["security"]["email"]["encrypted_email"])
 
@@ -281,7 +281,7 @@ def delete_account():
     Thread(target=meower.send_email, args=(email, userdata["username"], "Delete your Meower account", email_template,), kwargs={"type": "text/html"}).start()
 
     # Return success
-    return meower.respond({}, 200, error=False)
+    return meower.resp("empty")
 
 @settings.route("/config", methods=["GET", "PATCH"])
 def get_config():
@@ -293,7 +293,7 @@ def get_config():
         userdata = meower.db.users.find_one({"_id": request.user._id})
 
         # Return current config
-        return meower.respond({"username": userdata["username"], "config": userdata["config"], "profile": userdata["profile"]}, 200, error=False)
+        return meower.resp(200, {"username": userdata["username"], "config": userdata["config"], "profile": userdata["profile"]})
     elif request.method == "PATCH":
         # Check whether the client is authenticated
         meower.require_auth([5], scope="foundation:settings:edit_config")
@@ -305,11 +305,11 @@ def get_config():
         if "username" in request.json:
             username = request.json["username"].strip()
             if not (type(username) == str):
-                return meower.respond({"type": "badDatatype"}, 400, error=True)
+                return meower.resp(422)
             elif len(username) > 20:
-                return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
+                return meower.resp(413)
             elif meower.db.users.find_one({"lower_username": username.lower()}) is not None:
-                return meower.respond({"type": "usernameAlreadyExists", "message": "That username is already taken"}, 409, error=True)
+                return meower.resp({"type": "usernameAlreadyExists", "message": "That username is already taken"}, 409, error=True)
             userdata["username"] = username
             userdata["lower_username"] = username.lower()
 
@@ -358,7 +358,7 @@ def get_config():
         meower.db.users.update_one({"_id": request.user._id}, {"$set": {"username": userdata["username"], "lower_username": userdata["lower_username"], "config": userdata["config"], "profile": userdata["profile"]}})
 
         # Return new config
-        return meower.respond({"username": userdata["username"], "config": userdata["config"], "profile": userdata["profile"]}, 200, error=False)
+        return meower.resp(200, {"username": userdata["username"], "config": userdata["config"], "profile": userdata["profile"]})
 
 @settings.route("/blocked", methods=["GET", "PUT", "DELETE"])
 def blocked_users():
@@ -379,7 +379,7 @@ def blocked_users():
                 payload_blocked.append(user.profile)
 
         # Return blocked users
-        return meower.respond({"blocked": payload_blocked}, 200, error=False)
+        return meower.resp(200, {"blocked": payload_blocked})
     elif request.method == "PUT":
         # Check for required data
         meower.check_for_json([{"id": "username", "t": str, "l_min": 1, "l_max": 20}])
@@ -387,7 +387,7 @@ def blocked_users():
         # Make sure user exists
         blocked_user = meower.User(meower, username=request.json["username"])
         if blocked_user.raw is None:
-            return meower.respond({"type": "userDoesNotExist"}, 404, error=True)
+            return meower.resp({"type": "userDoesNotExist"}, 404, error=True)
 
         # Add user to blocked list
         if blocked_user._id not in userdata["security"]["blocked"]:
@@ -395,7 +395,7 @@ def blocked_users():
             meower.db.users.update_one({"_id": request.user._id}, {"$set": {"security.blocked": userdata["security"]["blocked"]}})
 
         # Return payload
-        return meower.respond({}, 200, error=False)
+        return meower.resp("empty")
     elif request.method == "DELETE":
         # Check for required data
         meower.check_for_json([{"id": "username", "t": str, "l_min": 1, "l_max": 20}])
@@ -403,7 +403,7 @@ def blocked_users():
         # Make sure user exists
         blocked_user = meower.User(meower, username=request.json["username"])
         if blocked_user.raw is None:
-            return meower.respond({"type": "userDoesNotExist"}, 404, error=True)
+            return meower.resp({"type": "userDoesNotExist"}, 404, error=True)
 
         # Remove user from blocked list
         if blocked_user._id in userdata["security"]["blocked"]:
@@ -411,4 +411,4 @@ def blocked_users():
             meower.db.users.update_one({"_id": request.user._id}, {"$set": {"security.blocked": userdata["security"]["blocked"]}})
 
         # Return payload
-        return meower.respond({}, 200, error=False)
+        return meower.resp("empty")

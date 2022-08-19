@@ -5,9 +5,14 @@ from flask import Blueprint, request
 from flask import current_app as meower
 from passlib.hash import scrypt, bcrypt
 from hashlib import sha256
+import pyotp
+from webauthn import generate_registration_options, options_to_json
+from webauthn.helpers.structs import (
+    AuthenticatorSelectionCriteria,
+    UserVerificationRequirement,
+)
 import secrets
 import string
-import pyotp
 import time
 from uuid import uuid4
 import string
@@ -30,7 +35,7 @@ def before_request():
 
     # Check if IP is banned
     if (request.remote_addr in meower.ip_banlist) and (not (request.path in ["/v0", "/v0/status", "/status"] or request.path.startswith("/admin"))):
-        return meower.respond("ipBlocked")
+        return meower.resp("ipBlocked")
 
     # Attempt to authorize the user
     if ("Authorization" in request.headers) and (len(str(request.headers.get("Authorization"))) <= 136):
@@ -44,10 +49,10 @@ def before_request():
 def create_account():
     # Check for account creation block
     if meower.db.netlog.find_one({"_id": request.remote_addr, "creation_blocked": True}) is not None:
-        return meower.respond("auth.creationBlocked")
+        return meower.resp(403, msg="Account creation is blocked on your IP")
 
     # Check for required data
-    meower.check_for_json([{"id": "username", "t": str, "l_min": 1, "l_max": 20}, {"id": "password", "t": str, "l_max": 256}, {"id": "captcha", "t": str, "l_min": 1, "l_max": 1024}])
+    meower.check_for_json([{"id": "username", "t": str, "l_min": 1, "l_max": 20}, {"id": "password", "t": str, "l_max": 256}, {"id": "child", "t": bool}, {"id": "captcha", "t": str, "l_min": 1, "l_max": 1024}])
 
     # Extract username and password for simplicity
     username = request.json["username"].strip()
@@ -55,20 +60,20 @@ def create_account():
 
     # Check for bad characters
     if meower.check_for_bad_chars_username(username):
-        return meower.respond("text.illegalCharacters")
+        return meower.resp(400, msg="Username has an illegal character")
 
     # Check if the username is allowed
     for bad_username in meower.blocked_usernames:
         if bad_username.lower() in username.lower():
-            return meower.respond("auth.usernameConflict")
+            return meower.resp(409, msg="Username already taken")
 
     # Check if account exists
     if meower.db.users.find_one({"lower_username": username.lower()}) is not None:
-        return meower.respond("auth.usernameConflict")
+        return meower.resp(409, msg="Username already taken")
 
     # Check captcha
     #if not meower.check_captcha(request.json["captcha"]):
-        #return meower.respond("general.invalidCaptcha")
+        #return meower.resp(403, msg="Invalid captcha")
 
     # Create userdata
     userdata = {
@@ -89,10 +94,7 @@ def create_account():
             }
         },
         "profile": {
-            "pfp": {
-                "type": 0,
-                "data": 1
-            },
+            "pfp": "",
             "quote": "",
             "status": 1,
             "last_seen": int(time.time())
@@ -105,45 +107,51 @@ def create_account():
             },
             "webauthn": [],
             "totp": None,
-            "oauth": {
-                "authorized": [],
-                "scopes": {}
-            },
-            "blocked": [],
-            "username_history": [
-                {
-                    "username": username,
-                    "timestamp": int(time.time()),
-                    "changed_by_admin": False
-                }
-            ],
-            "moderation_history": [],
             "last_ip": None,
             "delete_after": None,
-            "suspended_until": None,
-            "banned": False
+            "banned_until": None
+        },
+        "authorized_oauth": {},
+        "privacy": {
+            "friend_requests": True,
+            "dm_requests": True,
+            "blocked": []
+        },
+        "guardian": {
+            "child": request.json["child"],
+            "linked_guardian": None,
+            "account_disabled": False,
+            "filter_level": 0,
+            "user_whitelist": False,
+            "community_whitelist": False,
+            "groups_enabled": True,
+            "encrypted_chats": True,
+            "allowed_users": [],
+            "blocked_users": [],
+            "allowed_communities": [],
+            "blocked_communities": [],
         }
     }
     meower.db.users.insert_one(userdata)
 
     # Return session
-    return meower.respond("general.ok", meower.foundation_session(userdata["_id"], "your password"))
+    return meower.resp(200, meower.foundation_session(userdata["_id"], "your password"))
 
 @oauth.route("/login/<username>", methods=["GET"])
 def login_begin(username):
     if len(username) > 20:
-        return meower.respond("auth.usernameInvalid")
+        return meower.resp(401, msg="Invalid username")
     username = username.strip()
 
     # Check for bad characters
     if meower.check_for_bad_chars_username(username):
-        return meower.respond("text.illegalCharacters")
+        return meower.resp(401, msg="Invalid username")
 
     # Get user data
     userdata = meower.db.users.find_one({"lower_username": username.lower()})
     if userdata is None:
         # Account does not exist
-        return meower.respond("auth.usernameInvalid")
+        return meower.resp(401, msg="Invalid username")
 
     # Get authentication method
     auth_method = None
@@ -155,7 +163,7 @@ def login_begin(username):
         auth_method = "email"
     
     # Return authentication method, pfp, and theme
-    return meower.respond("general.ok", {"auth_method": auth_method})
+    return meower.resp(200, {"auth_method": auth_method})
 
 @oauth.route("/login/<username>/password", methods=["POST"])
 def login_password(username):
@@ -170,36 +178,52 @@ def login_password(username):
     userdata = meower.db.users.find_one({"lower_username": username})
     if userdata is None:
         # Account does not exist
-        return meower.respond("auth.usernameInvalid")
+        return meower.resp(401, msg="Invalid username")
+
+    # Check if user has had too many failed attempts
+    meower.check_ratelimit("password", userdata["_id"])
 
     # Check if password is correct
     stored_pswd = userdata["security"]["password"]
     if stored_pswd is None:
-        return meower.respond("auth.passwordInvalid")
+        return meower.resp(400, msg="Invalid authentication method")
     elif stored_pswd["type"] == "scrypt":
         # Verify scrypt password
         password = sha256(password.encode()).hexdigest()
         if not scrypt.verify(password, stored_pswd["hash"]):
-            return meower.respond("auth.passwordInvalid")
+            meower.ratelimit("password", userdata["_id"], burst=5, seconds=60)
+            return meower.resp(401, msg="Incorrect password")
     elif stored_pswd["type"] == "bcrypt":
         # Verify legacy bcrypt password
         if not bcrypt.verify(password, stored_pswd["hash"]):
-            return meower.respond("auth.passwordInvalid")
+            meower.ratelimit("password", userdata["_id"], burst=5, seconds=60)
+            return meower.resp(401, msg="Incorrect password")
         else:
             # Update bcrypt password to scrypt password
             password = sha256(password.encode()).hexdigest()
             meower.db.users.update_one({"_id": userdata["_id"]}, {"$set": {"security.password.type": "scrypt", "security.password.hash": scrypt.hash(password)}})
 
-    # Return response
+    # Check TOTP 2FA
     if userdata["security"]["totp"] is not None:
-        session = meower.create_session(2, userdata["_id"], secrets.token_urlsafe(64), expires=300)
-        return meower.respond("general.ok", session)
-    else:
-        return meower.respond("general.ok", meower.foundation_session(userdata["_id"], "your password"))
+        meower.check_for_json([{"id": "totp", "t": str, "l_min": 6, "l_max": 10}])
+
+        # Check if user has had too many failed attempts
+        meower.check_ratelimit("totp", userdata["_id"])
+
+        totp_code = request.json["totp"].replace("-", "")
+        if (not pyotp.TOTP(userdata["security"]["totp"]["secret"]).verify(totp_code)) and (totp_code not in userdata["security"]["totp"]["recovery"]):
+            meower.ratelimit("totp", userdata["_id"], burst=5, seconds=60)
+            return meower.resp(401, msg="Invalid TOTP")
+        elif totp_code in userdata["security"]["totp"]["recovery"]:
+            userdata["security"]["totp"]["recovery"].remove(totp_code)
+            meower.db.users.update_one({"_id": userdata["_id"]}, {"$set": {"security.totp.recovery": userdata["security"]["totp"]["recovery"]}})
+
+    # Return response
+    return meower.resp(200, meower.foundation_session(userdata["_id"], "your password"))
 
 @oauth.route("/login/<username>/webauthn", methods=["POST"])
 def login_webauthn(username):
-    return meower.respond("general.notImplemented")
+    return meower.resp(501)
 
 @oauth.route("/login/<username>/email", methods=["GET", "POST"])
 def login_email(username):
@@ -210,7 +234,7 @@ def login_email(username):
     userdata = meower.db.users.find_one({"lower_username": username})
     if userdata is None:
         # Account does not exist
-        return meower.respond("auth.usernameInvalid")
+        return meower.resp(401)
     
     # Get email
     if userdata["security"]["email"] is not None:
@@ -218,9 +242,9 @@ def login_email(username):
     else:
         # Email is not set
         if request.method == "GET":
-            return meower.respond("general.ok")
+            return meower.resp(200)
         elif request.method == "POST":
-            return meower.respond("auth.codeInvalid")
+            return meower.resp(401)
 
     if request.method == "GET":
         # Generate email verification code
@@ -230,7 +254,7 @@ def login_email(username):
         # Send email
         meower.send_email(email, "confirmations/login_code", {"username": userdata["username"], "subject": "Login verification code", "code": code})
 
-        return meower.respond("general.ok")
+        return meower.resp(200)
     elif request.method == "POST":
         # Check for required data
         meower.check_for_json([{"id": "code", "t": str, "l_min": 1, "l_max": 8}])
@@ -239,35 +263,13 @@ def login_email(username):
         code = request.json["code"].upper()
         session = meower.db.sessions.find_one({"user": userdata["_id"], "type": 0, "action": "login", "token": code})
         if session is None:
-            return meower.respond("auth.codeInvalid")
+            return meower.resp(401)
         else:
             # Delete session
             meower.db.sessions.delete_one({"_id": session["_id"]})
 
             # Return session
-            return meower.respond("general.ok", meower.foundation_session(userdata["_id"], "email"))
-
-@oauth.route("/login/totp", methods=["POST"])
-def login_totp():
-    # Check whether the client is authenticated
-    meower.require_auth([2])
-
-    # Check for required data
-    meower.check_for_json([{"id": "totp", "t": str, "l_min": 6, "l_max": 8}])
-    
-    # Get user data from database
-    userdata = meower.db.users.find_one({"_id": request.user._id})
-
-    # Check for valid authentication
-    if (userdata["security"]["totp"] is None) or pyotp.TOTP(userdata["security"]["totp"]["secret"]).verify(request.json["totp"]) or (request.json["totp"] in userdata["security"]["totp"]["recovery_codes"]):
-        # Delete session
-        request.session.delete()
-    
-        # Full account session
-        return meower.respond(meower.foundation_session(request.user._id, "your password"), 200, error=False)
-    else:
-        # Invalid TOTP code
-        return meower.respond({"type": "invalidCredentials", "message": "Invalid TOTP code"}, 401, error=True)
+            return meower.resp(200, meower.foundation_session(userdata["_id"], "email"))
 
 @oauth.route("/login/device", methods=["GET"])
 def login_device():
@@ -278,7 +280,7 @@ def login_device():
     request.session.delete()
 
     # Full account session
-    return meower.respond(meower.foundation_session(request.user._id, "another device"), 200, error=False)
+    return meower.resp(200, meower.foundation_session(request.user._id, "another device"))
 
 @oauth.route("/session", methods=["GET", "DELETE"])
 def current_session():
@@ -295,11 +297,11 @@ def current_session():
         user = meower.User(meower, user_id=session["user"])
 
         # Return session data
-        return meower.respond({"session": session, "user": user.client, "foundation_session": (session["type"] == 3), "oauth_session": (session["type"] == 5)}, 200, error=False)
+        return meower.resp(200, {"session": session, "user": user.client, "foundation_session": (session["type"] == 3), "oauth_session": (session["type"] == 5)})
     elif request.method == "DELETE":
         # Delete session
         request.session.delete()
-        return meower.respond({}, 200, error=False)
+        return meower.resp("empty")
 
 @oauth.route("/session/refresh", methods=["POST"])
 def refresh_session():
@@ -309,9 +311,9 @@ def refresh_session():
 
     # Check for bad datatypes and syntax
     if not (type(session) == str):
-        return meower.respond({"type": "badDatatype"}, 400, error=True)
+        return meower.resp(422)
     elif len(session) >= 128:
-        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
+        return meower.resp(413)
 
     # Check for token reuse
     meower.db.sessions.delete_many({"previous_renew_tokens": {"$all": [session]}})
@@ -319,7 +321,7 @@ def refresh_session():
     # Get token data
     session_data = meower.db.sessions.find_one({"refresh_token": session})
     if (session_data is None) or (session_data["type"] != 5) or (session_data["refresh_expires"] < time.time()):
-        return meower.respond({"type": "tokenDoesNotExist"}, 400, error=True)
+        return meower.resp({"type": "tokenDoesNotExist"}, 400, error=True)
     else:
         # Refresh token
         session_data["token"] = secrets.token_urlsafe(64)
@@ -329,7 +331,7 @@ def refresh_session():
         meower.db.sessions.update_one({"_id": session_data["_id"]}, {"$set": session_data})
         userdata = meower.db.users.find_one({"_id": session_data["user"]})
         del userdata["security"]
-        return meower.respond({"session": session_data, "user": userdata, "requires_totp": False}, 200, error=False)
+        return meower.resp(200, {"session": session_data, "user": userdata, "requires_totp": False})
 
 @oauth.route("/authorize/device", methods=["POST"])
 def authorize_device():
@@ -347,11 +349,11 @@ def authorize_device():
 
     # Check if the session is invalid
     if (session is None) or (session["type"] != 1) or (session["expires"] < time.time()) or (session["user"] != request.user._id) or session["verified"]:
-        return meower.respond({"type": "codeDoesNotExist"}, 400, error=True)
+        return meower.resp({"type": "codeDoesNotExist"}, 400, error=True)
     else:
         # Verify session
         meower.db.sessions.update_one({"_id": session["_id"]}, {"$set": {"verified": True}})
-        return meower.respond({}, 200, error=False)
+        return meower.resp("empty")
 
 @oauth.route("/authorize/app", methods=["GET", "POST"])
 def authorize_app():
@@ -370,7 +372,7 @@ def authorize_app():
     app_data = meower.db.oauth.find_one({"_id": app_id})
     # Check if the app exists
     if app_data is None:
-        return meower.respond({"type": "appDoesNotExist"}, 400, error=True)
+        return meower.resp({"type": "appDoesNotExist"}, 400, error=True)
 
     # Apply the "all" scope
     if "all" in scopes:
@@ -403,11 +405,11 @@ def authorize_app():
         payload["scopes"] = scopes
         payload["redirect_uri"] = redirect_uri
         payload["redirect_allowed"] = ((redirect_uri in app_data["allowed_redirects"]) or ("*" in app_data["allowed_redirects"]))
-        return meower.respond(payload, 200, error=False)
+        return meower.resp(200, payload)
     elif request.method == "POST":
         # Check if user is banned
         if request.user._id in app_data["bans"]:
-            return meower.respond({"type": "userBannedFromApp"}, 403, error=True)
+            return meower.resp({"type": "userBannedFromApp"}, 403, error=True)
 
         # Authorize app
         if not (app_id in userdata["security"]["oauth"]["authorized"]):
@@ -417,7 +419,7 @@ def authorize_app():
         
         # Return OAuth exchange session
         session = meower.create_session(4, request.user._id, secrets.token_urlsafe(16), 300, app=app_id, scopes=scopes)
-        return meower.respond(session, 200, error=False)
+        return meower.resp(200, session)
 
 @oauth.route("/exchange", methods=["POST"])
 def exchange_oauth_code():
@@ -432,7 +434,7 @@ def exchange_oauth_code():
     # Get session data
     session = meower.db.sessions.find_one({"token": code})
     if (session is None) or (session["type"] != 4) or (session["expires"] < time.time()) or (session["app"] != app_id):
-        return meower.respond({"type": "codeDoesNotExist"}, 401, error=True)
+        return meower.resp({"type": "codeDoesNotExist"}, 401, error=True)
 
     # Get user data
     userdata = meower.db.users.find_one({"_id": session["user"]})
@@ -440,15 +442,15 @@ def exchange_oauth_code():
     # Get app data
     app_data = meower.db.oauth.find_one({"_id": app_id})
     if app_data is None:
-        return meower.respond({"type": "appDoesNotExist"}, 400, error=True)
+        return meower.resp({"type": "appDoesNotExist"}, 400, error=True)
 
     # Check if session is valid
     if app_data["secret"] != secret:
-        return meower.respond({"type": "invalidSecret"}, 401, error=True)
+        return meower.resp({"type": "invalidSecret"}, 401, error=True)
     elif session["user"] in app_data["bans"]:
-        return meower.respond({"type": "userBannedFromApp"}, 403, error=True)
+        return meower.resp({"type": "userBannedFromApp"}, 403, error=True)
     elif not ((app_id in userdata["security"]["oauth"]["authorized"]) or (session["scopes"] != userdata["security"]["oauth"]["scopes"][app_id])):
-        return meower.respond({"type": "userNotAuthorized"}, 401, error=True)
+        return meower.resp(401)
 
     # Delete exchange session
     meower.db.sessions.delete_one({"_id": session["_id"]})
@@ -456,7 +458,7 @@ def exchange_oauth_code():
     # Return OAuth full session
     session = meower.create_session(5, session["user"], secrets.token_urlsafe(32), expires=1800, app=session["app"], scopes=session["scopes"])
     session["previous_refresh_tokens"] = None
-    return meower.respond(session, 200, error=False)
+    return meower.resp(200, session)
 
 @oauth.route("/apps", methods=["GET", "POST", "PATCH", "DELETE"])
 def manage_oauth_apps():
@@ -465,7 +467,7 @@ def manage_oauth_apps():
 
     if request.method == "GET": # Get all OAuth apps
         apps = meower.db.oauth.find({"owner": request.user._id}).sort("name", pymongo.ASCENDING)
-        return meower.respond({"apps": list(apps)}, 200, error=False)
+        return meower.resp(200, {"apps": list(apps)})
     elif request.method == "POST": # Create new OAuth app
         # Check for required data
         meower.check_for_json([{"id": "name", "t": str, "l_min": 1, "l_max": 20}])
@@ -476,7 +478,7 @@ def manage_oauth_apps():
         # Check if user has too many apps
         apps_count = meower.db.oauth.count_documents({"owner": request.user._id})
         if apps_count >= 50:
-            return meower.respond({"type": "tooManyApps"}, 403, error=True)
+            return meower.resp({"type": "tooManyApps"}, 403, error=True)
 
         # Craete app data
         app_data = {
@@ -495,7 +497,7 @@ def manage_oauth_apps():
         meower.db.oauth.insert_one(app_data)
 
         # Return app data to user
-        return meower.respond(app_data, 200, error=False)
+        return meower.resp(200, app_data)
 
 @oauth.route("/apps/<app_id>", methods=["GET", "PATCH", "DELETE"])
 def manage_oauth_app(app_id):
@@ -504,24 +506,24 @@ def manage_oauth_app(app_id):
 
     # Check for bad syntax
     if len(app_id) > 32:
-        return meower.respond({"type": "fieldTooLarge"}, 400, error=True)
+        return meower.resp(413)
 
     # Get app data
     app_data = meower.db.oauth.find_one({"_id": app_id})
     if (app_data is None) or (app_data["owner"] != request.user._id):
-        return meower.respond({"type": "notFound", "message": "Requested OAuth app was not found"}, 404, error=True)
+        return meower.resp({"type": "notFound", "message": "Requested OAuth app was not found"}, 404, error=True)
 
     # Check for required data
     if request.method == "GET": # Return app data
-        return meower.respond(app_data, 200, error=False)
+        return meower.resp(200, app_data)
     elif request.method == "PATCH": # Update app data
         # Update owner
         if ("owner" in request.json) and (len(request.json["owner"]) < 32):
             userdata = meower.db.users.find_one({"_id": request.json["owner"]})
             if userdata is None:
-                return meower.respond({"type": "userDoesNotExist"}, 400, error=True)
+                return meower.resp({"type": "userDoesNotExist"}, 400, error=True)
             elif userdata["_id"] == request.user._id:
-                return meower.respond({"type": "cannotChangeOwnerToSelf", "message": "You cannot change the owner to yourself"}, 400, error=True)
+                return meower.resp({"type": "cannotChangeOwnerToSelf", "message": "You cannot change the owner to yourself"}, 400, error=True)
             else:
                 app_data["owner"] = request.json["owner"]
                 meower.db.oauth.update_one({"_id": app_id}, {"$set": {"owner": request.json["owner"]}})
@@ -571,7 +573,7 @@ def manage_oauth_app(app_id):
             meower.db.oauth.update_one({"_id": app_id}, {"$set": {"secret": app_data["secret"]}})
 
         # Return new app data
-        return meower.respond(app_data, 200, error=False)
+        return meower.resp(200, app_data)
     elif request.method == "DELETE": # Delete app
         meower.db.oauth.delete_one({"_id": app_id})
-        return meower.respond({}, 200, error=False)
+        return meower.resp("empty")

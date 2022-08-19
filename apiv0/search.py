@@ -37,7 +37,7 @@ def search_profiles():
     }
 
     # Return payload
-    return meower.respond(payload, 200, error=False)
+    return meower.resp(200, payload)
 
 @search.route("/posts", methods=["GET"])
 def search_home_posts():
@@ -74,7 +74,7 @@ def search_home_posts():
     }
 
     # Return payload
-    return meower.respond(payload, 200, error=False)
+    return meower.resp(200, payload)
 
 @search.route("/chats", methods=["GET"])
 def search_public_chats():
@@ -112,4 +112,4 @@ def search_public_chats():
     }
 
     # Return payload
-    return meower.respond(payload, 200, error=False)
+    return meower.resp(200, payload)
