@@ -1334,37 +1334,32 @@ class Meower:
         if self.supporter.isAuthenticated(client):
             if type(val) == str:
                 if not len(val) > 50:
-                    
-                    if not self.supporter.checkForBadCharsUsername(val):
-                        if self.filesystem.does_item_exist("chats", val):
-                            result, payload = self.filesystem.load_item("chats", val)
-                            if result:
-                                if client in payload["members"]:
-                                    if payload["owner"] == client:
-                                        result = self.filesystem.delete_item("chats", val)
-                                        for member in payload["members"]:
-                                            if member in self.cl.getUsernames():
-                                                self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": payload["_id"]}, "id": member})
-                                        if result:
-                                            self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                                        else:
-                                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                    if self.filesystem.does_item_exist("chats", val):
+                        result, payload = self.filesystem.load_item("chats", val)
+                        if result:
+                            if client in payload["members"]:
+                                if payload["owner"] == client:
+                                    result = self.filesystem.delete_item("chats", val)
+                                    for member in payload["members"]:
+                                        if member in self.cl.getUsernames():
+                                            self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": payload["_id"]}, "id": member})
+                                    if result:
+                                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                                     else:
-                                        payload["members"].remove(client)
-                                        result = self.filesystem.write_item("chats", val, payload)
-                                        if result:
-                                            self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                                        else:
-                                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                                 else:
-                                    self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
+                                    payload["members"].remove(client)
+                                    result = self.filesystem.write_item("chats", val, payload)
+                                    if result:
+                                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                                    else:
+                                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                             else:
-                                self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                                self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
                         else:
-                            self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
+                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                     else:
-                        # Bad characters being used
-                        self.returnCode(client = client, code = "IllegalChars", listener_detected = listener_detected, listener_id = listener_id)
+                        self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
                 else:
                     # Too large
                     self.returnCode(client = client, code = "TooLarge", listener_detected = listener_detected, listener_id = listener_id)
