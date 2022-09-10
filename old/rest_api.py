@@ -20,14 +20,14 @@ accounts = Security(
     logger = supporter.log,
     errorhandler = supporter.full_stack
 )
-meower = Meower(
-    supporter = supporter,
-    cl = None,
-    logger = supporter.log,
-    errorhandler = supporter.full_stack,
-    accounts = accounts,
-    files = filesystem
-)
+meower = Meower(None, {
+        "supporter": supporter,
+        "cl": None,
+        "logger": supporter.log,
+        "errorhandler": supporter.full_stack,
+        "accounts": accounts,
+        "files": filesystem
+    })
 
 def fetch_post_from_storage(post_id):
     if filesystem.does_item_exist("posts", post_id):

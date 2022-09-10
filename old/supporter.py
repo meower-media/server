@@ -29,22 +29,23 @@ class Supporter:
         self.packet_handler = packet_callback
         self.listener_detected = False
         self.listener_id = None
+        self.importer_ignore_functions = []
         
         if not self.cl == None:
             # Add custom status codes to CloudLink
-            self.cl.codes["KeyNotFound"] = "I:010 | Key Not Found"
-            self.cl.codes["PasswordInvalid"] = "I:011 | Invalid Password"
-            self.cl.codes["GettingReady"] = "I:012 | Getting ready"
-            self.cl.codes["ObsoleteClient"] = "I:013 | Client is out-of-date or unsupported"
-            self.cl.codes["Pong"] = "I:014 | Pong"
-            self.cl.codes["IDExists"] = "I:015 | Account exists"
-            self.cl.codes["2FAOnly"] = "I:016 | 2FA Required"
-            self.cl.codes["MissingPermissions"] = "I:017 | Missing permissions"
-            self.cl.codes["Banned"] = "E:018 | Account Banned"
-            self.cl.codes["IllegalChars"] = "E:019 | Illegal characters detected"
-            self.cl.codes["Kicked"] = "E:020 | Kicked"
-            self.cl.codes["ChatExists"] = "E:021 | Chat exists"
-            self.cl.codes["ChatNotFound"] = "E:022 | Chat not found"
+            self.cl.supporter.codes["KeyNotFound"] = "I:010 | Key Not Found"
+            self.cl.supporter.codes["PasswordInvalid"] = "I:011 | Invalid Password"
+            self.cl.supporter.codes["GettingReady"] = "I:012 | Getting ready"
+            self.cl.supporter.codes["ObsoleteClient"] = "I:013 | Client is out-of-date or unsupported"
+            self.cl.supporter.codes["Pong"] = "I:014 | Pong"
+            self.cl.supporter.codes["IDExists"] = "I:015 | Account exists"
+            self.cl.supporter.codes["2FAOnly"] = "I:016 | 2FA Required"
+            self.cl.supporter.codes["MissingPermissions"] = "I:017 | Missing permissions"
+            self.cl.supporter.codes["Banned"] = "E:018 | Account Banned"
+            self.cl.supporter.codes["IllegalChars"] = "E:019 | Illegal characters detected"
+            self.cl.supporter.codes["Kicked"] = "E:020 | Kicked"
+            self.cl.supporter.codes["ChatExists"] = "E:021 | Chat exists"
+            self.cl.supporter.codes["ChatNotFound"] = "E:022 | Chat not found"
         
         # Create permitted lists of characters
         self.permitted_chars_username = []
@@ -177,10 +178,10 @@ class Supporter:
     def on_connect(self, client):
         if not self.cl == None:
             if self.status["repair_mode"]:
-                self.log("Refusing connection from {0} due to repair mode being enabled".format(client["id"]))
-                self.cl.kickClient(client)
+                self.log("Refusing connection from {0} due to repair mode being enabled".format(client))
+                self.cl.rejectClient(client)
             else:
-                self.log("{0} Connected.".format(client["id"]))
+                self.log("{0} Connected.".format(client))
                 self.modify_client_statedata(client, "authtype", "")
                 self.modify_client_statedata(client, "authed", False)
                 
@@ -295,7 +296,7 @@ class Supporter:
                 self.log("Kicking {0}".format(username))
 
                 # Tell client it's going to get kicked
-                self.sendPacket({"cmd": "direct", "val": self.cl.codes[status], "id": username})
+                self.sendPacket({"cmd": "direct", "val": self.cl.supporter.codes[status], "id": username})
 
                 # Unauthenticate client
                 client = self.cl.statedata["ulist"]["objs"][self.cl.statedata["ulist"]["usernames"][username]]["object"]
