@@ -1,24 +1,17 @@
 # Meower-Server
-Official source code of the Meower server, written in Python. Powered by CloudLink. 
+Official source code of the Meower server, written in Python. Powered by Cloudlink 4.
 
-## NOTICE
-This is the APIv0 Branch of Code! This API code will only be maintained up until when New Meower is released.
-
-APIv0 will be upgraded automatically to APIv1 when New Meower is released. The API can be found at https://api.meower.org/
+***DO NOT USE THIS BRANCH!!!***
+This is a separate branch for porting the current Meower 5.7 server to Cloudlink 4 and for major code restructuring/cleanup. This is highly experimental, and there will be bugs. Please use the main branch for now.
 
 ## Installing Dependencies
-* Run `pip3 install -r requirements.txt` in the downloaded and unzipped directory
+* Run `pip3 install -r requirements.txt` prior to starting the server. Cloudlink 4 is bundled with the server.
 
 ## Running the server
 Simply download and run main.py to start the server. Files and directories will be created to store posts, logs, and userdata.
-
 To connect to the server, change the IP settings of your client to connect to ws://127.0.0.1:3000/.
 
 ### Rest API
-
-This Rest API is configured to use CF Argo Tunnels for getting client IPs, but otherwise everything will function.
-
-Currently supported functions of the API:
 
 * /home - Gets the current homepage index.
 * /home?page=# - Lets you get a certain page # of the homepage.
@@ -34,15 +27,6 @@ Currently supported functions of the API:
 * /users/(Username) - Gets the specified user's info.
 * /users/(Username)/posts - Gets the specified user's posts.
 * /statistics - Shows Meower's statistics (users, posts, and chats)
-### Trust keys and access control
-
-In development, Meower is configured to use "meower" as a CloudLink Trust key. If you notice a forked server using this key, please request for it to be removed. This key is intended for development purposes only.
-
-Meower is configured to use CloudLink's Trusted Access feature, which implements the following security features:
-1. IP blocker feature
-2. Client kicking
-3. Trust keys
-4. Protection from maliciously modified clients
 
 ## Contributing to the source
 
