@@ -1,8 +1,5 @@
-<<<<<<< Updated upstream
-=======
 import secrets
 
->>>>>>> Stashed changes
 class Meower:
 
     """
@@ -22,65 +19,11 @@ class Meower:
     server.
     """
     
-<<<<<<< Updated upstream
-	def __init__(self, cloudlink, parent):
-=======
     def __init__(self, cloudlink, parent):
->>>>>>> Stashed changes
         # Inherit cloudlink when initialized by cloudlink's custom command loader
         self.cloudlink = cloudlink
         
         # Inherit parent class attributes
-<<<<<<< Updated upstream
-		self.parent = parent
-		self.supporter = parent.supporter
-		self.db = parent.db
-        self.log = parent.log
-    
-    def __template__(self, client, message, listener_detected, listener_id, room_id):
-        # This is a template for a custom command. This will be ignored by Cloudlink, since it is a private method.
-        pass
-    
-    def get_ulist(self, client, message, listener_detected, listener_id, room_id):
-        # Retains compatibility with CL3/CL Turbo-based clients. This remaps the get_ulist command to CL4's native ulist... Does any official Meower Vanilla client use this command???
-        self.cloudlink.ulist(client, message, listener_detected, listener_id, room_id)
-    
-    def ip(self, client, message, listener_detected, listener_id, room_id):
-        # Retains compatibility with CL3/CL Turbo-based clients. CL4 automatically retrieves IP addresses, client-reported IP addresses are a security vulnerability.
-        pass
-    
-    def type(self, client, message, listener_detected, listener_id, room_id):
-        # Retains compatibility with CL3/CL Turbo-based clients. Ignore setting user types because CL4 made this functionality obsolete.
-        pass
-    
-    # Meower accounts and security
-    
-    def authpswd(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def gen_account(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def get_profile(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def update_config(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def change_pswd(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def del_tokens(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def del_account(self, client, message, listener_detected, listener_id, room_id):
-=======
         self.parent = parent
         self.supporter = parent.supporter
         self.db = parent.db
@@ -313,23 +256,11 @@ class Meower:
             await self.cloudlink.sendCode(client, "IDRequired", listener_detected, listener_id)
             return
         
->>>>>>> Stashed changes
         # TODO
         pass
     
     # Meower general functionality
     
-<<<<<<< Updated upstream
-    def get_home(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def post_home(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def get_post(self, client, message, listener_detected, listener_id, room_id):
-=======
     async def get_home(self, client, message, listener_detected, listener_id, room_id):
         # Removing authentication check because all clients should be able to get the homepage regardless of login state
         # TODO
@@ -348,19 +279,11 @@ class Meower:
         # Removing authentication check because all clients should be able to get the homepage regardless of login state
         # However, this should check if you aren't authenticated if you are not reading homepage
         
->>>>>>> Stashed changes
         # TODO
         pass
     
     # Meower logging and data management
     
-<<<<<<< Updated upstream
-    def get_peak_users(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def search_user_posts(self, client, message, listener_detected, listener_id, room_id):
-=======
     async def get_peak_users(self, client, message, listener_detected, listener_id, room_id):
         # Removing authentication check because all clients should be able to check the peak users counter
         # TODO
@@ -370,75 +293,11 @@ class Meower:
         # Removing authentication check because all clients should be able to search for homepage content
         # However, this should check if you aren't authenticated if you are not reading homepage
         
->>>>>>> Stashed changes
         # TODO
         pass
     
     # Meower moderator features
     
-<<<<<<< Updated upstream
-    def report(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def close_report(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def clear_home(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def clear_user_posts(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-        
-    def alert(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-        
-    def announce(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def block(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def unblock(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def kick(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def get_user_ip(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def get_ip_data(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def get_user_data(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def ban(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def pardon(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def terminate(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def repair_mode(self, client, message, listener_detected, listener_id, room_id):
-=======
     async def report(self, client, message, listener_detected, listener_id, room_id):
         # Check if not authenticated
         if not client.authed:
@@ -580,55 +439,11 @@ class Meower:
             await self.cloudlink.sendCode(client, "IDRequired", listener_detected, listener_id)
             return
         
->>>>>>> Stashed changes
         # TODO
         pass
     
     # Meower chat-related functionality
     
-<<<<<<< Updated upstream
-    def delete_post(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def create_chat(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def leave_chat(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def get_chat_list(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def get_chat_data(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def get_chat_posts(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-        
-    def set_chat_state(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def post_chat(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def add_to_chat(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-        
-    def remove_from_chat(self, client, message, listener_detected, listener_id, room_id):
-        # TODO
-        pass
-    
-    def get_inbox(self, client, message, listener_detected, listener_id, room_id):
-=======
     async def delete_post(self, client, message, listener_detected, listener_id, room_id):
         # Check if not authenticated
         if not client.authed:
@@ -725,7 +540,6 @@ class Meower:
             await self.cloudlink.sendCode(client, "IDRequired", listener_detected, listener_id)
             return
         
->>>>>>> Stashed changes
         # TODO
         pass
     
