@@ -1,10 +1,9 @@
-import websocket as WebsocketClient
 from .clientRootHandlers import clientRootHandlers
 from .clientInternalHandlers import clientInternalHandlers
 
 class client:
     """
-    cloudlink.client
+    cloudlink.client (non-Async version)
 
     This is the client mode for Cloudlink. You can connect to a Cloudlink server and send/receive packets like a Scratch client would. This module simplifies the Cloudlink protocol for Python.
     """
@@ -12,6 +11,7 @@ class client:
     def __init__(self, parentCl, enable_logs=True):
         # Read the CloudLink version from the parent class
         self.version = parentCl.version
+        self.ws = parentCl.ws
 
         # Init the client
         self.motd_msg = ""
@@ -27,7 +27,7 @@ class client:
         self.connected = False
         
         # Init modules
-        self.supporter = parentCl.supporter(self, enable_logs, 2)
+        self.supporter = parentCl.supporter(self, enable_logs, 3)
         self.clientRootHandlers = clientRootHandlers(self)
         self.clientInternalHandlers = clientInternalHandlers(self)
         
@@ -65,12 +65,12 @@ class client:
         self.on_pmsg = self.clientInternalHandlers.pmsg
         self.on_ping = self.clientInternalHandlers.ping
 
-        self.log("Cloudlink client initialized!")
+        self.log("Cloudlink non-async client initialized!")
     
     def run(self, ip="ws://127.0.0.1:3000/"):
         # Initialize the Websocket client
         self.log("Cloudlink client starting up now...")
-        self.wss = WebsocketClient.WebSocketApp(
+        self.wss = self.ws.WebSocketApp(
             ip,
             on_message = self.clientRootHandlers.on_packet,
             on_error = self.clientRootHandlers.on_error,
@@ -80,7 +80,10 @@ class client:
 
         # Run the CloudLink client
         self.linkStatus = 1
-        self.wss.run_forever()
+        try:
+            self.wss.run_forever()
+        except:
+            pass
         self.log("Cloudlink client exiting...")
 
     def stop(self):
@@ -88,12 +91,13 @@ class client:
             self.linkStatus = 3
             self.log("Cloudlink client disconnecting...")
             self.wss.close()
+            self.log("Cloudlink client disconnected...")
             self.cloudlink.connected = False
 
             # Fire callbacks
-            if self.on_close in self.cloudlink.usercallbacks:
-                if self.cloudlink.usercallbacks[self.on_close] != None:
-                    self.cloudlink.usercallbacks[self.on_close](close_status_code=None, close_msg=None)
+            if self.stop in self.cloudlink.usercallbacks:
+                if self.cloudlink.usercallbacks[self.stop] != None:
+                    self.cloudlink.usercallbacks[self.stop](close_status_code=None, close_msg=None)
 
     # Client API
 
