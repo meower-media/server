@@ -18,6 +18,8 @@ class Server:
     This is the source code for a complete, standalone Meower server.
     This depends upon a running instance of MongoDB.
     
+    NOTE: REST API IS NOT READY YET, IT HAS NOT YET BEEN REFACTORED TO SUPPORT RENAMED MODULES
+    
     Meower's Python dependencies are:
     * cloudlink >= 0.1.8.7
     * websockets
@@ -48,7 +50,7 @@ class Server:
     for TLS/SSL.
     """
     
-    def __init__(self, ip:str = "127.0.0.1", db_ip:str = "mongodb://192.168.86.40:27017", debug:bool = False):
+    def __init__(self, ip:str = "127.0.0.1", db_ip:str = "mongodb://127.0.0.1:27017", debug:bool = False):
     
         # Load environment variables from the .env file
         load_dotenv()
@@ -56,6 +58,7 @@ class Server:
         self.uuid = uuid
         self.datetime = datetime
         self.time = time.time
+        self.user_sessions = dict()
         
         # Initialize the Cloudlink server.
         self.cl = Cloudlink().server(
@@ -73,7 +76,10 @@ class Server:
             [
                 "setid",
                 "link", 
-                "unlink"
+                "unlink",
+                "gmsg",
+                "direct",
+                "ulist"
             ]
         )
         
@@ -88,15 +94,6 @@ class Server:
             {
                 Meower: self
             }
-        )
-        
-        # Load blocklist
-        self.cl.ipblocklist = list(
-            self.db.dbclient["netlog"].find(
-                {
-                    "blocked": True
-                }
-            )
         )
         
         # Run REST API

@@ -37,12 +37,12 @@ class serverRootHandlers:
             # Report to the client the CL Server version
             await self.cloudlink.sendPacket(client, {"cmd": "server_version", "val": str(self.cloudlink.version)}, ignore_rooms = True)
 
-            # Report to the client the currently cached global message
-            await self.cloudlink.sendPacket(client, {"cmd": "gmsg", "val": self.cloudlink.global_msg}, ignore_rooms = True)
+            # Report to the client the currently cached global message (Disabled in Meower)
+            # await self.cloudlink.sendPacket(client, {"cmd": "gmsg", "val": self.cloudlink.global_msg}, ignore_rooms = True)
 
-            # Update the client's userlist
-            pages, size, ulist = self.supporter.paginate_ulist(self.cloudlink.getUsernames())
-            await self.cloudlink.sendPacket(client, {"cmd": "ulist", "pages": pages, "size": size, "val": ulist}, ignore_rooms = True)
+            # Update the client's userlist (Disabled in Meower)
+            #pages, size, ulist = self.supporter.paginate_ulist(self.cloudlink.getUsernames())
+            #await self.cloudlink.sendPacket(client, {"cmd": "ulist", "pages": pages, "size": size, "val": ulist}, ignore_rooms = True)
 
             # Tell the client the server's Message-Of-The-Day (MOTD)
             if self.cloudlink.motd_enable:
@@ -62,12 +62,12 @@ class serverRootHandlers:
         # Remove client from all rooms (Required to prevent BrokenPipeErrors)
         self.cloudlink.removeClientFromAllRooms(client)
 
-        # Update ulists in all rooms
-        tmp_roomData = copy.copy(self.cloudlink.roomData)
-        for room in tmp_roomData:
-            clist = self.cloudlink.getAllUsersInRoom(room)
-            pages, size, ulist = self.supporter.paginate_ulist(self.cloudlink.getUsernames(room))
-            await self.cloudlink.sendPacket(clist, {"cmd": "ulist", "pages": pages, "size": size, "val": ulist}, rooms = room)
+        # Update ulists in all rooms (Disabled in Meower)
+        #tmp_roomData = copy.copy(self.cloudlink.roomData)
+        #for room in tmp_roomData:
+        #    clist = self.cloudlink.getAllUsersInRoom(room)
+        #    pages, size, ulist = self.supporter.paginate_ulist(self.cloudlink.getUsernames(room))
+        #    await self.cloudlink.sendPacket(clist, {"cmd": "ulist", "pages": pages, "size": size, "val": ulist}, rooms = room)
 
         # Fire callbacks
         if self.on_close in self.cloudlink.usercallbacks:
@@ -143,16 +143,30 @@ class serverRootHandlers:
                         if message["cmd"] in self.cloudlink.customCommands:
                             # New custom command system.
                             isCustom = True
-                        elif message["cmd"] == "direct":
-                            if self.supporter.isPacketSane(message["val"]):
-                                if type(message["val"]) == dict:
+                            
+                            # Handle command overrides, check if it's a legacy command
+                            if type(message["val"]) == dict:
+                                if "cmd" in message["val"]:
                                     if message["val"]["cmd"] in self.cloudlink.customCommands:
                                         # Legacy custom command system (using direct)
                                         isLegacy = True
+                                    else:
+                                        isCustom = True
+                            
+                        elif message["cmd"] == "direct":
+                            if self.supporter.isPacketSane(message["val"]):
+                                if type(message["val"]) == dict:
+                                    if "cmd" in message["val"]:
+                                        if message["val"]["cmd"] in self.cloudlink.customCommands:
+                                            # Legacy custom command system (using direct)
+                                            isLegacy = True
+                                    else:
+                                        isCustom = True
                                 else:
                                     isCustom = True
                         else:
                             isValid = False
+                        
                         if isValid:
                             if isLegacy:
                                 self.supporter.log(f"Client {client.id} ({client.full_ip}) sent legacy custom command \"{message['val']['cmd']}\"")

@@ -15,6 +15,7 @@ class Accounts:
         self.db = parent.db
         self.uuid = parent.uuid
         self.full_stack = parent.cl.supporter.full_stack
+        self.default_strength = 12
         
         # These keys should not be modified/read by a client unless explicitly requested
         self.protected_keys = [
@@ -29,30 +30,55 @@ class Accounts:
             "created"
         ]
         
+        self.all_user_keys = [
+            "lower_username",
+            "uuid",
+            "unread_inbox",
+            "theme",
+            "mode",
+            "sfx",
+            "debug",
+            "bgm",
+            "bgm_song",
+            "layout",
+            "pfp_data",
+            "quote",
+            "email",
+            "pswd",
+            "tokens",
+            "lvl",
+            "banned",
+            "last_ip",
+            "online"
+        ]
+        
         # Codes
         self.accountExists = 1
         self.accountDoesNotExist = 2
-        self.accountWriteError = 3
-        self.accountReadError = 4
-        self.accountBanned = 5
-        self.accountNotBanned = 6
-        self.accountCreated = 7
-        self.accountDeleted = 8
-        self.accountUpdated = 9
-        self.accountAuthenticated = 10
-        self.accountNotAuthenticated = 11
+        self.accountIOError = 3
+        self.accountBanned = 4
+        self.accountNotBanned = 5
+        self.accountCreated = 6
+        self.accountDeleted = 7
+        self.accountUpdated = 8
+        self.accountAuthenticated = 9
+        self.accountNotAuthenticated = 10
+        self.accountAuthenticatedWithToken = 11
         
-    def create_account(self, username:str, password:str, strength:int = 12):
+    def create_account(self, username:str, password:str, strength:int = None):
+        if strength == None:
+            strength = self.default_strength
+        
         # Datatype checks
         if (not type(username) == str) or (not type(password) == str) or (not type(strength) == int):
             raise TypeError
         
         # Check if the account exists
         if self.account_exists(username, True) == self.accountExists:
-           self.log(f"Not creating account {username}: Account already exists")
+           self.log(f"[Accounts] Not creating account {username}: Account already exists")
            return self.accountExists
         
-        self.log(f"Creating account: {username}")
+        self.log(f"[Accounts] Creating account: {username}")
         
         # Hash and salt the password
         pswd_bytes = bytes(password, "utf-8")
@@ -77,14 +103,15 @@ class Accounts:
             "tokens": [],
             "lvl": 0,
             "banned": False,
-            "last_ip": None
+            "last_ip": None,
+            "online": False,
         }
         
         # Store new account in the database
         if self.db.create_item("usersv0", username, account_data):
-            return self.accountCreated, account_data
+            return self.accountCreated
         else:
-            return self.accountWriteError
+            return self.accountIOError
         
     def delete_account(self, username:str):
         # Datatype checks
@@ -93,10 +120,10 @@ class Accounts:
         
         # Check if the account exists
         if self.account_exists(username, True) == self.accountDoesNotExist:
-           self.log(f"Not deleting account {username}: Account does not exist")
+           self.log(f"[Accounts] Not deleting account {username}: Account does not exist")
            return self.accountDoesNotExist
         
-        self.log(f"Deleting account: {username}")
+        self.log(f"[Accounts] Deleting account: {username}")
         
         # Delete the user's data from the database
         self.db.delete_item("usersv0", username)
@@ -131,34 +158,31 @@ class Accounts:
         
         # Check if the account exists
         if self.account_exists(username, True) == self.accountDoesNotExist:
-           self.log(f"Not authenticating account {username}: Account does not exist")
+           self.log(f"[Accounts] Not authenticating account {username}: Account does not exist")
            return self.accountDoesNotExist
         
         # Prevent authentication if banned
         if self.is_account_banned(username) == self.accountBanned:
-            self.log(f"Not authenticating account {username}: Account banned")
+            self.log(f"[Accounts] Not authenticating account {username}: Account banned")
             return self.accountBanned
         
         result, data = self.db.load_item("usersv0", username)
-        
         # Prevent authentication if it failed to read the account
         if not result:
-            return self.accountReadError
+            return self.accountIOError
         
         self.log(f"Authenticating account: {username}")
         
         # Check if the account is using an authentication token
         if "tokens" in data:
             if password in data["tokens"]:
-                self.log(f"Authenticating account {username} using token")
-                data["tokens"].remove(password)
-                self.update_setting(username, {"tokens": data["tokens"]}, forceUpdate=True)
-                return self.accountAuthenticated
+                self.log(f"[Accounts] Authenticating account {username} using token")
+                return self.accountAuthenticatedWithToken
         else:
             data["tokens"] = []
             result = self.db.write_item("usersv0", username, data)
             if not result:
-                return self.accountWriteError
+                return self.accountIOError
         
         # Read the hashed and salted password
         pswd_bytes = bytes(password, "utf-8")
@@ -169,29 +193,26 @@ class Accounts:
             return self.accountAuthenticated
         else:
             return self.accountNotAuthenticated
-      
-    def change_password(self, username:str, newpassword:str, strength:int = 12):
+    
+    def change_password(self, username:str, newpassword:str, strength:int = None):
+        if strength == None:
+            strength = self.default_strength
+        
         # Datatype checks
         if (not type(username) == str) or (not type(newpassword) == str) or (not type(strength) == int):
             raise TypeError
         
         # Check if the account exists
         if self.account_exists(username, True) == self.accountDoesNotExist:
-           self.log(f"Not updating account password {username}: Account does not exist")
+           self.log(f"[Accounts] Not updating account password {username}: Account does not exist")
            return self.accountDoesNotExist
         
         # Prevent authentication if banned
         if self.is_account_banned(username) == self.accountBanned:
-            self.log(f"Not updating account password {username}: Account banned")
+            self.log(f"[Accounts] Not updating account password {username}: Account banned")
             return self.accountBanned
         
-        result, data = self.db.load_item("usersv0", username)
-        
-        # Prevent authentication if it failed to read the account
-        if not result:
-            return self.accountReadError
-        
-        self.log(f"Updating account password: {username}")
+        self.log(f"[Accounts] Updating account password: {username}")
         
         # Hash and salt the password
         pswd_bytes = bytes(newpassword, "utf-8")
@@ -200,7 +221,7 @@ class Accounts:
         # Load and update the password entry in the account
         result, account_data = self.db.load_item("usersv0", username)
         if not result:
-            return self.accountReadError
+            return self.accountIOError
         
         account_data["pswd"] = hashed_pw.decode()
         result = self.db.write_item("usersv0", username, account_data)
@@ -208,7 +229,7 @@ class Accounts:
         if result:
             return self.accountUpdated
         else:
-            return self.accountWriteError
+            return self.accountIOError
     
     def account_exists(self, username:str, ignore_case:bool = False):
         if not type(username) == str:
@@ -238,12 +259,12 @@ class Accounts:
         # Check if the account exists
         if self.account_exists(username, True) == self.accountDoesNotExist:
            return self.accountDoesNotExist
-         
-        self.log(f"Reading account: {username}")
+        
+        self.log(f"[Accounts] Reading account: {username}")
         
         result, data = self.db.load_item("usersv0", username)
         if not result:
-            return self.accountReadError
+            return self.accountIOError
         
         if data["banned"]:
             return self.accountBanned
@@ -257,41 +278,49 @@ class Accounts:
         
         # Check if the account exists
         if self.account_exists(username, True) == self.accountDoesNotExist:
-           self.log(f"Not updating account data {username}: Account does not exist")
+           self.log(f"[Accounts] Not updating account data {username}: Account does not exist")
            return self.accountDoesNotExist
         
+        # Prevent modifications to account if banned
+        if self.is_account_banned(username) == self.accountBanned:
+            self.log(f"[Accounts] Not updating account data {username}: Account banned")
+            return self.accountBanned
+        
+        # Load the account data
         result, account_data = self.db.load_item("usersv0", username)
         
         if not result:
-            return self.accountReadError
+            return self.accountIOError
         
         for key, value in newdata.items():
-            if key in account_data.keys():
+            if key in self.all_user_keys:
                 if forceUpdate:
                     account_data[key] = value
                 else:
                     if key in self.protected_keys:
-                        self.log(f"Blocking attempt to modify secure key {key}")
+                        self.log(f"[Accounts] Blocking attempt to modify secure key {key}")
                     else:
                         # Prepare for stupidity
                         
-                        typeCheck = type(value) == str
-                        typeCheck = typeCheck and self.supporter.checkForBadCharsPost(value)
-                        typeCheck = typeCheck and not len(str(value)) > 360
-                        typeCheck = typeCheck and not value == None
+                        typeCheck = type(key) == str
                         typeCheck = typeCheck and type(value) in [str, int, float, bool, dict]
+                        typeCheck = typeCheck and not(self.parent.supporter.checkForBadCharsPost(str(value)))
+                        typeCheck = typeCheck and not len(str(value)) > 360
                         
                         if not typeCheck:
+                            self.log(f"Key {key} failed type Check")
                             break
                         
                         if type(value) == str:
-                            account_data[key] = self.supporter.wordfilter(value)
+                            account_data[key] = self.parent.supporter.wordfilter(value)
                         else:
                             account_data[key] = value
+            else:
+                self.log(f"Not writing Key: {key} is unknown")
         
         result = self.db.write_item("usersv0", username, account_data)
         if not result:  
-            return self.accountWriteError
+            return self.accountIOError
         else:
             return self.accountUpdated
     
@@ -302,17 +331,22 @@ class Accounts:
         
         # Check if the account exists
         if self.account_exists(username, True) == self.accountDoesNotExist:
-           self.log(f"Not updating account data {username}: Account does not exist")
+           self.log(f"[Accounts] Not getting account data {username}: Account does not exist")
            return self.accountDoesNotExist
         
         # Read the user from the database
         result, account_data = self.db.load_item("usersv0", str(username))
         if not result:
-            return self.accountReadError
+            return self.accountIOError
+       
+        del account_data["_id"]
+        del account_data["lower_username"]
         
         # Remove sensitive data
         if omitSensitive:
             for sensitive in [
+                "_id",
+                "lower_username",
                 "unread_inbox",
                 "theme",
                 "mode",
@@ -324,13 +358,15 @@ class Accounts:
                 "email",
                 "pswd",
                 "tokens",
-                "last_ip"
+                "last_ip",
             ]:
                 if sensitive in account_data:
                     del account_data[sensitive]
         if isClient:
             if "pswd" in account_data:
                 del account_data["pswd"]
+            if "email" in account_data:
+                del account_data["email"]
             if "tokens" in account_data:
                 del account_data["tokens"]
             if "last_ip" in account_data:
