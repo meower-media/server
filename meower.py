@@ -1571,18 +1571,21 @@ class Meower:
                     if FileRead:
                         if client in chatdata["members"]:
                             # Add user to group chat
-                            chatdata["members"].append(username)
-                            FileWrite = self.filesystem.write_item("chats", chatid, chatdata)
+                            if not username in chatdata["members"]:
+                                chatdata["members"].append(username)
+                                FileWrite = self.filesystem.write_item("chats", chatid, chatdata)
 
-                            if FileWrite:
-                                # Inbox message to say the user was added to the group chat
-                                self.createPost("inbox", username, "You have been added to the group chat '{0}'!".format(chatdata["nickname"]))
+                                if FileWrite:
+                                    # Inbox message to say the user was added to the group chat
+                                    self.createPost("inbox", username, "You have been added to the group chat '{0}'!".format(chatdata["nickname"]))
 
-                                # Tell client user was added
-                                self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                            else:
-                                # Some other error, raise an internal error.
-                                self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                                    # Tell client user was added
+                                    self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                                else:
+                                    # Some other error, raise an internal error.
+                                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                             else:
+                                self.returnCode(client = client, code = "IDExists", listener_detected = listener_detected, listener_id = listener_id)
                         else:
                             self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
                     else:
