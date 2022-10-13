@@ -260,7 +260,7 @@ class Security:
                             else:
                                 if key not in ["lvl", "pswd", "banned", "email", "last_ip", "lower_username", "uuid", "tokens", "created"]:
                                     if key in accountData.keys():
-                                        if ((type(value) == str) and (len(value) <= 360) and (not self.supporter.checkForBadCharsPost(value))) or ((type(value) == int) and (len(str(value)) <= 360)) or ((type(value) == float) and (len(str(value)) <= 360)) or (type(value) == bool) or (type(value) == None):
+                                        if ((type(value) == str) and (len(value) <= 360)) or ((type(value) == int) and (len(str(value)) <= 360)) or ((type(value) == float) and (len(str(value)) <= 360)) or (type(value) == bool) or (type(value) == None):
                                             if type(value) == str:
                                                 accountData[key] = self.supporter.wordfilter(value)
                                             else:
