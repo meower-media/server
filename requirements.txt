@@ -1,4 +1,5 @@
 CloudLink>=0.1.7.4
+better-profanity
 bcrypt
 requests
 flask-cors
