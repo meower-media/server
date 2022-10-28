@@ -1584,7 +1584,7 @@ class Meower:
                                 else:
                                     # Some other error, raise an internal error.
                                     self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                             else:
+                            else:
                                 self.returnCode(client = client, code = "IDExists", listener_detected = listener_detected, listener_id = listener_id)
                         else:
                             self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
