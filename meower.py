@@ -1302,6 +1302,9 @@ class Meower:
                 # Post not found
                 self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
         else:
+
+
+
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
     
@@ -1310,6 +1313,7 @@ class Meower:
         if self.supporter.isAuthenticated(client):
             if type(val) == str:
                 if not len(val) > 20:
+		    val = self.supporter.wordfilter(val)
                     if not self.filesystem.does_item_exist("chats", val):
                         result = self.filesystem.create_item("chats", str(uuid.uuid4()), {"nickname": val, "owner": client, "members": [client]})
                         if result:
