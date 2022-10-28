@@ -1,4 +1,5 @@
 import bcrypt
+import time
 from uuid import uuid4
 
 """
@@ -35,6 +36,7 @@ class Security:
                 hashed_pw = self.bc.hashpw(pswd_bytes, self.bc.gensalt(strength)) # Hash and salt the password
                 result = self.files.create_item("usersv0", str(username), { # Default account data
                         "lower_username": username.lower(),
+                        "created": int(time.time()),
                         "uuid": str(uuid4()),
                         "unread_inbox": False,
                         "theme": "orange",
