@@ -1575,7 +1575,7 @@ class Meower:
                     if FileRead:
                         if client in chatdata["members"]:
                             # Add user to group chat
-                            if not username in chatdata["members"]:
+                            if (username not in chatdata["members"]) and (username != "Server"):
                                 chatdata["members"].append(username)
                                 FileWrite = self.filesystem.write_item("chats", chatid, chatdata)
 
@@ -1617,7 +1617,7 @@ class Meower:
                     result, chatdata = self.filesystem.load_item("chats", chatid)
                     if result:
                         if client == chatdata["owner"]:
-                            if client != username:
+                            if (client != username) and (username != "Server"):
                                 # Remove user from group chat
                                 chatdata["members"].remove(username)
                                 result = self.filesystem.write_item("chats", chatid, chatdata)
