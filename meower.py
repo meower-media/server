@@ -1581,7 +1581,7 @@ class Meower:
 
                                 if FileWrite:
                                     # Inbox message to say the user was added to the group chat
-                                    self.createPost("inbox", username, "You have been added to the group chat '{0}'!".format(chatdata["nickname"]))
+                                    self.createPost("inbox", username, "You have been added to the group chat '{0}' by @{1}!".format(chatdata["nickname"], client))
 
                                     # Tell client user was added
                                     self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
@@ -1624,7 +1624,7 @@ class Meower:
 
                                 if result:
                                     # Inbox message to say the user was removed from the group chat
-                                    self.createPost("inbox", username, "You have been removed from the group chat '{0}'!".format(chatdata["nickname"]))
+                                    self.createPost("inbox", username, "You have been removed from the group chat '{0}' by @{1}!".format(chatdata["nickname"], client))
 
                                     # Tell client user was added
                                     self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
