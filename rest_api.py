@@ -144,34 +144,28 @@ def get_mychat_posts(chatid):
 @app.route('/home', methods=["GET"])
 def get_home():
     page = 1
-    autoget = False
     args = request.args
     
     if "page" in args:
         page = args.get("page")
         try:
             page = int(page)
+
+            if (page > 1) and (request.user is None):
+                return {"error": True, "type": "Unauthorized"}, 401
+            else:
+                supporter.log("{0} requested to get page {1} of home".format(request.user, page))
         except:
             return {"error": True, "type": "Datatype"}, 500
-    
-    if "autoget" in args:
-        autoget = True
 
-    payload = meower.getIndex(location="posts", query={"post_origin": "home", "isDeleted": False}, truncate=True, page=page)
-    if not autoget:
-        for i in range(len(payload["index"])):
-            payload["index"][i] = payload["index"][i]["_id"]
-        payload["error"] = False
+    try:
+        posts = meower.getIndex(location="posts", query={"post_origin": "home", "isDeleted": False}, truncate=True, page=page)
+        payload = {"error": False, "autoget": [], "page#": posts["page#"], "pages": (1 if (request.user is None) else posts["pages"])}
+        payload["autoget"] = posts["index"]
+        
         return payload, 200
-    else:
-        supporter.log("Loaded index, data {0}".format(payload))
-        try:
-            tmp_payload = {"error": False, "autoget": [], "page#": payload["page#"], "pages": payload["pages"]}
-            tmp_payload["autoget"] = payload["index"]
-            
-            return tmp_payload, 200
-        except:
-            return {"error": True, "type": "Internal"}, 500
+    except:
+        return {"error": True, "type": "Internal"}, 500
 
 @app.route('/reports', methods=["GET"])
 def get_reports():
@@ -373,7 +367,7 @@ def get_user_posts(username):
         except:
             return {"error": True, "type": "Internal"}, 500
 
-@app.route("/statistics", methods=["GET"])
+@app.route('/statistics', methods=["GET"])
 def get_statistics():
     try:
         users = filesystem.count_items("usersv0", {})
