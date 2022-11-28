@@ -6,3 +6,4 @@ mashedpotatos
 mashed
 potatos
 analytics
+japanese
