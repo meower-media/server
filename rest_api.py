@@ -55,7 +55,7 @@ def pre_request_check_auth():
             username = username[:20]
         token = request.headers.get("token")
         if len(token) > 64:
-            username = username[:64]
+            token = token[:64]
         filecheck, fileread, filedata = accounts.get_account(username, False, False)
         if filecheck and fileread:
             if (token in filedata["tokens"]) and (filedata["banned"] == False):
