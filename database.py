@@ -1,6 +1,6 @@
 import pymongo
 
-class Database:
+class database:
     
     """
     Meower Database - Port complete
@@ -15,7 +15,7 @@ class Database:
         self.log = parent.log
         self.uuid = parent.uuid
         self.time = parent.time
-        self.cloudlink = parent.cl
+        self.cloudlink = parent.server
         self.pymongo = pymongo
         
         # Initialize database connection
@@ -24,28 +24,28 @@ class Database:
         try:
             self.dbclient.server_info() # Attempt to get info from the server, pymongo will raise an exception and exit if it fails
         except pymongo.errors.ServerSelectionTimeoutError:
-            self.log("Failed to connect the MongoDB server.")
+            self.log("[Database] Failed to connect the MongoDB server.")
             exit()
         
         # Create database collections
         self.log("[Database] Connected to the MongoDB server!")
-        self.dbclient = self.dbclient["meowerserver"]
+        self.dbclient = self.dbclient["meowerbeta"]
         
         # Create collections
         for item in ["config", "usersv0", "usersv1", "netlog", "posts", "chats", "reports"]:
             if not item in self.dbclient.list_collection_names():
-                self.log("Creating collection {0}".format(item))
+                self.log("[Database] Creating collection {0}".format(item))
                 self.dbclient.create_collection(name=item)
         
         # Create collection indexes
         self.dbclient["netlog"].create_index("users")
         self.dbclient["usersv0"].create_index("lower_username")
-        for index in ["u", "post_origin", "type", "p"]:
+        for index in ["u", "post_origin", "p"]:
             self.dbclient["posts"].create_index(index)
         self.dbclient["chats"].create_index("members")
         
         # Create reserved accounts
-        for username in ["Server", "Deleted", "Meower", "Admin", "username", "Annoucement", "Alert"]:
+        for username in ["Server", "Deleted", "Meower"]:
             self.create_item("usersv0", username, {
                 "lower_username": username.lower(),
                 "created": int(self.time()),
@@ -62,11 +62,10 @@ class Database:
                 "quote": None,
                 "email": None,
                 "pswd": None,
-                "tokens": [],
+                "token_vers": None,
                 "lvl": None,
                 "banned": False,
-                "last_ip": None,
-                "online": False
+                "last_ip": None
             }, silent = True)
         
         # Create IP banlist file
@@ -79,12 +78,15 @@ class Database:
         self.create_item("config", "supported_versions", {
             "index": [
                 "scratch-beta-5-r7",
-                "scratch-beta-6"
+                "scratch-beta-5-r8",
+                "scratch-beta-6",
+                "0.6.0"
             ]
         }, silent = True)
 
         # Create Filter file
         self.create_item("config", "filter", {
+            "usernames": ["Admin", "username", "Annoucement", "Alert"],
             "whitelist": [], 
             "blacklist": []
         }, silent = True)
@@ -106,7 +108,7 @@ class Database:
                 tmp_blacklist.append(bad)
             
             self.log(f"[Database] Loaded IP blocklist, storing {len(tmp_blacklist)} blocked addresses.")
-            self.cloudlink.ipblocklist = tmp_blacklist
+            self.cloudlink.ip_blocklist = tmp_blacklist
         
         # Load wordfilters
         self.log("[Database] Loading wordfilter data...")
@@ -163,37 +165,21 @@ class Database:
         
         return query_return
     
-    def does_item_exist(self, collection, id):
-        # Check if the collection exists in the database
-        if not collection in self.dbclient.list_collection_names():
-            return False
-        
+    def does_item_exist(self, collection, id):        
         # Return if an entry exists for that document query
         return self.dbclient[collection].find_one({"_id": id}) != None
     
     def create_item(self, collection, id, data, silent = False):
-        # Check if the collection exists in the database
-        if not collection in self.dbclient.list_collection_names():
-            self.log("[Database] Failed to create_item: {0} collection doesn't exist".format(collection))
-            return False
-        
-        # Check if the document doesn't aleady exist within the collection
-        if self.does_item_exist(collection, id):
-            if not silent:
-                self.log("[Database] Failed to create_item: {0} already exists in {1}".format(id, collection))
-            return False
-
         # Create document in the collection
         data["_id"] = id
-        self.dbclient[collection].insert_one(data)
-        return True
+        try:
+            self.dbclient[collection].insert_one(data)
+        except:
+            return False
+        else:
+            return True
     
     def update_item(self, collection, id, data):
-        # Check if the collection exists in the database
-        if not collection in self.dbclient.list_collection_names():
-            self.log("[Database] Failed to update_item: {0} collection doesn't exist".format(collection))
-            return False
-
         # Check if the document exists within the collection
         if not self.does_item_exist(collection, id):
             self.log("[Database] Failed to update_item: {0} does not exist in {1}".format(id, collection))
@@ -204,11 +190,6 @@ class Database:
         return True
 
     def write_item(self, collection, id, data):
-        # Check if the collection exists in the database
-        if not collection in self.dbclient.list_collection_names():
-            self.log("[Database] Failed to write_item: {0} collection doesn't exist".format(collection))
-            return False
-
         # Check if the document exists within the collection
         if not self.does_item_exist(collection, id):
             self.log("[Database] Failed to write_item: {0} does not exist in {1}".format(id, collection))
@@ -220,45 +201,24 @@ class Database:
         return True
     
     def load_item(self, collection, id):
-        # Check if the collection exists in the database
-        if not collection in self.dbclient.list_collection_names():
-            self.log("[Database] Failed to load_item: {0} collection doesn't exist".format(collection))
-            return False, None
-
-        # Check if the document exists within the collection
-        if not self.does_item_exist(collection, id):
-            self.log("[Database] Failed to load_item: {0} does not exist in {1}".format(id, collection))
-            return False, None
+        # Get item from database
+        item = self.dbclient[collection].find_one({"_id": id})
         
         # Return the document data
-        return True, self.dbclient[collection].find_one({"_id": id})
+        return (item is not None), item
     
-    def find_items(self, collection, query):
-        # Check if the collection exists in the database
-        if not collection in self.dbclient.list_collection_names():
-            return []
-        
+    def find_items(self, collection, query):        
         # Return all documents located in the collection for that query
         payload = []
-        for item in self.dbclient[collection].find(query):
+        for item in self.dbclient[collection].find(query, projection = {"_id": 1}):
             payload.append(item["_id"])
         return payload
     
     def count_items(self, collection, query):
-        # Check if the collection exists in the database
-        if not collection in self.dbclient.list_collection_names():
-            self.log("[Database] Failed to count_items: {0} collection doesn't exist".format(collection))
-            return 0
-        
         # Return total count of all documents in the collection for that query
         return self.dbclient[collection].count_documents(query)
 
     def delete_item(self, collection, id):
-        # Check if the collection exists in the database
-        if not collection in self.dbclient.list_collection_names():
-            self.log("[Database] Failed to delete_item: {0} collection doesn't exist".format(collection))
-            return False
-
         # Check if the document exists within the collection
         if not self.does_item_exist(collection, id):
             self.log("[Database] Failed to delete_item: {0} does not exist in {1}".format(id, collection))

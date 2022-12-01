@@ -1,0 +1,10 @@
+{
+    "_id": "abc123",
+    "email": "tnix@meower.org",
+    "pswd": "$b2$14jaesifbnhisdgns",
+    "token_id": "disfjoisdjgiojodifhjo",
+    "mfa_method": "totp",
+    "mfa_recovery": ["123", "321", "abc", "012", "345", "746"],
+    "totp_secret": "base32secret3232",
+    "last_ip": "127.0.0.1"
+}

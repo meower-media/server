@@ -1,0 +1,15 @@
+{
+    "_id": "abc123",
+    "username": "Tnix",
+    "lower_username": "tnix",
+    "theme": "orange",
+    "mode": false,
+    "sfx": true,
+    "bgm": true,
+    "bgm_song": 8,
+    "layout": "new",
+    "pfp_data": 2,
+    "quote": "Mike was here and that should be a good thing.",
+    "admin": "1",
+    "ban_id": null
+}

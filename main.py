@@ -1,118 +1,72 @@
-from cloudlink import Cloudlink
-from threading import Thread
-from supporter import Supporter
-from accounts import Accounts
-from database import Database
-from meower import Meower
-#from rest_api import app as rest_server
-from dotenv import load_dotenv
-from datetime import datetime
-import uuid
-import time
+# Cloudlink
+from cloudlink import cloudlink
+from accounts import accounts
+from database import database
+from supporter import supporter
+from meower import meower
 
-class Server:
-    
-    """
-    Meower Server
-    
-    This is the source code for a complete, standalone Meower server.
-    This depends upon a running instance of MongoDB.
-    
-    NOTE: REST API IS NOT READY YET, IT HAS NOT YET BEEN REFACTORED TO SUPPORT RENAMED MODULES
-    
-    Meower's Python dependencies are:
-    * cloudlink >= 0.1.8.7
-    * websockets
-    * flask
-    * flask_cors
-    * better-profanity
-    * bcrypt 
-    
-    These dependencies are built-in to Python.
-    * threading
-    * traceback
-    * datetime
-    * time
-    * os
-    * sys
-    * json
-    * random
-    
-    In a production environment, you should forward ports 3000 and 3001
-    using a reverse proxy or a tunneling service (ex. ngrok, cloudflare).
-    
-    If you are running Meower in a Python container (ex. Docker or Podman),
-    set the ip parameter to 0.0.0.0 to expose the container to the network
-    and to your reverse proxy/tunneling daemon(s).
-    
-    Under no circumstance should you port forward the server directly,
-    this is a security risk, and Cloudlink does not have native support
-    for TLS/SSL.
-    """
-    
-    def __init__(self, ip:str = "127.0.0.1", db_ip:str = "mongodb://127.0.0.1:27017", debug:bool = False):
-    
-        # Load environment variables from the .env file
-        load_dotenv()
+# REST API
+from rest_api.errors import router as errors_bp
+from rest_api.middleware import router as middleware_bp
+from rest_api.auth import router as auth_bp
+
+# Pip
+import secrets
+from dotenv import load_dotenv
+import uuid
+import threading
+from datetime import datetime
+from time import time
+from quart import Quart
+
+# Load env variables
+load_dotenv()
+
+class main:
+    def __init__(self, db_ip:str = "mongodb://127.0.0.1:27017", timeout_ms:int = 10000, debug:bool = False):
+        # Initialize CL4 server
+        self.server = cloudlink().server(logs=debug)
+
+        # Configure the CL4 server
+        self.server.enable_scratch_support = False
+        self.server.check_ip_addresses = True
+        self.server.enable_motd = True
+        self.server.motd_message = "Meower Social Media Platform Server"
+
+        # Disable specific CL commands
+        self.server.disable_methods(["setid"])
         
+        # Create alias for builtin functions
+        self.log = self.server.supporter.log
         self.uuid = uuid
         self.datetime = datetime
-        self.time = time.time
-        self.user_sessions = dict()
-        
-        # Initialize the Cloudlink server.
-        self.cl = Cloudlink().server(
-            logs = debug
-        )
-        
-        # Create shared log attribute from Cloudlink's native logging functionality
-        self.log = self.cl.supporter.log
-        
-        # Set the server's Message-Of-The-Day.
-        self.cl.setMOTD(True, "Meower Social Media Platform Server")
-        
-        # Disable commands for Cloudlink, as this functionality is handled by the Meower server
-        self.cl.disableCommands(
-            [
-                "setid",
-                "link", 
-                "unlink",
-                "gmsg",
-                "direct",
-                "ulist"
-            ]
-        )
-        
-        # Meower libraries will inherit cl from self, as well as inherit each other from self
-        self.supporter = Supporter(self)
-        self.db = Database(self, db_ip)
-        self.accounts = Accounts(self)
-        
-        # Initialize the Meower server and it's commands, and allow Meower to access self, see the Meower class for more info.
-        self.cl.loadCustomCommands(
-            Meower, 
-            {
-                Meower: self
-            }
-        )
-        
+        self.time = time
+
+        # Initialize libraries
+        self.supporter = supporter(self)
+        self.db = database(self, db_ip, timeout_ms)
+        self.accounts = accounts(self)
+        self.meower = meower(self)
+
+        # Load Meower CL4 methods - Will automatically override builtin commands
+        self.server.load_custom_methods(self.meower)
+    
+    def run(self, host:str = "127.0.0.1", cl_port:int = 3000, api_port:int = 3001):   
         # Run REST API
-        """Thread(
-            target = rest_server.run,
-            kwargs = {
-                "host": ip,
-                "port": 3001,
-                "debug": debug,
-                "use_reloader": False
-            }
-        ).start()"""
-        
+        rest_api = Quart(__name__, root_path = "/v0")
+        rest_api.register_blueprint(errors_bp)
+        rest_api.register_blueprint(middleware_bp)
+        rest_api.register_blueprint(auth_bp, url_prefix = "/auth")
+        rest_api_thread = threading.Thread(target=rest_api.run, kwags={"host": host, "port": api_port})
+        rest_api_thread.daemon = True
+        rest_api_thread.start()
+
         # Run Cloudlink server
-        self.cl.run(host = ip, port = 3000)
-        exit()
+        self.server.run(host, cl_port)
+    
+    def run_cl_only(self, host:str = "127.0.0.1", cl_port:int = 3000):
+        self.server.run(host, cl_port)
 
 if __name__ == "__main__":
-    Server(
-        ip = "127.0.0.1",
-        debug = True
-    )
+    meowerserver = main(db_ip="mongodb://192.168.1.185:27017/", debug=True) # Local IP
+    meowerserver.run_cl_only()

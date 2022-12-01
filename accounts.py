@@ -1,6 +1,9 @@
-import bcrypt
+from passlib.hash import bcrypt
+import time
+import jwt
+import os
 
-class Accounts:
+class accounts:
     
     """
     Meower Accounts - Port complete
@@ -14,7 +17,7 @@ class Accounts:
         self.log = parent.log
         self.db = parent.db
         self.uuid = parent.uuid
-        self.full_stack = parent.cl.supporter.full_stack
+        self.full_stack = parent.server.supporter.full_stack
         self.default_strength = 12
         
         # These keys should not be modified/read by a client unless explicitly requested
@@ -26,7 +29,7 @@ class Accounts:
             "last_ip",
             "lower_username", 
             "uuid",
-            "tokens", 
+            "token_vers", 
             "created"
         ]
         
@@ -45,11 +48,10 @@ class Accounts:
             "quote",
             "email",
             "pswd",
-            "tokens",
+            "token_vers",
             "lvl",
             "banned",
-            "last_ip",
-            "online"
+            "last_ip"
         ]
         
         # Codes
@@ -80,14 +82,11 @@ class Accounts:
         
         self.log(f"[Accounts] Creating account: {username}")
         
-        # Hash and salt the password
-        pswd_bytes = bytes(password, "utf-8")
-        hashed_pw = bcrypt.hashpw(pswd_bytes, bcrypt.gensalt(strength))
-        
         # Create account template (revise in Beta 6, use usersv1)
         account_data = {
-            "lower_username": username.lower(),
-            "uuid": str(self.uuid.uuid4()),
+            "_id": self.uuid.uuid4(),
+            "username": username,
+            "created": int(time.time()), # is this redundant?
             "unread_inbox": False,
             "theme": "orange",
             "mode": True,
@@ -99,12 +98,11 @@ class Accounts:
             "pfp_data": 1,
             "quote": "",
             "email": "",
-            "pswd": hashed_pw.decode(),
-            "tokens": [],
+            "pswd": bcrypt.hash(password, rounds = strength),
+            "token_vers": str(self.uuid.uuid4()),
             "lvl": 0,
-            "banned": False,
-            "last_ip": None,
-            "online": False,
+            "banned": 0,
+            "last_ip": None
         }
         
         # Store new account in the database
@@ -112,10 +110,10 @@ class Accounts:
             return self.accountCreated
         else:
             return self.accountIOError
-        
+    
     def delete_account(self, username:str):
         # Datatype checks
-        if not type(username) == str:
+        if not isinstance(username, str):
             raise TypeError
         
         # Check if the account exists
@@ -129,10 +127,14 @@ class Accounts:
         self.db.delete_item("usersv0", username)
         
         # Delete all user's chats
-        self.db.dbclient["chats"].delete_many({"owner": username})
         index = self.db.dbclient["chats"].find({"members": {"$all": [username]}})
         for chat in index:
             chat["members"].remove(username)
+            if chat["owner"] == username:
+                if len(chat["members"]) > 0:
+                    chat["owner"] = chat["members"][0]
+                else:
+                    chat["owner"] = "Deleted"
             self.db.write_item("chats", chat["_id"], chat)
         
         # Delete all user posts
@@ -151,85 +153,96 @@ class Accounts:
         
         return self.accountDeleted
     
-    def authenticate(self, username:str, password:str):
+    def authenticate_pswd(self, username:str, password:str):
         # Datatype checks
-        if (not type(username) == str) or (not type(password) == str):
+        if not (isinstance(username, str) and isinstance(password, str)):
             raise TypeError
-        
-        # Check if the account exists
-        if self.account_exists(username, True) == self.accountDoesNotExist:
-           self.log(f"[Accounts] Not authenticating account {username}: Account does not exist")
-           return self.accountDoesNotExist
-        
-        # Prevent authentication if banned
-        if self.is_account_banned(username) == self.accountBanned:
-            self.log(f"[Accounts] Not authenticating account {username}: Account banned")
-            return self.accountBanned
         
         result, data = self.db.load_item("usersv0", username)
         # Prevent authentication if it failed to read the account
         if not result:
-            return self.accountIOError
+            self.log(f"[Accounts] Not authenticating account {username}: Account does not exist")
+            return self.accountDoesNotExist
+
+        # Prevent authentication if banned
+        if (data["banned"] == -1) or (data["banned"] > int(time.time())):
+            self.log(f"[Accounts] Not authenticating account {username}: Account banned")
+            return self.accountBanned
         
         self.log(f"Authenticating account: {username}")
         
-        # Check if the account is using an authentication token
-        if "tokens" in data:
-            if password in data["tokens"]:
-                self.log(f"[Accounts] Authenticating account {username} using token")
-                return self.accountAuthenticatedWithToken
-        else:
-            data["tokens"] = []
-            result = self.db.write_item("usersv0", username, data)
-            if not result:
-                return self.accountIOError
-        
-        # Read the hashed and salted password
-        pswd_bytes = bytes(password, "utf-8")
-        hashed_pw = data["pswd"]
-        hashed_pw_bytes = bytes(hashed_pw, "utf-8")
-        result = bcrypt.checkpw(pswd_bytes, hashed_pw_bytes)
-        if result:
+        # Check password
+        if bcrypt.verify(password, data["pswd"]):
             return self.accountAuthenticated
         else:
             return self.accountNotAuthenticated
     
+    def authenticate_token(self, username:str, token:str):
+        # Datatype checks
+        if not (isinstance(username, str) and isinstance(token, str)):
+            raise TypeError
+        
+        # Prevent authentication if token has an invalid signature
+        try:
+            decoded_jwt = jwt.decode(token, os.environ["JWT_SECRET"], verify = True)
+        except:
+            return self.accountNotAuthenticated
+
+        result, data = self.db.load_item("usersv0", username)
+        # Prevent authentication if it failed to read the account
+        if not result:
+            self.log(f"[Accounts] Not authenticating account {username}: Account does not exist")
+            return self.accountDoesNotExist
+
+        # Prevent authentication if banned
+        if (data["banned"] == -1) or (data["banned"] > int(time.time())):
+            self.log(f"[Accounts] Not authenticating account {username}: Account banned")
+            return self.accountBanned
+        
+        self.log(f"Authenticating account: {username}")
+        
+        # Check if the account has same version as token
+        if (data["_id"] == decoded_jwt["u"]) and (data["token_vers"] == decoded_jwt["v"]):
+            return self.accountAuthenticated
+        else:
+            return self.accountNotAuthenticated
+
+    def create_token(self, username:str):
+        # Datatype checks
+        if not isinstance(username, str):
+            raise TypeError
+
+        result, data = self.db.load_item("usersv0", username)
+        # Prevent authentication if it failed to read the account
+        if not result:
+            self.log(f"[Accounts] Not authenticating account {username}: Account does not exist")
+            return self.accountDoesNotExist
+        
+        self.log(f"[Accounts] Creating token for account: {username}")
+        
+        # Create signed token
+        token = jwt.encode({"id": str(self.uuid.uuid4()), "u": username, "v": data["token_vers"], "iat": int(time.time()), "exp": (int(time.time()) + 2592000)}, os.environ["JWT_SECRET"])
+        
+        self.log(f"[Accounts] Generated token: {token} for account: {username}")
+        return token
+
     def change_password(self, username:str, newpassword:str, strength:int = None):
-        if strength == None:
+        if strength is None:
             strength = self.default_strength
         
         # Datatype checks
-        if (not type(username) == str) or (not type(newpassword) == str) or (not type(strength) == int):
+        if not (isinstance(username, str) and isinstance(newpassword, str) and isinstance(strength, int)):
             raise TypeError
-        
-        # Check if the account exists
-        if self.account_exists(username, True) == self.accountDoesNotExist:
-           self.log(f"[Accounts] Not updating account password {username}: Account does not exist")
-           return self.accountDoesNotExist
-        
-        # Prevent authentication if banned
-        if self.is_account_banned(username) == self.accountBanned:
-            self.log(f"[Accounts] Not updating account password {username}: Account banned")
-            return self.accountBanned
         
         self.log(f"[Accounts] Updating account password: {username}")
         
-        # Hash and salt the password
-        pswd_bytes = bytes(newpassword, "utf-8")
-        hashed_pw = bcrypt.hashpw(pswd_bytes, bcrypt.gensalt(strength))
-        
-        # Load and update the password entry in the account
-        result, account_data = self.db.load_item("usersv0", username)
-        if not result:
-            return self.accountIOError
-        
-        account_data["pswd"] = hashed_pw.decode()
-        result = self.db.write_item("usersv0", username, account_data)
-        
+        # Save new password hash and token vers
+        result = self.db.update_item("usersv0", username, {"pswd": bcrypt.hash(newpassword, rounds = strength), "token_vers": str(self.uuid.uuid4())})
+
         if result:
             return self.accountUpdated
         else:
-            return self.accountIOError
+            return self.accountDoesNotExist
     
     def account_exists(self, username:str, ignore_case:bool = False):
         if not type(username) == str:
@@ -241,7 +254,7 @@ class Accounts:
             else:
                 return self.accountDoesNotExist
         else:
-            payload = self.db.find_items("usersv0", 
+            payload = self.db.count_items("usersv0", 
                 {
                     "lower_username": username.lower()
                 }
@@ -276,21 +289,12 @@ class Accounts:
         if (not type(username) == str) or (not type(newdata) == dict) or (not type(forceUpdate) == bool):
             raise TypeError
         
-        # Check if the account exists
-        if self.account_exists(username, True) == self.accountDoesNotExist:
-           self.log(f"[Accounts] Not updating account data {username}: Account does not exist")
-           return self.accountDoesNotExist
-        
-        # Prevent modifications to account if banned
-        if self.is_account_banned(username) == self.accountBanned:
-            self.log(f"[Accounts] Not updating account data {username}: Account banned")
-            return self.accountBanned
-        
         # Load the account data
         result, account_data = self.db.load_item("usersv0", username)
         
         if not result:
-            return self.accountIOError
+            self.log(f"[Accounts] Not updating account data {username}: Account does not exist")
+            return self.accountDoesNotExist
         
         for key, value in newdata.items():
             if key in self.all_user_keys:
@@ -304,7 +308,7 @@ class Accounts:
                         
                         typeCheck = type(key) == str
                         typeCheck = typeCheck and type(value) in [str, int, float, bool, dict]
-                        typeCheck = typeCheck and not(self.parent.supporter.checkForBadCharsPost(str(value)))
+                        typeCheck = typeCheck and not(self.parent.supporter.check_for_bad_chars_post(str(value)))
                         typeCheck = typeCheck and not len(str(value)) > 360
                         
                         if not typeCheck:
@@ -329,15 +333,11 @@ class Accounts:
         if (not type(username) == str) or (not type(omitSensitive) == bool) or (not type(isClient) == bool):
             raise TypeError
         
-        # Check if the account exists
-        if self.account_exists(username, True) == self.accountDoesNotExist:
-           self.log(f"[Accounts] Not getting account data {username}: Account does not exist")
-           return self.accountDoesNotExist
-        
         # Read the user from the database
         result, account_data = self.db.load_item("usersv0", str(username))
         if not result:
-            return self.accountIOError
+            self.log(f"[Accounts] Not getting account data {username}: Account does not exist")
+            return self.accountDoesNotExist
        
         del account_data["_id"]
         del account_data["lower_username"]
@@ -357,7 +357,7 @@ class Accounts:
                 "layout",
                 "email",
                 "pswd",
-                "tokens",
+                "token_vers",
                 "last_ip",
             ]:
                 if sensitive in account_data:
@@ -367,8 +367,8 @@ class Accounts:
                 del account_data["pswd"]
             if "email" in account_data:
                 del account_data["email"]
-            if "tokens" in account_data:
-                del account_data["tokens"]
+            if "token_vers" in account_data:
+                del account_data["token_vers"]
             if "last_ip" in account_data:
                 del account_data["last_ip"]
         

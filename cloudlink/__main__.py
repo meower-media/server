@@ -1,17 +1,23 @@
-from cloudlink import Cloudlink
+from .cloudlink import cloudlink
+
+
+class example_events:
+    def __init__(self):
+        pass
+
+    async def on_close(self, client):
+        print("Client", client.id, "disconnected.")
+
+    async def on_connect(self, client):
+        print("Client", client.id, "connected.")
+
 
 if __name__ == "__main__":
-    print("Welcome to Cloudlink!\nSince you are calling Cloudlink directly, there is now a websocket server running on ws://127.0.0.1:3000/.\nPlease visit https://github.com/MikeDev101/cloudlink to report bugs and/or get help!\nPress CTRL+C to stop the server.")
-
-    # Initialize Cloudlink. You will only need to initialize one instance of the main cloudlink module.
-    cl = Cloudlink()
-    
-    # Create a new server object. This supports initializing many servers at once.
+    cl = cloudlink()
     server = cl.server(logs=True)
-
-    # Set the server's Message-Of-The-Day.
-    server.setMOTD(True, "CloudLink 4 Test")
-
-    # Run the server
-    server.run(host="127.0.0.1", port=3000)
-    input("Press enter to exit.")
+    events = example_events()
+    server.set_motd("CL4 Optimized! Gotta Go Fast!", True)
+    server.bind_event(server.events.on_connect, events.on_connect)
+    server.bind_event(server.events.on_close, events.on_close)
+    print("Welcome to Cloudlink 4! See https://github.com/mikedev101/cloudlink for more info. Now running server on ws://127.0.0.1:3000/!")
+    server.run(ip="localhost", port=3000)

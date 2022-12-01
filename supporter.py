@@ -2,10 +2,10 @@ from better_profanity import profanity
 import string
 import copy
 
-class Supporter:
+class supporter:
     
     """
-    Meower Supporter
+    Meower Supporter - CL4 Port compliant
     
     This class provides shared functionality between the Meower,
     Security, and Database classes.
@@ -15,12 +15,11 @@ class Supporter:
         # Inherit parent class attributes
         self.parent = parent
         self.log = parent.log
-        self.full_stack = parent.cl.supporter.full_stack
+        self.full_stack = parent.server.supporter.full_stack
         self.datetime = parent.datetime
         self.time = parent.time
-        
-        # Inherit cloudlink from parent class, since custom info/error codes are needed
-        self.cloudlink = parent.cl
+        self.server = parent.server
+        self.clients = parent.server.clients
         
         # Set up attributes
         self.filter = None
@@ -29,36 +28,43 @@ class Supporter:
         self.profanity = profanity
         
         # Add custom status codes to CloudLink
-        self.cloudlink.supporter.codes["KeyNotFound"] = "I:010 | Key Not Found"
-        self.cloudlink.supporter.codes["PasswordInvalid"] = "I:011 | Invalid Password"
-        self.cloudlink.supporter.codes["GettingReady"] = "I:012 | Getting ready"
-        self.cloudlink.supporter.codes["ObsoleteClient"] = "I:013 | Client is out-of-date or unsupported"
-        self.cloudlink.supporter.codes["IDExists"] = "I:015 | Account exists"
-        self.cloudlink.supporter.codes["2FAOnly"] = "I:016 | 2FA Required"
-        self.cloudlink.supporter.codes["MissingPermissions"] = "I:017 | Missing permissions"
-        self.cloudlink.supporter.codes["Banned"] = "E:018 | Account Banned"
-        self.cloudlink.supporter.codes["IllegalChars"] = "E:019 | Illegal characters detected"
-        self.cloudlink.supporter.codes["Kicked"] = "E:020 | Kicked"
-        self.cloudlink.supporter.codes["ChatExists"] = "E:021 | Chat exists"
-        self.cloudlink.supporter.codes["ChatNotFound"] = "E:022 | Chat not found"
-        self.cloudlink.supporter.codes["RateLimit"] = "E:023 | Ratelimit"
-        self.cloudlink.supporter.codes["TooLarge"] = "E:024 | Data too large"
-        self.cloudlink.supporter.codes["MemberExists"] = "E:025 | Member already exists in chat"
-        self.cloudlink.supporter.codes["MemberDoesNotExist"] = "E:026 | Member does not exist in chat"
+        self.info = "I"
+        self.error = "E"
+        meower_codes = {
+            "KeyNotFound": (self.info, 10, "Key Not Found"),
+            "PasswordInvalid": (self.info, 11, "Invalid Password"),
+            "GettingReady": (self.info, 12, "Getting ready"),
+            "ObsoleteClient": (self.info, 13, "Client is out-of-date or unsupported"),
+            "IDExists": (self.info, 15, "Account exists"),
+            "2FAOnly": (self.info, 16, "2FA Required"),
+            "MissingPermissions": (self.info, 17, "Missing permissions"),
+            "Banned": (self.error, 18, "Account Banned"),
+            "IllegalChars": (self.error, 19, "Illegal characters detected"),
+            "Kicked": (self.error, 20, "Kicked"),
+            "ChatExists": (self.error, 21, "Chat exists"),
+            "ChatNotFound": (self.error, 22, "Chat not found"),
+            "RateLimit": (self.error, 23, "Ratelimit"),
+            "MemberExists": (self.error, 25, "Member already exists in chat"),
+            "MemberDoesNotExist": (self.error, 26, "Member does not exist in chat"),
+            "Blocked": (self.error, 27, "IP address blocked"),
+            "NoProxyVPNBlock": (self.error, 28, "IP address blocked: VPNs/Proxies are not permitted")
+        }
+        self.server.supporter.codes.update(meower_codes)
         
         # Create permitted lists of characters
-        self.permitted_chars_username = []
-        self.permitted_chars_post = []
+        self.permitted_chars_username = set()
+        self.permitted_chars_post = set()
         for char in string.ascii_letters:
-            self.permitted_chars_username.append(char)
-            self.permitted_chars_post.append(char)
+            self.permitted_chars_username.add(char)
+            self.permitted_chars_post.add(char)
         for char in string.digits:
-            self.permitted_chars_username.append(char)
-            self.permitted_chars_post.append(char)
+            self.permitted_chars_username.add(char)
+            self.permitted_chars_post.add(char)
         for char in string.punctuation:
-            self.permitted_chars_post.append(char)
-        self.permitted_chars_username.extend(["_", "-"])
-        self.permitted_chars_post.append(" ")
+            self.permitted_chars_post.add(char)
+        self.permitted_chars_username.add("_")
+        self.permitted_chars_username.add("-")
+        self.permitted_chars_post.add(" ")
         
         # Peak number of users logger
         self.peak_users_logger = {
@@ -67,95 +73,49 @@ class Supporter:
             "epoch": self.timestamp(7)
         }
         
-        # Specify server callbacks
-        self.cloudlink.callback(parent.cl.on_close, self.on_close)
-        self.cloudlink.callback(parent.cl.on_connect, self.on_connect)
-        
-        self.log("Meower supporter initialized!")
+        self.log("[Meower supporter] Meower supporter initialized!")
     
-    async def on_close(self, client):
-        self.log(f"{client.id} Disconnected.")
-        if client.authed:
-            # Session management
-            if client.id in self.parent.user_sessions[client.friendly_username]:
-                self.parent.user_sessions[client.friendly_username].remove(client.id)
-            online = (len(self.parent.user_sessions[client.friendly_username]) != 0)
-            
-            # Update the account state
-            args = {
-                "last_ip": client.full_ip,
-                "online": online
-            }
-            
-            self.parent.accounts.update_setting(
-                client.friendly_username,
-                args,
-                forceUpdate = True
-            )
-            
-            # Tell all clients that someone is no longer online
-            if not online:
-                for client_tmp in copy.copy(self.cloudlink.all_clients):
-                    if not client_tmp == client:
-                        await self.cloudlink.sendPacket(
-                            client_tmp,
-                            {
-                                "cmd": "direct",
-                                "val": {
-                                    "mode": "offline",
-                                    "username": client.friendly_username
-                                }
-                            },
-                            ignore_rooms = True)
-    
-    async def on_connect(self, client):
-        # Create attributes for the new client
-        client.authtype = ""
-        client.authed = False
-        client.last_packet = {}
-        client.burst_amount = {}
-        client.ratelimit = {}
-        client.linked_chat = None
-        client.session_token = None
-        
-        # TODO: Verify that the client's IP is not a VPN/Proxy
-    
-    async def autoID(self, client, username, listener_detected:bool = False, listener_id:str = "", extra_data:dict = None, echo:bool = False):
+    async def auto_id(self, client, username, listener:str = None, extra_data:dict = None, echo:bool = False):
         # Set the client's username, however CL4 does not report back to the user by default.
-        self.cloudlink.setClientUsername(client, username)
+        self.server.set_client_username(client, username)
         # Manually report to the client that it has been given a username
         msg = {
-            "username": client.friendly_username,
-            "id": client.id
+            "val": {
+                "username": client.friendly_username,
+                "id": client.id
+            }
         }
         if extra_data:
-            for key in extra_data.keys():
-                msg[key] = extra_data[key]
+            msg["val"].update(extra_data)
         if echo:
-            await self.cloudlink.sendCode(client, "OK", listener_detected, listener_id, msg)
+            # Template for updated send_code command
+            await self.server.send_code(
+                client = client,
+                code = "OK",
+                extra_data = msg,
+                listener = listener
+            )
         await self.log_peak_users()
     
     async def log_peak_users(self):
-        current_users = len(self.cloudlink.all_clients)
+        current_users = len(self.server.clients.get_all_cloudlink())
         if current_users > self.peak_users_logger["count"]:
             self.peak_users_logger = {
                 "count": current_users,
                 "timestamp": self.timestamp(1),
                 "epoch": self.timestamp(7)
             }
-            self.log("New peak in # of concurrent users: {0}".format(current_users))
+            self.log("[Meower supporter] New peak in # of concurrent users: {0}".format(current_users))
             #self.create_system_message("Yay! New peak in # of concurrent users: {0}".format(current_users))
-            for client in self.cloudlink.getAllUsersInRoom("default"):
-                await self.cloudlink.sendPacket(
-                    client,
-                    {
-                        "cmd": "direct",
-                        "val": {
-                            "mode": "peak",
-                            "payload": self.peak_users_logger
-                        }
-                    }
-                )
+            
+            await self.server.send_packet_multicast(
+                cmd = "direct",
+                val = {
+                    "mode": "peak",
+                    "payload": self.peak_users_logger
+                },
+                clients = self.server.clients.get_all_cloudlink()
+            )
     
     def timestamp(self, ttype):
         today = self.datetime.now()
@@ -188,7 +148,7 @@ class Supporter:
     
     def ratelimit(self, client):
         # Guard clause for checking if a client exists
-        if not client in self.cloudlink.all_clients:
+        if not client in self.server.all_clients:
             return
         client.last_packet = int(self.time())
     
@@ -198,7 +158,7 @@ class Supporter:
         
         # Guard clause for checking if the filter is loaded
         if self.filter == None:
-            self.log("Failed loading profanity filter : Using default filter as fallback")
+            self.log("[Meower supporter] Failed loading profanity filter: Using default filter as fallback")
             return self.profanity.censor(message)
         
         self.profanity.load_censor_words(
@@ -209,7 +169,7 @@ class Supporter:
         message = self.profanity.censor(message)
         return message
     
-    def checkForBadCharsUsername(self, value):
+    def check_for_bad_chars_username(self, value):
         # Check for profanity in username, will return '*' if there's profanity which will be blocked as an illegal character
         value = self.wordfilter(value)
         
@@ -218,27 +178,27 @@ class Supporter:
                 return True
         return False
     
-    def checkForBadCharsPost(self, value):
+    def check_for_bad_chars_post(self, value):
         for char in value:
             if not char in self.permitted_chars_post:
                 return True
         return False
     
-    def kickUser(self, client, status="Kicked"):
+    async def kick_user(self, client, status="Kicked"):
         # Guard clause for checking if a client exists
-        if not client in self.cloudlink.all_clients:
+        if not client in self.server.clients.get_all_cloudlink():
             return
-        self.log("Kicking {0}".format(client.friendly_username))
+        self.log("[Meower supporter] Kicking {0}".format(client.friendly_username))
 
         # Tell client it's going to get kicked
-        self.cloudlink.sendCode(client, self.cloudlink.supporter.codes[status])
+        await self.server.send_code(client, status)
         
         # Terminate client
-        self.rejectClient(client, "Client was kicked by the server")
+        await self.server.reject_client(client, "Client was kicked by the server")
     
     def check_for_spam(self, type, client, burst=1, seconds=1):
         # Check if a client exists
-        if not client in self.cloudlink.all_clients:
+        if not client in self.server.clients.get_all_cloudlink():
             return False
         
         # Check if client has attribute dict keys

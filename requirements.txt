@@ -2,9 +2,12 @@ websockets
 websocket-client
 better-profanity
 bcrypt
+passlib
+pyjwt
 requests
 flask-cors
 uuid
 flask
 pymongo
 python-dotenv
+quart
