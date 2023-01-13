@@ -1,35 +1,29 @@
 # Meower-Server
-Official source code of the Meower server, written in Python. Powered by Cloudlink 4.
+Official source code for the backend that powers the Meower social media platform. Powered by [Cloudlink 4.](https://github.com/MikeDev101/cloudlink/)
 
-***DO NOT USE THIS BRANCH!!!***
-This is a separate branch for porting the current Meower 5.7 server to Cloudlink 4 and for major code restructuring/cleanup. This is highly experimental, and there will be bugs. Please use the main branch for now.
+> **Warning**
+>
+> This branch is for finalizing the Meower Server's port to CL4. This is a complete codebase rewrite, and will completely break any existing code. Please use the main branch for the time being.
 
-## Installing Dependencies
-* Run `pip3 install -r requirements.txt` prior to starting the server. Cloudlink 4 is bundled with the server.
+> **Warning**
+>
+> Any existing CL4 port branches should NOT be merged. This branch brings major security, performance, and stability enhancemements.
 
-## Running the server
-Simply download and run main.py to start the server. Files and directories will be created to store posts, logs, and userdata.
-To connect to the server, change the IP settings of your client to connect to ws://127.0.0.1:3000/.
+# Dependencies
+Dependencies can be installed by running `pip3 install -r requirements.txt`.
 
-### Rest API
+# API endpoints
 
-* /home - Gets the current homepage index.
-* /home?page=# - Lets you get a certain page # of the homepage.
-* /home?autoget - Automatically fetches all posts currently present on the page.
-* /ip - Gets the client's IP address and returns with plaintext. Only works if the server is communicating with a client over CF Argo Tunnels.
-* /posts?id=(Post ID) - Gets a Post ID, use /home to get an index of posts.
-* /status - Status for the Meower Server.
-* /posts/(Chat ID) - Gets the specified chat ID's index.
-* /reports - Gets the reports index (only accessable if a moderator or higher.
-* /inbox - Gets the specified user's inbox.
-* /search/home?q=(Query) - Searches home.
-* /search/users?q=(Query) - Searches users.
-* /users/(Username) - Gets the specified user's info.
-* /users/(Username)/posts - Gets the specified user's posts.
-* /statistics - Shows Meower's statistics (users, posts, and chats)
+> **Note**
+>
+> Documentation has yet to be completed for this branch. Please check back later.
 
-## Contributing to the source
+# Contributing
 
-1. Make a fork of the repo
-2. Modify your source
-3. Open a PR
+> **Note**
+>
+> Documentation PRs are permitted. 
+
+> **Warning**
+>
+> Code changes are ONLY allowed for @tnix100 and @MikeDev101. Any PR requesting changes to code will NOT be permitted until this branch is finalized and the codebase in the main branch merged.
