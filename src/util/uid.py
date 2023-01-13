@@ -29,12 +29,5 @@ def snowflake() -> str:
     return str(generate_snowflake(
         worker_id=int(os.getenv("WORKER_ID", 0)),
         datacenter_id=int(os.getenv("DATACENTER_ID", 0)),
-        epoch=(int(time.time())-MEOWER_EPOCH)
-    ))
-
-def placeholder_snowflake(epoch: int) -> str:
-    return str(generate_snowflake(
-        worker_id=0,
-        datacenter_id=0,
-        epoch=(epoch-MEOWER_EPOCH)
+        epoch=MEOWER_EPOCH
     ))

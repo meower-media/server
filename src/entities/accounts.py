@@ -26,6 +26,17 @@ class Account:
         self.flags = flags
         self.last_updated = last_updated
 
+    @property
+    def require_mfa(self):
+        return (len(self.mfa_methods) > 0)
+    
+    @property
+    def mfa_methods(self):
+        methods = []
+        if self.totp_secret is not None:
+            methods.append("totp")
+        return methods
+
     def check_password(self, password: str):
         if bcrypt.verify(password, self.password):
             return status.ok
@@ -99,3 +110,11 @@ def get_account(user_id: str):
         raise status.notFound
     else:
         return Account(**account)
+
+def get_id_from_email(email: str):
+    user = db.accounts.find_one({"email": email.lower()}, projection={"_id": 1})
+
+    if user is None:
+        raise status.notFound
+    else:
+        return user["_id"]

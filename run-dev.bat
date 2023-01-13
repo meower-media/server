@@ -1,0 +1,1 @@
+sanic src.api.server.app --debug --dev

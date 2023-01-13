@@ -236,11 +236,3 @@ def get_id_from_username(username: str):
         raise status.notFound
     else:
         return user["_id"]
-
-def get_id_from_email(email: str):
-    user = db.accounts.find_one({"email": email.lower()}, projection={"_id": 1})
-
-    if user is None:
-        raise status.notFound
-    else:
-        return user["_id"]
