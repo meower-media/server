@@ -45,16 +45,13 @@ class chat:
     inviteCodeDisabled = 0
     vanityInviteCode = 1
     notSafeForKids = 2
-    deleted = 3
 
 class post:
     reputationHidden = 0
     commentsDisabled = 1
     edited = 3
     protected = 4
-    lockReputation = 5
-    lockLikes = 6
-    lockMeows = 7        
+    reputationBanned = 5      
 
 class message:
     systemAlert = 0

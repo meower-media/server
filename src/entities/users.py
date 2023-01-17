@@ -130,8 +130,8 @@ class User:
         following = db.relationships.count_documents({"from": self.id})
         self.stats = {"followers": followers, "following": following}
 
-    def get_all_relationships(self):
-        return list(db.relations.find({"from": self.id}))
+    def get_relationships(self, state: int):
+        return list(db.relationships.find({"from": self.id, "state": state}))
 
     def get_relationship(self, user):
         relationship = db.relationships.find_one({"from": self.id, "to": user.id}, projection={"_id": 0, "last_updated": 0})
@@ -195,9 +195,8 @@ class User:
         }})
 
 def create_user(username: str, flags: int = 0):
-    user_id = uid.snowflake()
     userdata = {
-        "_id": user_id,
+        "_id": uid.snowflake(),
         "username": username,
         "lower_username": username.lower(),
         "flags": flags,

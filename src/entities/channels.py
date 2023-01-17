@@ -1,3 +1,3 @@
 """
-Need to migrate chats from main src folder to here.
+This is a placeholder. Will be implemented one day :)
 """
