@@ -48,11 +48,11 @@ class notAuthenticated(SanicException):
     http_status = 401
     message = "Not authenticated"
 
-class invalidPassword(SanicException):
+class invalidCredentials(SanicException):
     error = True
     code = 8
     http_status = 401
-    message = "Invalid password"
+    message = "Invalid credentials"
 
 class invalidTOTP(SanicException):
     error = True
@@ -137,3 +137,27 @@ class invalidCaptcha(SanicException):
     code = 22
     http_status = 403
     message = "Invalid captcha"
+
+class accountLocked(SanicException):
+    error = True
+    code = 23
+    http_status = 403
+    message = "Account locked"
+
+class networkBlocked(SanicException):
+    error = True
+    code = 24
+    http_status = 403
+    message = "Your IP address is blocked"
+
+class invalidTicket(SanicException):
+    error = True
+    code = 25
+    http_status = 401
+    message = "Invalid ticket"
+
+class missingPermissions(SanicException):
+    error = True
+    code = 26
+    http_status = 403
+    message = "Missing permissions"

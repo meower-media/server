@@ -25,8 +25,7 @@ class Chat:
         self.name = name
         self.direct = direct
         self.flags = flags
-        self.member_ids = members
-        self.members = [users.get_user(member_id) for member_id in self.member_ids]
+        self.members = [users.get_user(member_id) for member_id in members]
         self.active = active
         self.permissions = permissions
         self.invite_code = invite_code
@@ -51,26 +50,46 @@ class Chat:
     def partial_members(self):
         return [member.partial for member in self.members]
 
+    def update_name(self, name: str):
+        self.name = name
+        db.chats.update_one({"_id": self.id}, {"$set": {"name": self.name}})
+        events.emit_event("chat_updated", {
+            "chat_id": self.id,
+            "name": self.name
+        })
+
+    def has_member(self, user: users.User):
+        for member in self.members:
+            if member.id == user.id:
+                return True
+        return False
+
     def add_member(self, user: users.User):
+        if self.has_member(user):
+            return
+
         self.members.append(user)
         db.chats.update_one({"_id": self.id}, {"$addToSet": {"members": user.id}})
-        events.emit_event("chat_created", {
-            "chat": self.public,
-            "user_id": user.id
-        })
         events.emit_event("chat_updated", {
             "chat_id": self.id,
             "members": self.partial_members
+        })
+        events.emit_event("chat_created", {
+            "chat": self.public,
+            "user_id": user.id
         })
 
         if len(self.members) == 1:
             self.transfer_ownership(user)
 
     def remove_member(self, user: users.User):
+        if not self.has_member(user):
+            return
+
         for member in self.members:
             if member.id == user.id:
                 self.members.remove(member)
-        db.chats.delete_one({"_id": self.id}, {"$pull": {"members": user.id}})
+        db.chats.update_one({"_id": self.id}, {"$pull": {"members": user.id}})
         events.emit_event("chat_deleted", {
             "chat_id": self.id,
             "user_id": user.id
@@ -85,7 +104,7 @@ class Chat:
             })
             self.transfer_ownership(self.members[0])
 
-    def promote(self, user: users.User):
+    def promote_member(self, user: users.User):
         if self.permissions.get(user.id, 0) < 1:
             self.permissions[user.id] = 1
             db.chats.update_one({"_id": self.id}, {"$set": {"permissions": self.permissions}})
@@ -94,7 +113,7 @@ class Chat:
                 "permissions": self.permissions
             })
     
-    def demote(self, user: users.User):
+    def demote_member(self, user: users.User):
         if self.permissions.get(user.id, 0) == 1:
             self.permissions[user.id] = 0
             db.chats.update_one({"_id": self.id}, {"$set": {"permissions": self.permissions}})
@@ -105,11 +124,14 @@ class Chat:
 
     def transfer_ownership(self, user: users.User):
         if self.permissions.get(user.id, 0) < 2:
+            # Demote old owner
             for user_id, level in self.permissions.items():
                 if level == 2:
                     self.permissions[user_id] = 0
 
+            # Promote new owner
             self.permissions[user.id] = 2
+
             db.chats.update_one({"_id": self.id}, {"$set": {"permissions": self.permissions}})
             events.emit_event("chat_updated", {
                 "chat_id": self.id,

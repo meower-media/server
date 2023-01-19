@@ -37,11 +37,27 @@ class Account:
             methods.append("totp")
         return methods
 
+    @property
+    def locked(self):
+        return (redis.exists(f"lock:{self.id}") == 1)
+
     def check_password(self, password: str):
         if bcrypt.verify(password, self.password):
-            return status.ok
+            return True
         else:
-            raise status.invalidPassword
+            try:
+                pswd_attempts = int(redis.get(f"pswd_att:{self.id}").decode())
+            except:
+                pswd_attempts = 0
+
+            if pswd_attempts == 4:
+                redis.delete(f"pswd_att:{self.id}")
+                redis.set(f"lock:{self.id}", "", ex=60)
+            else:
+                pswd_attempts += 1
+                redis.set(f"pswd_att:{self.id}", str(pswd_attempts), ex=120)
+
+            return False
 
     def check_totp(self, code: str):
         if self.totp_secret is None:
@@ -50,12 +66,12 @@ class Account:
         if code in self.totp_recovery:
             self.totp_recovery.remove(code)
             db.accounts.update_one({"_id": self._id}, {"$pull": {"totp_recovery": code}})
-            return status.ok
+            return True
         elif TOTP(self.totp_secret).verify(code) and (redis.get(f"totp:{self._id}:{code}") is None):
             redis.set(f"totp:{self._id}:{code}", "", ex=30)
-            return status.ok
+            return True
         else:
-            raise status.invalidTOTP
+            return False
 
     def change_password(self, password: str):
         self.password = bcrypt.hash(password, rounds=int(os.getenv("pswd_rounds", 12)))

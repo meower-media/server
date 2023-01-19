@@ -6,6 +6,8 @@ from src.util import uid
 from src.entities import users
 from src.database import db
 
+IPHUB_KEY = os.getenv("IPHUB_KEY")
+
 class Network:
     def __init__(
         self,
@@ -47,7 +49,7 @@ class Network:
         self.blocked = blocked
         db.networks.update_one({"_id": self.id}, {"$set": {"blocked": self.blocked}})
     
-    def set_creation_blocked_state(self, creation_blocked: bool):
+    def set_creation_block_state(self, creation_blocked: bool):
         self.creation_blocked = creation_blocked
         db.networks.update_one({"_id": self.id}, {"$set": {"creation_blocked": self.creation_blocked}})
 
@@ -93,16 +95,27 @@ class Netlog:
 def get_network(ip_address: str):
     network = db.networks.find_one({"ip_address": ip_address})
     if network is None:
-        iphub_info = requests.get(f"https://v2.api.iphub.info/ip/{ip_address}", headers={"X-Key": os.getenv("IPHUB_KEY")}).json()
-        network = {
-            "_id": uid.snowflake(),
-            "ip_address": ip_address,
-            "country": iphub_info["countryName"],
-            "asn": iphub_info["asn"],
-            "vpn": (iphub_info["block"] == 1),
-            "first_used": uid.timestamp(),
-            "last_used": uid.timestamp()
-        }
+        if IPHUB_KEY is not None:
+            iphub_info = requests.get(f"https://v2.api.iphub.info/ip/{ip_address}", headers={"X-Key": IPHUB_KEY}).json()
+            network = {
+                "_id": uid.snowflake(),
+                "ip_address": ip_address,
+                "country": iphub_info["countryName"],
+                "asn": iphub_info["asn"],
+                "vpn": (iphub_info["block"] == 1),
+                "first_used": uid.timestamp(),
+                "last_used": uid.timestamp()
+            }
+        else:
+            network = {
+                "_id": uid.snowflake(),
+                "ip_address": ip_address,
+                "country": None,
+                "asn": None,
+                "vpn": False,
+                "first_used": uid.timestamp(),
+                "last_used": uid.timestamp()
+            }
         db.networks.insert_one(network)
     return Network(**network)
 

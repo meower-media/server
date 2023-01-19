@@ -15,8 +15,8 @@ class Post:
         flags: str = 0,
         likes: int = 0,
         meows: int = 0,
+        comments: int = 0,
         reputation: int = 0,
-        last_counted: datetime = None,
         time: datetime = None,
         deleted: bool = False,
         delete_after: datetime = None
@@ -27,8 +27,7 @@ class Post:
         self.flags = flags
         self.likes = likes
         self.meows = meows
-        self.reputation = reputation
-        self.last_counted = last_counted
+        self.comments = comments
         self.time = time
         self.deleted = deleted
         self.delete_after = delete_after
@@ -43,6 +42,7 @@ class Post:
             "flags": self.public_flags,
             "likes": self.likes,
             "meows": self.meows,
+            "comments": self.comments,
             "time": int(self.time.timestamp()),
             "deleted": self.deleted,
             "delete_after": (int(self.delete_after.timestamp()) if (self.delete_after is not None) else None)
@@ -76,23 +76,11 @@ class Post:
 
     @property
     def public_revisions(self):
-        revisions = []
-        for revision in db.post_revisions.find({"post_id": self.id, "public": True}):
-            revision["id"] = revision["_id"]
-            revision["editor"] = users.get_user(revision["editor_id"]).partial
-            del revision["_id"]
-            del revision["editor_id"]
-        return revisions
+        return self.get_revisions(include_private=False)
 
     @property
     def admin_revisions(self):
-        revisions = []
-        for revision in db.post_revisions.find({"post_id": self.id}):
-            revision["id"] = revision["_id"]
-            revision["editor"] = users.get_user(revision["editor_id"]).partial
-            del revision["_id"]
-            del revision["editor_id"]
-        return revisions
+        return self.get_revisions(include_private=True)
 
     @property
     def reputation(self):
@@ -109,12 +97,19 @@ class Post:
         if extensive:
             self.likes = db.post_likes.count_documents({"post_id": self.id})
             self.meows = db.post_meows.count_documents({"post_id": self.id})
+            self.comments = db.post_comments.count_documents({"post_id": self.id}) 
 
-        db.posts.update_one({"_id": self.id}, {"$set": {"likes": self.likes, "meows": self.meows, "reputation": self.reputation}})
+        db.posts.update_one({"_id": self.id}, {"$set": {
+            "likes": self.likes,
+            "meows": self.meows, 
+            "comments": self.comments,
+            "reputation": self.reputation
+        }})
         events.emit_event("post_updated", {
             "post_id": self.id,
             "likes": self.likes,
             "meows": self.meows,
+            "comments": self.comments,
             "reputation": self.reputation
         })
 
@@ -195,6 +190,9 @@ class Post:
     def edit(self, editor: users.User, content: str, public: bool = True):
         if bitfield.has(self.flags, flags.post.protected):
             raise status.postProtected
+
+        if content == self.content:
+            return
         
         db.post_revisions.insert_one({
             "_id": uid.snowflake(),
@@ -216,6 +214,19 @@ class Post:
             "post_id": self.id,
             "content": self.content
         })
+
+    def get_revisions(self, include_private: bool = False):
+        query = {"post_id": self.id}
+        if not include_private:
+            query["public"] = True
+        
+        revisions = []
+        for revision in db.post_revisions.find({"post_id": self.id}):
+            revision["id"] = revision["_id"]
+            revision["editor"] = users.get_user(revision["editor_id"]).partial
+            del revision["_id"]
+            del revision["editor_id"]
+        return revisions
 
     def change_revision_privacy(self, revision_id: str, public: bool):
         db.post_revisions.update_one({"_id": revision_id}, {"$set": {"public": public}})

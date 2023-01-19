@@ -40,17 +40,14 @@ async def v1_login_password(request, body: PasswordForm):
         else:
             user_id = users.get_id_from_username(body.username)
     except status.notFound:
-        raise status.invalidPassword  # Placeholder error
+        raise status.invalidCredentials  # Placeholder error
 
     # Get account and check password
     account = accounts.get_account(user_id)
     if account.locked:
-        raise status.alreadyDeleted  # placeholder error
+        raise status.accountLocked
     if not account.check_password(body.password):
-        raise status.invalidPassword
-    
-    # Get network and check whether a captcha is required
-    network = networks.get_network(request.ip)
+        raise status.invalidCredentials
 
     # Ask for MFA or complete authentication
     if account.require_mfa:
@@ -63,7 +60,7 @@ async def v1_login_password(request, body: PasswordForm):
             "mfa_methods": account.mfa_methods
         })
     else:
-        session = sessions.create_user_session(account, request.ctx.device, network)
+        session = sessions.create_user_session(account, request.ctx.device, networks.get_network(request.ip))
         return json({
             "user_id": account.id,
             "access_token": session.signed_token,
@@ -78,13 +75,13 @@ async def v1_mfa_totp(request, body: TOTPForm):
     # Get ticket details
     ticket = tickets.get_ticket_details(body.ticket)
     if (ticket is None) or (ticket["t"] != "mfa"):
-        raise status.notAuthenticated
+        raise status.invalidTicket
 
     # Get account
     try:
         account = accounts.get_account(ticket["u"])
     except status.notFound:
-        raise status.notAuthenticated
+        raise status.invalidTicket
 
     # Check TOTP code and complete authentication
     if not account.check_totp(body.code):

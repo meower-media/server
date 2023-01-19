@@ -14,12 +14,13 @@ from .posts import v1 as v1_posts
 v1 = Blueprint.group(
     v1_me,
     v1_home,
-    v1_posts
+    v1_posts,
+    version=1
 )
 
 app = Sanic("MeowerAPI")
 limiter = Limiter(app, global_limits=["1/minute"], key_func=get_ratelimit_id)
-app.config.REAL_IP_HEADER = os.getenv("IP_HEADER", None)
+app.config.REAL_IP_HEADER = os.getenv("IP_HEADER")
 app.error_handler = MeowerErrorHandler()
 app.register_middleware(parse_ua, "request")
 app.register_middleware(authorization, "request")

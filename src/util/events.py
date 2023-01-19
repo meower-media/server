@@ -32,7 +32,7 @@ def emit_event(name: str, details: dict = {}):
         raise
     redis.publish(f"meower:{name}", json.dumps(details))
 
-def add_event_listener(name: str, callback: function):
+def add_event_listener(name: str, callback: callable):
     def run():
         pubsub = redis.pubsub()
         pubsub.subscribe(f"meower:{name}")

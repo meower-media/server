@@ -37,7 +37,7 @@ class supporter:
             "ObsoleteClient": (self.info, 13, "Client is out-of-date or unsupported"),
             "IDExists": (self.info, 15, "Account exists"),
             "2FAOnly": (self.info, 16, "2FA Required"),
-            "MissingPermissions": (self.info, 17, "Missing permissions"),
+            "": (self.info, 17, "Missing permissions"),
             "Banned": (self.error, 18, "Account Banned"),
             "IllegalChars": (self.error, 19, "Illegal characters detected"),
             "Kicked": (self.error, 20, "Kicked"),

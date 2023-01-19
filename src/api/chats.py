@@ -56,7 +56,7 @@ async def v1_delete_chat(request, chat_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
     if chat.permissions.get(request.ctx.user.id, 0) < 2:
-        raise status.notAuthenticated
+        raise status.missingPermissions
 
     chat.delete()
 
@@ -85,7 +85,7 @@ async def v1_remove_chat_member(request, chat_id: str, user_id: str):
 async def v1_promote_chat_member(request, chat_id: str, user_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
-    chat.promote(users.get_user(user_id))
+    chat.promote_member(users.get_user(user_id))
 
     return json(chat.public)
 
@@ -93,7 +93,7 @@ async def v1_promote_chat_member(request, chat_id: str, user_id: str):
 async def v1_demote_chat_member(request, chat_id: str, user_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
-    chat.demote(users.get_user(user_id))
+    chat.demote_member(users.get_user(user_id))
 
     return json(chat.public)
 
@@ -102,7 +102,7 @@ async def v1_refresh_chat_invite(request, chat_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
     
     if chat.permissions.get(request.ctx.user.id, 0) < 1:
-        raise status.notAuthenticated
+        raise status.missingPermissions
 
     chat.refresh_invite_code()
     
@@ -112,7 +112,7 @@ async def v1_refresh_chat_invite(request, chat_id: str):
 async def v1_get_chat_messages(request, chat_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
-    messages = messages.get_messages(chat, before=request.args.get("before"), after=request.args.get("after"), limit=int(request.args.get("limit", 25)))
+    messages = messages.get_latest_messages(chat, before=request.args.get("before"), after=request.args.get("after"), limit=int(request.args.get("limit", 25)))
     return json({"messages": messages})
 
 @v1.post("/messages")

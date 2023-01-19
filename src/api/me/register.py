@@ -2,7 +2,6 @@ from sanic import Blueprint, json
 from sanic_ext import validate
 from pydantic import BaseModel, Field
 from typing import Optional
-import os
 
 from src.util import status, security
 from src.entities import accounts, networks, sessions
@@ -26,9 +25,14 @@ class RegistrationForm(BaseModel):
 @v1.post("/")
 @validate(json=RegistrationForm)
 async def v1_register(request, body: RegistrationForm):
-    if os.getenv("CAPTCHA_PROVIDER") is not None:
-        if not security.check_captcha(body.captcha, request.ip):
-            raise status.invalidCaptcha
+    # Get network and check whether it's blocked
+    network = networks.get_network(request.ip)
+    if network.creation_blocked:
+        raise status.networkBlocked
+
+    # Check captcha
+    if not security.check_captcha(body.captcha, request.ip):
+        raise status.invalidCaptcha
 
     account = accounts.create_account(body.username, body.password, body.child)
     session = sessions.create_user_session(account, request.ctx.device, networks.get_network(request.ip))

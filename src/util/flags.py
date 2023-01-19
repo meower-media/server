@@ -55,3 +55,4 @@ class post:
 
 class message:
     systemAlert = 0
+    edited = 1 

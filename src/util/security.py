@@ -10,7 +10,7 @@ CAPTCHA_PROVIDERS = {
     "turnstile": "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 }
 
-CAPTCHA_URI = CAPTCHA_PROVIDERS.get(os.getenv("CAPTCHA_PROVIDER"), None)
+CAPTCHA_URI = CAPTCHA_PROVIDERS.get(os.getenv("CAPTCHA_PROVIDER"))
 CAPTCHA_SECRET = os.getenv("CAPTCHA_SECRET")
 
 PRIV_KEY = Ed25519PrivateKey.generate()

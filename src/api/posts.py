@@ -20,17 +20,16 @@ async def v1_get_post(request, post_id: str):
 
 @v1.patch("/")
 @validate(json=EditForm)
-async def v1_edit_post(request, post_id: str, body: EditForm):
+async def v1_edit_post(request, post_id: str, body: EditForm):    
     if request.ctx.user is None:
         raise status.notAuthenticated
-    
+
     post = posts.get_post(post_id)
     if post.author.id == request.ctx.user.id:
-        if body.content != post.content:
-            post.edit(body.content, request.ctx.user)
+        post.edit(request.ctx.user, body.content)
         return json(post.public)
     else:
-        return status.notAuthenticated
+        raise status.missingPermissions
 
 @v1.delete("/")
 async def v1_delete_post(request, post_id: str):
@@ -42,7 +41,7 @@ async def v1_delete_post(request, post_id: str):
         post.delete()
         return HTTPResponse(status=204)
     else:
-        return status.notAuthenticated
+        raise status.missingPermissions
 
 @v1.get("/status")
 async def v1_post_status(request, post_id: str):
