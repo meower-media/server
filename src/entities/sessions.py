@@ -28,7 +28,7 @@ class UserSession:
 
     @property
     def signed_token(self):
-        encoded_data = b64encode(f"0:{self.id}:{str(self.version)}".encode()).decode()
+        encoded_data = b64encode(f"1:{self.id}:{str(self.version)}".encode()).decode()
         signature = security.sign(encoded_data)
         return f"{encoded_data}.{signature}"
 
@@ -67,17 +67,22 @@ def create_user_session(account: accounts.Account, device: dict, network: networ
     return session
 
 def get_user_by_token(token: str):
-    data, signature = token.split(".")
-    if not security.valid_signature(signature, data):
+    try:
+        data, signature = token.split(".")
+        if not security.valid_signature(signature, data):
+            return None
+        
+        ttype, session_id, version = b64decode(data.encode()).decode().split(":")
+        if ttype != "1":
+            return None
+        user_id = redis.get(f"us:{session_id}:{str(version)}").decode()
+        if user_id is None:
+            return None
+        
+        user = users.get_user(user_id)
+        if bitfield.has(user.flags, flags.user.deleted) or bitfield.has(user.flags, flags.user.terminated):
+            return None
+        else:
+            return user
+    except:
         return None
-    
-    ttype, session_id, version = b64decode(data.encode()).decode().split(":")
-    user_id = redis.get(f"us:{session_id}:{str(version)}").decode()
-    if user_id is None:
-        return None
-    
-    user = users.get_user(user_id)
-    if bitfield.has(user.flags, flags.user.deleted) or bitfield.has(user.flags, flags.user.terminated):
-        return None
-    else:
-        return user

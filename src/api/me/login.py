@@ -87,6 +87,7 @@ async def v1_mfa_totp(request, body: TOTPForm):
     if not account.check_totp(body.code):
         raise status.invalidTOTP
     else:
+        tickets.revoke_ticket(ticket["id"])
         session = sessions.create_user_session(account, request.ctx.device, networks.get_network(request.ip))
         return json({
             "user_id": account.id,

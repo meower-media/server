@@ -25,14 +25,13 @@ class NewMessageForm(BaseModel):
     )
 
 def get_chat_or_abort_if_no_membership(chat_id: str, user: users.User):
-    chat = chats.get_chat(chat_id)
-    if user.id not in chat.member_ids:
-        raise status.notFound
-
-@v1.middleware("request")
-async def check_authentication(request):
-    if request.ctx.user is None:
+    if user is None:
         raise status.notAuthenticated
+
+    chat = chats.get_chat(chat_id)
+    if (chat is None) or (not chat.has_member(user)):
+        raise status.notFound
+    return chat
 
 @v1.get("/")
 async def v1_get_chat(request, chat_id: str):
@@ -112,8 +111,8 @@ async def v1_refresh_chat_invite(request, chat_id: str):
 async def v1_get_chat_messages(request, chat_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
-    messages = messages.get_latest_messages(chat, before=request.args.get("before"), after=request.args.get("after"), limit=int(request.args.get("limit", 25)))
-    return json({"messages": messages})
+    fetched_messages = messages.get_latest_messages(chat, before=request.args.get("before"), after=request.args.get("after"), limit=int(request.args.get("limit", 25)))
+    return json({"messages": [message.public for message in fetched_messages]})
 
 @v1.post("/messages")
 @validate(json=NewMessageForm)
@@ -127,5 +126,5 @@ async def v1_create_chat_message(request, chat_id: str, body: NewMessageForm):
 async def v1_search_chat_messages(request, chat_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
-    messages = messages.search_messages(chat, request.args.get("q"), before=request.args.get("before"), after=request.args.get("after"), limit=int(request.args.get("limit", 25)))
-    return json({"messages": messages})
+    fetched_messages = messages.search_messages(chat, request.args.get("q"), before=request.args.get("before"), after=request.args.get("after"), limit=int(request.args.get("limit", 25)))
+    return json({"messages": [message.public for message in fetched_messages]})

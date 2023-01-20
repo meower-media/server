@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-import time
 import os
 
 from .snowflake import generate_snowflake
@@ -14,12 +13,12 @@ def timestamp(epoch: int = None, jsonify: bool = False) -> dict|datetime:
 
     if jsonify:
         return {
-            "h": dt.hour,
-            "mi": dt.minute,
-            "s": dt.second,
-            "d": dt.day,
-            "mo": dt.month,
-            "y": dt.year,
+            "mo": dt.strftime("%m"),
+            "d": dt.strftime("%d"),
+            "y": dt.strftime("%Y"),
+            "h": dt.strftime("%H"),
+            "mi": dt.strftime("%M"),
+            "s": dt.strftime("%S"),
             "e": int(dt.timestamp())
         }
     else:

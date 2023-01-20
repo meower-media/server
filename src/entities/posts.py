@@ -66,6 +66,19 @@ class Post:
         }
 
     @property
+    def legacy(self):
+        return {
+            "_id": self.id,
+            "type": 1,
+            "post_origin": "home",
+            "u": self.author.username,
+            "t": uid.timestamp(epoch=int(self.time.timestamp()), jsonify=True),
+            "p": self.content,
+            "post_id": self.id,
+            "isDeleted": self.deleted
+        }
+
+    @property
     def public_flags(self):
         pub_flags = copy(self.flags)
         for flag in [

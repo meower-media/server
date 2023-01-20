@@ -100,6 +100,12 @@ class Message:
             })
 
 def create_message(chat: chats.Chat, author: users.User, content: str):
+    if chat.direct:
+        for member in chat.members:
+            if member.id != author.id:
+                if member.is_blocked(author):
+                    raise status.missingPermissions
+
     # Create message data
     message = {
         "_id": uid.snowflake(),

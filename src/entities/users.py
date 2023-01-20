@@ -107,6 +107,19 @@ class User:
         }
 
     @property
+    def legacy(self):
+        return {
+            "_id": self.username,
+            "lower_username": self.lower_username,
+            "created": int(self.created.timestamp()),
+            "uuid": self.id,
+            "pfp_data": (self.icon["data"] if (self.icon["type"] == 0) else 2),
+            "quote": self.quote,
+            "lvl": 0,
+            "banned": False
+        }
+
+    @property
     def partial(self):
         return {
             "id": self.id,
@@ -130,27 +143,56 @@ class User:
         following = db.relationships.count_documents({"from": self.id})
         self.stats = {"followers": followers, "following": following}
 
-    def get_relationships(self, state: int):
-        return list(db.relationships.find({"from": self.id, "state": state}))
+    def get_following(self):
+        return [relationship["to"] for relationship in db.followed_users.find({"from": self.id})]
 
-    def get_relationship(self, user):
-        relationship = db.relationships.find_one({"from": self.id, "to": user.id}, projection={"_id": 0, "last_updated": 0})
-        if relationship is None:
-            relationship = {
-                "from": self.id,
-                "to": user.id,
-                "state": 0,
-                "last_updated": None
-            }
-        else:
-            relationship["last_updated"] = relationship["last_updated"].timestamp()
-        return relationship
+    def get_blocked(self):
+        return [relationship["to"] for relationship in db.blocked_users.find({"from": self.id})]
 
-    def change_relationship(self, user, state: int):
-        if state == 0:
-            db.relationships.delete_one({"from": self.id, "to": user.id})
-        else:
-            db.relationships.update_one({"from": self.id, "to": user.id})
+    def is_following(self, user):
+        return (db.followed_users.find_one({"to": user.id, "from": self.id}, projection={"_id": 1}) is not None)
+    
+    def is_followed(self, user):
+        return (db.followed_users.find_one({"to": self.id, "from": user.id}, projection={"_id": 1}) is not None)
+
+    def is_blocked(self, user):
+        return (db.blocked_users.find_one({"$or": [{"to": user.id, "from": self.id}, {"to": self.id, "from": user.id}]}, projection={"_id": 1}) is not None)
+
+    def follow_user(self, user):
+        if self.is_blocked(user):
+            raise status.missingPermissions  # placeholder
+        if self.is_following(user):
+            raise status.missingPermissions  # placeholder
+        
+        db.followed_users.insert_one({
+            "_id": uid.snowflake(),
+            "to": user.id,
+            "from": self.id,
+            "time": uid.timestamp()
+        })
+
+    def unfollow_user(self, user):
+        db.followed_users.delete_one({"to": user.id, "from": self.id})
+
+    def remove_follower(self, user):
+        db.followed_users.delete_one({"to": self.id, "from": user.id})
+
+    def block_user(self, user):
+        if db.blocked_users.find_one({"to": user.id, "from": self.id}, projection={"_id": 1}) is not None:
+            raise status.missingPermissions  # placeholder
+        
+        self.unfollow_user(user)
+        self.remove_follower(user)
+
+        db.blocked_users.insert_one({
+            "_id": uid.snowflake(),
+            "to": user.id,
+            "from": self.id,
+            "time": uid.timestamp()
+        })
+
+    def unblock_user(self, user):
+        db.blocked_users.delete_one({"to": user.id, "from": self.id})
 
     @property
     def username_history(self):

@@ -65,10 +65,10 @@ class Account:
 
         if code in self.totp_recovery:
             self.totp_recovery.remove(code)
-            db.accounts.update_one({"_id": self._id}, {"$pull": {"totp_recovery": code}})
+            db.accounts.update_one({"_id": self.id}, {"$pull": {"totp_recovery": code}})
             return True
-        elif TOTP(self.totp_secret).verify(code) and (redis.get(f"totp:{self._id}:{code}") is None):
-            redis.set(f"totp:{self._id}:{code}", "", ex=30)
+        elif TOTP(self.totp_secret).verify(code) and (redis.get(f"totp:{self.id}:{code}") is None):
+            redis.set(f"totp:{self.id}:{code}", "", ex=30)
             return True
         else:
             return False

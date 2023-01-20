@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from src.util import status
 from src.entities import posts
 
+v0 = Blueprint("v0_posts", url_prefix="/posts")
 v1 = Blueprint("v1_posts", url_prefix="/posts/<post_id:str>")
 
 class EditForm(BaseModel):
@@ -12,6 +13,25 @@ class EditForm(BaseModel):
         min_length=1,
         max_length=4000
     )
+
+@v0.get("/")
+async def v0_get_post(request):
+    # Get post ID
+    post_id = request.args.get("id")
+    if post_id is None:
+        return json({"error": True, "type": "noQueryString"}, status=400)
+    
+    # Get and return post
+    try:
+        post = posts.get_post(post_id)
+    except status.notFound:
+        return json({"error": True, "type": "notFound"}, status=404)
+    except:
+        return json({"error": True, "type": "internal"}, status=500)
+    else:
+        resp = post.legacy
+        resp["error"] = False
+        return json(resp)
 
 @v1.get("/")
 async def v1_get_post(request, post_id: str):
@@ -63,7 +83,7 @@ async def v1_like_post(request, post_id: str):
     post.like(request.ctx.user)
     return HTTPResponse(status=204)
 
-@v1.delete("/like")
+@v1.post("/unlike")
 async def v1_unlike_post(request, post_id: str):
     if request.ctx.user is None:
         raise status.notAuthenticated
@@ -81,7 +101,7 @@ async def v1_meow_post(request, post_id: str):
     post.meow(request.ctx.user)
     return HTTPResponse(status=204)
 
-@v1.delete("/meow")
+@v1.post("/unmeow")
 async def v1_unmeow_post(request, post_id: str):
     if request.ctx.user is None:
         raise status.notAuthenticated

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from src.util import status
 from src.entities import posts
 
+v0 = Blueprint("v0_home", url_prefix="/home")
 v1 = Blueprint("v1_home", url_prefix="/home")
 
 class NewPostForm(BaseModel):
@@ -13,14 +14,15 @@ class NewPostForm(BaseModel):
         max_length=4000
     )
 
-@v1.post("/")
-@validate(json=NewPostForm)
-async def v1_create_post(request, body: NewPostForm):
-    if request.ctx.user is None:
-        raise status.notAuthenticated
-
-    post = posts.create_post(request.ctx.user, body.content)
-    return json(post.public)
+@v0.get("/")
+async def v0_get_home(request):
+    fetched_posts = posts.get_latest_posts()
+    return json({
+        "error": False,
+        "autoget": [post.legacy for post in fetched_posts],
+        "page#": 1,
+        "pages": 1
+    })
 
 @v1.get("/")
 async def v1_get_feed(request):
@@ -44,3 +46,12 @@ async def v1_get_trending_posts(request):
 async def v1_search_posts(request):
     fetched_posts = posts.search_posts(request.args.get("q"), before=request.args.get("before"), after=request.args.get("after"), limit=int(request.args.get("limit", 25)))
     return json({"posts": [post.public for post in fetched_posts]})
+
+@v1.post("/")
+@validate(json=NewPostForm)
+async def v1_create_post(request, body: NewPostForm):
+    if request.ctx.user is None:
+        raise status.notAuthenticated
+
+    post = posts.create_post(request.ctx.user, body.content)
+    return json(post.public)

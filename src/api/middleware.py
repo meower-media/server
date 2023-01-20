@@ -18,9 +18,3 @@ async def authorization(request):
         request.ctx.user = None
     else:
         request.ctx.user = sessions.get_user_by_token(token)
-
-def get_ratelimit_id(request):
-    if request.ctx.user is None:
-        return request.ctx.user.id
-    else:
-        return request.ip

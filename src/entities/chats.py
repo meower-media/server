@@ -39,7 +39,7 @@ class Chat:
             "id": self.id,
             "name": self.name,
             "direct": self.direct,
-            "flags": self.public_flags,
+            "flags": self.flags,
             "members": self.partial_members,
             "permissions": self.permissions,
             "invite_code": self.invite_code,

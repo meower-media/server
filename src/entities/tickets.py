@@ -20,16 +20,26 @@ def create_ticket(user: users.User|accounts.Account, type: str, data: dict = {})
     return f"{encoded_data}.{signature}"
 
 def get_ticket_details(signed_ticket: str):
-    if signed_ticket.count(".") != 1:
+    try:
+        if signed_ticket.count(".") != 1:
+            return None
+
+        encoded_data, signature = signed_ticket.split(".")
+        if not security.valid_signature(signature, encoded_data):
+            return None
+        
+        ttype, ticket_id = b64decode(encoded_data.encode()).decode().split(":")
+        if ttype != "0":
+            return None
+        raw_data = redis.get(f"tic:{ticket_id}")
+        if raw_data is None:
+            return None
+
+        decoded_data = json.loads(zlib.decompress(raw_data).decode())
+        decoded_data["id"] = ticket_id
+        return decoded_data
+    except:
         return None
 
-    encoded_data, signature = signed_ticket.split(".")
-    if not security.valid_signature(signature, encoded_data):
-        return None
-    
-    ticket_id = b64decode(encoded_data.encode()).decode().split(":")[1]
-    raw_data = redis.get(f"tic:{ticket_id}")
-    if raw_data is None:
-        return None
-
-    return json.loads(zlib.decompress(raw_data).decode())
+def revoke_ticket(ticket_id: str):
+    redis.delete(f"tic:{ticket_id}")
