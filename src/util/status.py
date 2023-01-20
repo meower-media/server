@@ -161,3 +161,27 @@ class missingPermissions(SanicException):
     code = 26
     http_status = 403
     message = "Missing permissions"
+
+class memberNotFound(SanicException):
+    error = True
+    code = 27
+    http_status = 404
+    message = "Member not found"
+
+class memberAlreadyExists(SanicException):
+    error = True
+    code = 28
+    http_status = 409
+    message = "Member already exists"
+
+class userSuspended(SanicException):
+    error = True
+    code = 29
+    http_status = 403
+    message = "User is currently in read-only mode"
+
+class userBanned(SanicException):
+    error = True
+    code = 30
+    http_status = 403
+    message = "User is currently banned"

@@ -2,7 +2,7 @@ from datetime import datetime
 from secrets import token_urlsafe
 import time
 
-from src.util import status, uid, events
+from src.util import status, uid, events, bitfield, flags
 from src.entities import users
 from src.database import db
 
@@ -51,6 +51,9 @@ class Chat:
         return [member.partial for member in self.members]
 
     def update_name(self, name: str):
+        if self.direct:
+            raise status.missingPermissions
+
         self.name = name
         db.chats.update_one({"_id": self.id}, {"$set": {"name": self.name}})
         events.emit_event("chat_updated", {
@@ -65,8 +68,11 @@ class Chat:
         return False
 
     def add_member(self, user: users.User):
+        if self.direct:
+            raise status.missingPermissions
+        
         if self.has_member(user):
-            return
+            raise status.memberAlreadyExists
 
         self.members.append(user)
         db.chats.update_one({"_id": self.id}, {"$addToSet": {"members": user.id}})
@@ -83,13 +89,21 @@ class Chat:
             self.transfer_ownership(user)
 
     def remove_member(self, user: users.User):
+        if self.direct:
+            raise status.missingPermissions
+
         if not self.has_member(user):
-            return
+            raise status.memberNotFound
 
         for member in self.members:
             if member.id == user.id:
                 self.members.remove(member)
-        db.chats.update_one({"_id": self.id}, {"$pull": {"members": user.id}})
+        if user.id in self.permissions:
+            del self.permissions[user.id]
+        db.chats.update_one({"_id": self.id}, {
+            "$pull": {"members": user.id},
+            "$set": {"permissions": self.permissions}
+        })
         events.emit_event("chat_deleted", {
             "chat_id": self.id,
             "user_id": user.id
@@ -100,11 +114,18 @@ class Chat:
         else:
             events.emit_event("chat_updated", {
                 "chat_id": self.id,
-                "members": self.partial_members
+                "members": self.partial_members,
+                "permissions": self.permissions
             })
             self.transfer_ownership(self.members[0])
 
     def promote_member(self, user: users.User):
+        if self.direct:
+            raise status.missingPermissions
+
+        if not self.has_member(user):
+            raise status.memberNotFound
+
         if self.permissions.get(user.id, 0) < 1:
             self.permissions[user.id] = 1
             db.chats.update_one({"_id": self.id}, {"$set": {"permissions": self.permissions}})
@@ -114,6 +135,12 @@ class Chat:
             })
     
     def demote_member(self, user: users.User):
+        if self.direct:
+            raise status.missingPermissions
+
+        if not self.has_member(user):
+            raise status.memberNotFound
+
         if self.permissions.get(user.id, 0) == 1:
             self.permissions[user.id] = 0
             db.chats.update_one({"_id": self.id}, {"$set": {"permissions": self.permissions}})
@@ -123,6 +150,12 @@ class Chat:
             })
 
     def transfer_ownership(self, user: users.User):
+        if self.direct:
+            raise status.missingPermissions
+
+        if not self.has_member(user):
+            raise status.memberNotFound
+
         if self.permissions.get(user.id, 0) < 2:
             # Demote old owner
             for user_id, level in self.permissions.items():
@@ -139,6 +172,12 @@ class Chat:
             })
 
     def refresh_invite_code(self):
+        if self.direct:
+            raise status.missingPermissions
+
+        if bitfield.has(self.flags, flags.chat.vanityInviteCode):
+            raise status.chatHasVanityInviteCode
+
         self.invite_code = token_urlsafe(6)
         db.chats.update_one({"_id": self.id}, {"$set": {"invite_code": self.invite_code}})
         events.emit_event("chat_updated", {
@@ -147,6 +186,9 @@ class Chat:
         })
 
     def delete(self):
+        if self.direct:
+            raise status.missingPermissions
+
         if self.deleted:
             db.chat_messages.delete_many({"chat_id": self.id})
             db.chats.delete_one({"_id": self.id})

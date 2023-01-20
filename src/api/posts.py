@@ -2,7 +2,7 @@ from sanic import Blueprint, json, HTTPResponse
 from sanic_ext import validate
 from pydantic import BaseModel, Field
 
-from src.util import status
+from src.util import status, security
 from src.entities import posts
 
 v0 = Blueprint("v0_posts", url_prefix="/posts")
@@ -40,10 +40,8 @@ async def v1_get_post(request, post_id: str):
 
 @v1.patch("/")
 @validate(json=EditForm)
+@security.sanic_protected(check_suspension=True)
 async def v1_edit_post(request, post_id: str, body: EditForm):    
-    if request.ctx.user is None:
-        raise status.notAuthenticated
-
     post = posts.get_post(post_id)
     if post.author.id == request.ctx.user.id:
         post.edit(request.ctx.user, body.content)
@@ -52,10 +50,8 @@ async def v1_edit_post(request, post_id: str, body: EditForm):
         raise status.missingPermissions
 
 @v1.delete("/")
+@security.sanic_protected()
 async def v1_delete_post(request, post_id: str):
-    if request.ctx.user is None:
-        raise status.notAuthenticated
-
     post = posts.get_post(post_id)
     if post.author.id == request.ctx.user.id:
         post.delete()
@@ -64,10 +60,8 @@ async def v1_delete_post(request, post_id: str):
         raise status.missingPermissions
 
 @v1.get("/status")
+@security.sanic_protected()
 async def v1_post_status(request, post_id: str):
-    if request.ctx.user is None:
-        raise status.notAuthenticated
-
     post = posts.get_post(post_id)
     return json({
         "liked": post.liked(request.ctx.user),
@@ -75,37 +69,29 @@ async def v1_post_status(request, post_id: str):
     })
 
 @v1.post("/like")
+@security.sanic_protected(check_suspension=True)
 async def v1_like_post(request, post_id: str):
-    if request.ctx.user is None:
-        raise status.notAuthenticated
-
     post = posts.get_post(post_id)
     post.like(request.ctx.user)
     return HTTPResponse(status=204)
 
 @v1.post("/unlike")
+@security.sanic_protected(check_suspension=True)
 async def v1_unlike_post(request, post_id: str):
-    if request.ctx.user is None:
-        raise status.notAuthenticated
-
     post = posts.get_post(post_id)
     post.unlike(request.ctx.user)
     return HTTPResponse(status=204)
 
 @v1.post("/meow")
+@security.sanic_protected(check_suspension=True)
 async def v1_meow_post(request, post_id: str):
-    if request.ctx.user is None:
-        raise status.notAuthenticated
-
     post = posts.get_post(post_id)
     post.meow(request.ctx.user)
     return HTTPResponse(status=204)
 
 @v1.post("/unmeow")
+@security.sanic_protected(check_suspension=True)
 async def v1_unmeow_post(request, post_id: str):
-    if request.ctx.user is None:
-        raise status.notAuthenticated
-
     post = posts.get_post(post_id)
     post.unmeow(request.ctx.user)
     return HTTPResponse(status=204)

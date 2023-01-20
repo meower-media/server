@@ -1,5 +1,4 @@
 from datetime import datetime
-from copy import copy
 import time
 
 from src.util import status, uid, events, bitfield, flags
@@ -72,6 +71,14 @@ class Message:
         })
 
     def edit(self, content: str):
+        db.chat_message_revisions.insert_one({
+            "_id": uid.snowflake(),
+            "message_id": self.id,
+            "old_content": self.content,
+            "new_content": content,
+            "time": uid.timestamp()
+        })
+
         self.flags = bitfield.add(self.flags, flags.message.edited)
         self.content = content
         db.chat_messages.update_one({"_id": self.id}, {"$set": {
@@ -87,19 +94,19 @@ class Message:
 
     def delete(self):
         if self.deleted:
-            db.post_revisions.delete_many({"post_id": self.id})
-            db.post_likes.delete_many({"post_id": self.id})
-            db.post_meows.delete_many({"post_id": self.id})
-            db.posts.delete_one({"_id": self.id})
+            db.chat_message_revisions.delete_many({"message_id": self.id})
+            db.chat_messages.delete_one({"_id": self.id})
         else:
             self.deleted = True
             self.delete_after = uid.timestamp(epoch=int(time.time() + 1209600))
-            db.posts.update_one({"_id": self.id}, {"$set": {"deleted": self.deleted, "delete_after": self.delete_after}})
-            events.emit_event("post_deleted", {
-                "post_id": self.id
+            db.chat_messages.update_one({"_id": self.id}, {"$set": {"deleted": self.deleted, "delete_after": self.delete_after}})
+            events.emit_event("message_deleted", {
+                "chat_id": self.chat_id,
+                "message_id": self.id
             })
 
 def create_message(chat: chats.Chat, author: users.User, content: str):
+    # Check whether a DM can be sent
     if chat.direct:
         for member in chat.members:
             if member.id != author.id:
@@ -150,7 +157,7 @@ def get_latest_messages(chat: chats.Chat, before: str = None, after: str = None,
     # Fetch and return all messages
     return [Message(**message) for message in db.chat_messages.find({"chat_id": chat.id, "deleted": False, "_id": id_range}, sort=[("_id", -1)], limit=limit)]
 
-def search_posts(chat: chats.Chat, query: str, before: str = None, after: str = None, limit: int = 25):
+def search_messages(chat: chats.Chat, query: str, before: str = None, after: str = None, limit: int = 25):
     # Create ID range
     if before is not None:
         id_range = {"$lt": before}

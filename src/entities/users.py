@@ -137,7 +137,7 @@ class User:
         ]:
             pub_flags = bitfield.remove(pub_flags, flag)
         return pub_flags
-    
+
     def count_stats(self):
         followers = db.relationships.count_documents({"to": self.id})
         following = db.relationships.count_documents({"from": self.id})
@@ -277,3 +277,15 @@ def get_id_from_username(username: str):
         raise status.notFound
     else:
         return user["_id"]
+
+def search_users(query: str, before: str = None, after: str = None, limit: int = 25):
+    # Create ID range
+    if before is not None:
+        id_range = {"$lt": before}
+    elif after is not None:
+        id_range = {"$gt": after}
+    else:
+        id_range = {"$gt": "0"}
+
+    # Fetch and return all users
+    return [User(**user) for user in db.users.find({"$text": {"$search": query}, "_id": id_range}, sort=[("_id", -1)], limit=limit)]

@@ -29,17 +29,11 @@ class admin:
     manageOAuth = 7
     manageSystem = 8
 
-class suspension:
-    createPosts = 0
-    createComments = 1
-    likePosts = 2
-    meowPosts = 3
-    sendMessages = 4
-    likeMessages = 5
-    editProfile = 6
-    uploadFiles = 7
-    followUsers = 8
-    createReports = 9
+class infractions:
+    automatic = 0
+    detectAlts = 1
+    poisonous = 2
+    blockAppeals = 3
 
 class chat:
     inviteCodeDisabled = 0

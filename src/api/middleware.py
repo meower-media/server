@@ -17,4 +17,4 @@ async def authorization(request):
     if token is None:
         request.ctx.user = None
     else:
-        request.ctx.user = sessions.get_user_by_token(token)
+        request.ctx.user = None #sessions.get_user_by_token(token)

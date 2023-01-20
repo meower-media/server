@@ -2,7 +2,7 @@ from sanic import Blueprint, json, HTTPResponse
 from sanic_ext import validate
 from pydantic import BaseModel, Field
 
-from src.util import status
+from src.util import status, security
 from src.entities import users, chats
 
 v0 = Blueprint("v0_users", url_prefix="/users/<username:str>")
@@ -32,10 +32,8 @@ async def v1_get_user(request, user_id: str):
         return json(user.public)
 
 @v1.post("/follow")
+@security.sanic_protected(check_suspension=True)
 async def v1_follow_user(request, user_id: str):
-    if request.ctx.user is None:
-        raise status.notAuthenticated
-
     user = users.get_user(user_id)
 
     if request.ctx.user == user.id:
@@ -46,10 +44,8 @@ async def v1_follow_user(request, user_id: str):
     return HTTPResponse(status=204)
 
 @v1.post("/unfollow")
+@security.sanic_protected()
 async def v1_unfollow_user(request, user_id: str):
-    if request.ctx.user is None:
-        raise status.notAuthenticated
-
     user = users.get_user(user_id)
 
     if request.ctx.user == user.id:
@@ -60,10 +56,8 @@ async def v1_unfollow_user(request, user_id: str):
     return HTTPResponse(status=204)
 
 @v1.post("/block")
+@security.sanic_protected()
 async def v1_block_user(request, user_id: str):
-    if request.ctx.user is None:
-        raise status.notAuthenticated
-
     user = users.get_user(user_id)
 
     if request.ctx.user == user.id:
@@ -74,10 +68,8 @@ async def v1_block_user(request, user_id: str):
     return HTTPResponse(status=204)
 
 @v1.post("/unblock")
+@security.sanic_protected()
 async def v1_unblock_user(request, user_id: str):
-    if request.ctx.user is None:
-        raise status.notAuthenticated
-
     user = users.get_user(user_id)
 
     if request.ctx.user == user.id:
@@ -88,10 +80,8 @@ async def v1_unblock_user(request, user_id: str):
     return HTTPResponse(status=204)
 
 @v1.get("/dm")
+@security.sanic_protected()
 async def v1_dm_user(request, user_id: str):
-    if request.ctx.user is None:
-        raise status.notAuthenticated
-
     user = users.get_user(user_id)
 
     if request.ctx.user == user.id:

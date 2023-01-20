@@ -2,7 +2,7 @@ from sanic import Blueprint, json
 from sanic_ext import validate
 from pydantic import BaseModel, Field
 
-from src.util import status
+from src.util import status, security
 from src.entities import posts
 
 v0 = Blueprint("v0_home", url_prefix="/home")
@@ -25,10 +25,8 @@ async def v0_get_home(request):
     })
 
 @v1.get("/")
-async def v1_get_feed(request):
-    if request.ctx.user is None:
-        raise status.notAuthenticated
-    
+@security.sanic_protected()
+async def v1_get_feed(request):    
     fetched_posts = posts.get_feed(request.ctx.user, before=request.args.get("before"), after=request.args.get("after"), limit=int(request.args.get("limit", 25)))
     return json({"posts": [post.public for post in fetched_posts]})
 
@@ -42,16 +40,9 @@ async def v1_get_trending_posts(request):
     fetched_posts = posts.get_top_posts(before=request.args.get("before"), after=request.args.get("after"), limit=int(request.args.get("limit", 25)))
     return json({"posts": [post.public for post in fetched_posts]})
 
-@v1.get("/search")
-async def v1_search_posts(request):
-    fetched_posts = posts.search_posts(request.args.get("q"), before=request.args.get("before"), after=request.args.get("after"), limit=int(request.args.get("limit", 25)))
-    return json({"posts": [post.public for post in fetched_posts]})
-
 @v1.post("/")
 @validate(json=NewPostForm)
+@security.sanic_protected(check_suspension=True)
 async def v1_create_post(request, body: NewPostForm):
-    if request.ctx.user is None:
-        raise status.notAuthenticated
-
     post = posts.create_post(request.ctx.user, body.content)
     return json(post.public)
