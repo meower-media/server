@@ -2,6 +2,7 @@ from sanic import Sanic, Blueprint
 from dotenv import load_dotenv
 import os
 
+# Load env variables
 load_dotenv()
 
 # General imports

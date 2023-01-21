@@ -3,7 +3,7 @@ from datetime import datetime
 import time
 import string
 
-from src.util import status, uid, bitfield, flags
+from src.util import status, uid, events, bitfield, flags
 from src.database import db
 
 SERVER = {
@@ -81,7 +81,7 @@ class User:
         return {
             "id": self.id,
             "username": self.username,
-            "public_flags": self.public_flags,
+            "flags": self.public_flags,
             "created": int(self.created.timestamp()),
             "theme": self.theme,
             "icon": self.icon,
@@ -96,7 +96,6 @@ class User:
             "id": self.id,
             "username": self.username,
             "flags": self.flags,
-            "public_flags": self.public_flags,
             "admin": self.admin,
             "created": self.created,
             "theme": self.theme,
@@ -124,7 +123,7 @@ class User:
         return {
             "id": self.id,
             "username": self.username,
-            "public_flags": self.public_flags,
+            "flags": self.public_flags,
             "icon": self.icon
         }
 
@@ -133,15 +132,22 @@ class User:
         pub_flags = copy(self.flags)
         for flag in [
             flags.user.child,
-            flags.user.terminated
+            flags.user.ageNotConfirmed,
+            flags.user.requireEmail,
+            flags.user.requireMFA
         ]:
             pub_flags = bitfield.remove(pub_flags, flag)
         return pub_flags
 
     def count_stats(self):
-        followers = db.relationships.count_documents({"to": self.id})
-        following = db.relationships.count_documents({"from": self.id})
+        followers = db.followed_users.count_documents({"to": self.id})
+        following = db.followed_users.count_documents({"from": self.id})
         self.stats = {"followers": followers, "following": following}
+        db.users.update_one({"_id": self.id}, {"$set": {"stats": self.stats}})
+        events.emit_event("user_updated", {
+            "id": self.id,
+            "stats": self.stats
+        })
 
     def get_following(self):
         return [relationship["to"] for relationship in db.followed_users.find({"from": self.id})]
@@ -196,24 +202,9 @@ class User:
 
     @property
     def username_history(self):
-        return list(db.username_history.find({"user": self._id}, projection={"_id": 0, "user": 0}, sort=[("time", 1)]))
-
-    @property
-    def config(self):
-        return db.user_config.find_one({"_id": self._id}, projection={"_id": 0, "last_updated": 0})
-
-    def update_config(self, new_data: dict):
-        for key, value in new_data.items():
-            if (key not in CONFIG_KEYS) or (not isinstance(value, type(CONFIG_KEYS[key]))):
-                del new_data[key]
-        new_data["last_updated"] = uid.timestamp()
-        db.user_config.update_one({"_id": self._id}, {"$set": new_data})
-        return status.ok
+        return list(db.username_history.find({"user_id": self._id}, projection={"_id": 0, "user_id": 0}, sort=[("_id", -1)]))
 
     def update_username(self, username: str, by_admin: bool = False, store_history: bool = True):
-        if (not isinstance(username, str)) or (not isinstance(by_admin, bool)) or (not isinstance(store_history, bool)):
-            raise status.invalidDatatype
-
         if not username_available(username):
             raise status.alreadyExists
 
@@ -235,6 +226,10 @@ class User:
             "username": self.username,
             "lower_username": self.lower_username
         }})
+        events.emit_event("user_updated", {
+            "id": self.id,
+            "username": self.username
+        })
 
 def create_user(username: str, flags: int = 0):
     userdata = {

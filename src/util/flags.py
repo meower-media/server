@@ -3,15 +3,11 @@ class user:
     child = 1
     bot = 2
     verifiedBot = 3
-    notSafeForKids = 4
-    deleted = 5
-    terminated = 6
-
-class account:
-    ageNotConfirmed = 0
-    requireEmail = 1
-    requireMFA = 2
-    requireParentLink = 3
+    deleted = 4
+    notSafeForKids = 5
+    ageNotConfirmed = 6
+    requireEmail = 7
+    requireMFA = 8
 
 class guardian:
     blocked = 0

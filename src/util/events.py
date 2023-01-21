@@ -1,5 +1,6 @@
 from threading import Thread
 import json
+import asyncio
 
 from src.database import redis
 
@@ -9,6 +10,9 @@ EVENT_NAMES = set([
     "session_created",
     "session_updated",
     "session_deleted",
+    "notification_created",
+    "notification_updated",
+    "notification_deleted",
     "infraction_created",
     "infraction_updated",
     "infraction_deleted",
@@ -37,17 +41,18 @@ def add_event_listener(name: str, callback: callable):
         pubsub = redis.pubsub()
         pubsub.subscribe(f"meower:{name}")
         for message in pubsub.listen():
-            if not isinstance(message, dict):
-                continue
-
-            message = message.get("data")
             try:
-                message = json.loads(message.decode())
+                message = json.loads(message.get("data"))
+                asyncio.run(callback(message))
             except:
                 continue
-        
-            callback(message)
     
-    thread = Thread(run)
+    thread = Thread(target=run)
     thread.daemon = True
     thread.start()
+
+def on(event_name: str):
+    def decorator(func: callable) -> callable:
+        add_event_listener(event_name, func)
+        return func
+    return decorator
