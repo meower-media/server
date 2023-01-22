@@ -1,7 +1,7 @@
 from datetime import datetime
 from base64 import b64encode, b64decode
 
-from src.util import uid, bitfield, flags, security
+from src.util import status, uid, bitfield, flags, security
 from src.entities import users, accounts, networks
 from src.database import db, redis
 
@@ -66,6 +66,13 @@ def create_user_session(account: accounts.Account, device: dict, network: networ
     db.sessions.insert_one(session_data)
     return session
 
+def get_session(session_id: str):
+    session = db.sessions.find_one({"_id": session_id})
+    if session is None:
+        raise status.notFound
+    
+    return UserSession(**session)
+
 def get_user_by_token(token: str):
     try:
         data, signature = token.split(".")
@@ -84,5 +91,21 @@ def get_user_by_token(token: str):
             return None
         else:
             return user
+    except:
+        return None
+
+def get_session_by_token(token: str):
+    try:
+        data, signature = token.split(".")
+        if not security.valid_signature(signature, data):
+            return None
+        
+        ttype, session_id, version = b64decode(data.encode()).decode().split(":")
+        if ttype != "1":
+            return None
+        if redis.exists(f"us:{session_id}:{str(version)}") != 1:
+            return None
+        
+        return get_session(session_id)
     except:
         return None

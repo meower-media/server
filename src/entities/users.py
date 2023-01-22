@@ -56,6 +56,14 @@ class User:
         quote: str = "",
         badges: list = [],
         stats: dict = {"followers": 0, "following": 0},
+        guardian: dict = {
+            "guardians": [],
+            "disabled": False,
+            "force_filter": True,
+            "schedules": [],
+            "blocked_users": [],
+            "blocked_chats": []
+        },
         redirect_to: str = None,
         delete_after: datetime = None
     ):
@@ -70,6 +78,7 @@ class User:
         self.quote = quote
         self.badges = badges
         self.stats = stats
+        self.guardian = guardian
         self.redirect_to = redirect_to
         self.delete_after = delete_after
 
@@ -86,8 +95,8 @@ class User:
             "theme": self.theme,
             "icon": self.icon,
             "quote": self.quote,
-            "stats": self.stats,
-            "badges": self.badges
+            "badges": self.badges,
+            "stats": self.stats
         }
 
     @property
@@ -101,8 +110,9 @@ class User:
             "theme": self.theme,
             "icon": self.icon,
             "quote": self.quote,
+            "badges": self.badges,
             "stats": self.stats,
-            "badges": self.badges
+            "guardian": self.guardian
         }
 
     @property
