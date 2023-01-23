@@ -37,7 +37,6 @@ All websocket requests and responses are JSON-encoded text frames.
 ```
 
 *Responses*
-First response, notifies the client that 
 ```js
 {
   "cmd": "statuscode",
