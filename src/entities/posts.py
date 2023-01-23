@@ -224,7 +224,8 @@ class Post:
             "content": self.content
         }})
         events.emit_event("post_updated", {
-            "post_id": self.id,
+            "id": self.id,
+            "flags": self.public_flags,
             "content": self.content
         })
 
@@ -257,9 +258,7 @@ class Post:
             self.deleted = True
             self.delete_after = uid.timestamp(epoch=int(time.time() + 1209600))
             db.posts.update_one({"_id": self.id}, {"$set": {"deleted": self.deleted, "delete_after": self.delete_after}})
-            events.emit_event("post_deleted", {
-                "post_id": self.id
-            })
+            events.emit_event("post_deleted", {"id": self.id})
 
 def create_post(author: users.User, content: str):
     # Create post data
@@ -276,9 +275,7 @@ def create_post(author: users.User, content: str):
     post = Post(**post)
 
     # Announce post creation
-    events.emit_event("post_created", {
-        "post": post.public
-    })
+    events.emit_event("post_created", post.public)
 
     # Return post object
     return post

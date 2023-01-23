@@ -1,6 +1,5 @@
 from src.cl4.cloudlink import cloudlink
 from src.cl4.commands import CL4Commands
-from src.cl4.events import CL4Events
 
 # Initialize the CL server
 cl = cloudlink().server(logs=True)
@@ -24,7 +23,8 @@ cl.disable_methods([
 
 # Set custom CL status codes
 cl.supporter.codes.update({
-    "InvalidToken": (cl.supporter.error, 1, "Invalid token")
+    "InvalidToken": (cl.supporter.error, 200, "Invalid token"),
+    "InvalidSubscriptionType": (cl.supporter.error, 201, "Invalid subscription type")
 })
 
 # Initialize custom dictionaries
@@ -41,4 +41,6 @@ cl._subscriptions = {
 cl.load_custom_methods(CL4Commands(cl))
 
 # Initialize the event handler
-cl._event_handler = CL4Events(cl)
+from src.cl4 import events
+cl.bind_event(cl.events.on_connect, events.on_connect)
+cl._event_handler = events

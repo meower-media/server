@@ -106,7 +106,7 @@ class User:
             "username": self.username,
             "flags": self.flags,
             "admin": self.admin,
-            "created": self.created,
+            "created": int(self.created.timestamp()),
             "theme": self.theme,
             "icon": self.icon,
             "quote": self.quote,

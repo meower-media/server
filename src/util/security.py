@@ -1,4 +1,5 @@
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives import serialization
 from base64 import b64encode, b64decode
 from hashlib import sha256
 from multipledispatch import dispatch
@@ -6,8 +7,9 @@ from sanic.response import HTTPResponse
 import requests
 import os
 
-from src.util import status
+from src.util import status, logging
 from src.entities import sessions, infractions
+from src.database import redis
 
 CAPTCHA_PROVIDERS = {
     "recaptcha": "https://www.google.com/recaptcha/api/siteverify",
@@ -18,7 +20,14 @@ CAPTCHA_PROVIDERS = {
 CAPTCHA_URI = CAPTCHA_PROVIDERS.get(os.getenv("CAPTCHA_PROVIDER"))
 CAPTCHA_SECRET = os.getenv("CAPTCHA_SECRET")
 
-PRIV_KEY = Ed25519PrivateKey.generate()
+if redis.exists("signing_key") != 1:
+    logging.info("Generating new private key...")
+    redis.set("signing_key", b64encode(Ed25519PrivateKey.generate().private_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PrivateFormat.Raw,
+        encryption_algorithm=serialization.NoEncryption()
+    )))
+PRIV_KEY = Ed25519PrivateKey.from_private_bytes(b64decode(redis.get("signing_key")))
 PUB_KEY = PRIV_KEY.public_key()
 
 def check_captcha(captcha_response: str, ip_address: str):

@@ -40,7 +40,7 @@ class Infraction:
             "reason": self.reason,
             "offending_content": self.offending_content,
             "status": self.status,
-            "created": self.created,
+            "created": int(self.created.timestamp()),
             "expires": self.expires
         }
     
@@ -162,7 +162,7 @@ def get_user_infractions(user: users.User, only_active: bool = False):
     query = {"user_id": user.id}
     if only_active:
         query["status"] = {"$ne": 4}
-        query["$or"] = {"expires": None, "expires": {"$gt": uid.timestamp()}}
+        query["$or"] = [{"expires": None}, {"expires": {"$gt": uid.timestamp()}}]
     return [Infraction(**infraction) for infraction in db.infractions.find(query)]
 
 def user_status(user: users.User):

@@ -28,7 +28,8 @@ EVENT_NAMES = set([
     "chat_deleted",
     "message_created",
     "message_updated",
-    "message_deleted"
+    "message_deleted",
+    "cl_direct"
 ])
 
 def emit_event(name: str, details: dict = {}):
