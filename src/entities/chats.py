@@ -171,6 +171,12 @@ class Chat:
                 "permissions": self.permissions
             })
 
+    def emit_typing(self, user: users.User):
+        events.emit_event("typing_start", {
+            "chat_id": self.id,
+            "user_id": user.id
+        })
+
     def refresh_invite_code(self):
         if self.direct:
             raise status.missingPermissions

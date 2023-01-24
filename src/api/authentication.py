@@ -3,12 +3,26 @@ from sanic_ext import validate
 from pydantic import BaseModel, Field
 from typing import Optional
 
-from src.util import status
+from src.util import status, security
 from src.entities import users, accounts, networks, sessions, tickets
 
-v1 = Blueprint("v1_me_login", url_prefix="/login")
+v1 = Blueprint("v1_authentication", url_prefix="/auth")
 
-class PasswordForm(BaseModel):
+class RegistrationForm(BaseModel):
+    username: str = Field(
+        min_length=1,
+        max_length=20
+    )
+    password: str = Field(
+        min_length=8,
+        max_length=255
+    )
+    child: bool = Field()
+    captcha: Optional[str] = Field(
+        max_length=2048
+    )
+
+class LoginPasswordForm(BaseModel):
     username: str = Field(
         min_length=1,
         max_length=20
@@ -21,7 +35,7 @@ class PasswordForm(BaseModel):
         max_length=2048
     )
 
-class TOTPForm(BaseModel):
+class LoginTOTPForm(BaseModel):
     ticket: str = Field(
         min_length=1
     )
@@ -30,9 +44,25 @@ class TOTPForm(BaseModel):
         max_length=10
     )
 
+@v1.post("/")
+@validate(json=RegistrationForm)
+async def v1_register(request, body: RegistrationForm):
+    # Get network and check whether it's blocked
+    network = networks.get_network(request.ip)
+    if network.creation_blocked:
+        raise status.networkBlocked
+
+    # Check captcha
+    if not security.check_captcha(body.captcha, request.ip):
+        raise status.invalidCaptcha
+
+    account = accounts.create_account(body.username, body.password, body.child)
+    session = sessions.create_user_session(account, request.ctx.device, networks.get_network(request.ip))
+    return json({"user_id": account.id, "token": session.signed_token})
+
 @v1.post("/password")
-@validate(json=PasswordForm)
-async def v1_login_password(request, body: PasswordForm):
+@validate(json=LoginPasswordForm)
+async def v1_login_password(request, body: LoginPasswordForm):
     # Get user ID by email or username
     try:
         if "@" in body.username:
@@ -70,8 +100,8 @@ async def v1_login_password(request, body: PasswordForm):
         })
 
 @v1.post("/mfa/totp")
-@validate(json=TOTPForm)
-async def v1_mfa_totp(request, body: TOTPForm):
+@validate(json=LoginTOTPForm)
+async def v1_mfa_totp(request, body: LoginTOTPForm):
     # Get ticket details
     ticket = tickets.get_ticket_details(body.ticket)
     if (ticket is None) or (ticket["t"] != "mfa"):

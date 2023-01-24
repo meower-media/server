@@ -26,6 +26,7 @@ EVENT_NAMES = set([
     "chat_created",
     "chat_updated",
     "chat_deleted",
+    "typing_start",
     "message_created",
     "message_updated",
     "message_deleted",

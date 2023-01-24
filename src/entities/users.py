@@ -149,20 +149,25 @@ class User:
             pub_flags = bitfield.remove(pub_flags, flag)
         return pub_flags
 
+    @property
+    def guardian_settings(self):
+        return db.guardian.find_one({"_id": self.id}, projection={"_id": 0})
+
     def count_stats(self):
         followers = db.followed_users.count_documents({"to": self.id})
         following = db.followed_users.count_documents({"from": self.id})
-        self.stats = {"followers": followers, "following": following}
+        posts = db.posts.count_documents({"author_id": self.id})
+        self.stats = {"followers": followers, "following": following, "posts": posts}
         db.users.update_one({"_id": self.id}, {"$set": {"stats": self.stats}})
         events.emit_event("user_updated", {
             "id": self.id,
             "stats": self.stats
         })
 
-    def get_following(self):
+    def get_following_ids(self):
         return [relationship["to"] for relationship in db.followed_users.find({"from": self.id})]
 
-    def get_blocked(self):
+    def get_blocking_ids(self):
         return [relationship["to"] for relationship in db.blocked_users.find({"from": self.id})]
 
     def is_following(self, user):
@@ -171,8 +176,11 @@ class User:
     def is_followed(self, user):
         return (db.followed_users.find_one({"to": self.id, "from": user.id}, projection={"_id": 1}) is not None)
 
+    def is_blocking(self, user):
+        return (db.blocked_users.find_one({"to": user.id, "from": self.id}) is not None)
+
     def is_blocked(self, user):
-        return (db.blocked_users.find_one({"$or": [{"to": user.id, "from": self.id}, {"to": self.id, "from": user.id}]}, projection={"_id": 1}) is not None)
+        return (db.blocked_users.find_one({"to": self.id, "from": user.id}) is not None or user.id in self.guardian)
 
     def follow_user(self, user):
         if self.is_blocked(user):
@@ -194,7 +202,7 @@ class User:
         db.followed_users.delete_one({"to": self.id, "from": user.id})
 
     def block_user(self, user):
-        if db.blocked_users.find_one({"to": user.id, "from": self.id}, projection={"_id": 1}) is not None:
+        if self.is_blocking(user):
             raise status.missingPermissions  # placeholder
         
         self.unfollow_user(user)

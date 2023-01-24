@@ -125,6 +125,15 @@ async def v1_refresh_chat_invite(request, chat_id: str):
     
     return json(chat.public)
 
+@v1.post("/typing")
+@security.sanic_protected(check_suspension=True)
+async def v1_chat_typing_indicator(request, chat_id: str):
+    chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
+    
+    chat.emit_typing(request.ctx.user)
+
+    return HTTPResponse(status=204)
+
 @v1.get("/messages")
 @security.sanic_protected()
 async def v1_get_chat_messages(request, chat_id: str):

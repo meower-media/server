@@ -7,7 +7,7 @@ v1 = Blueprint("v1_general", url_prefix="/")
 
 @v0.get("/")
 async def v0_welcome(request):
-    return text("Welcome to v0 of the Meower API! This API version is no longer being worked on and may be shutdown at anytime in the future.")
+    return text("Welcome to v0 of the Meower API! This API version is no longer being worked on and will be discontinued on May 20th at 12am GMT. Please consider using v1 of the Meower API.")
 
 @v1.get("/")
 async def v1_welcome(request):

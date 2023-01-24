@@ -1,9 +1,9 @@
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
 from base64 import b64encode, b64decode
-from hashlib import sha256
-from multipledispatch import dispatch
+from hashlib import sha512
 from sanic.response import HTTPResponse
+import hmac
 import requests
 import os
 
@@ -20,16 +20,6 @@ CAPTCHA_PROVIDERS = {
 CAPTCHA_URI = CAPTCHA_PROVIDERS.get(os.getenv("CAPTCHA_PROVIDER"))
 CAPTCHA_SECRET = os.getenv("CAPTCHA_SECRET")
 
-if redis.exists("signing_key") != 1:
-    logging.info("Generating new private key...")
-    redis.set("signing_key", b64encode(Ed25519PrivateKey.generate().private_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PrivateFormat.Raw,
-        encryption_algorithm=serialization.NoEncryption()
-    )))
-PRIV_KEY = Ed25519PrivateKey.from_private_bytes(b64decode(redis.get("signing_key")))
-PUB_KEY = PRIV_KEY.public_key()
-
 def check_captcha(captcha_response: str, ip_address: str):
     if CAPTCHA_URI is None:
         return True
@@ -40,16 +30,29 @@ def check_captcha(captcha_response: str, ip_address: str):
         "remoteip": ip_address
     }).json().get("success", False)
 
-def sign(data: str):
-    return b64encode(PRIV_KEY.sign(sha256(data.encode()).digest())).decode()
+def sign_data(key: bytes, data: bytes):
+    return b64encode(hmac.new(key=key, msg=data, digestmod=sha512)).decode()
 
-def valid_signature(signature: str, data: str):
+def validate_signature(key: bytes, signature: str, data: bytes):
+    signature = b64decode(signature.encode())
+    return hmac.compare_digest(signature, hmac.new(key=key, msg=data, digestmod=sha512))
+
+def encode_and_sign_data(key: bytes, data: str):
+    encoded_data = b64encode(data.encode())
+    signature = b64encode(hmac.new(key, msg=encoded_data, digestmod=sha512).digest())
+    return f"{encoded_data.decode()}.{signature.decode()}"
+
+def decode_and_validate_data(key: bytes, data: str):
     try:
-        PUB_KEY.verify(b64decode(signature.encode()), sha256(data.encode()).digest())
+        encoded_data, signature = data.split(".")
+        encoded_data = encoded_data.encode()
+        signature = b64decode(signature.encode())
+        if hmac.compare_digest(signature, hmac.new(key, msg=encoded_data, digestmod=sha512).digest()):
+            return b64decode(encoded_data).decode()
+        else:
+            return None
     except:
-        return False
-    else:
-        return True
+        return None
 
 def sanic_protected(check_suspension: bool = False):
     def decorator(func: callable) -> callable:

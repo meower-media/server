@@ -31,6 +31,9 @@ async def session_updated(payload: dict):
 async def session_deleted(payload: dict):
     user_id = payload.pop("user_id")
     await send_to_user(user_id, "session_deleted", payload)
+    for client in cl._users.get(user_id, set()):
+        if client.session_id == payload["id"]:
+            await client.close(code=3000, reason="Session revoked")
 
 @events.on("notification_created")
 async def notification_created(payload: dict):
@@ -122,31 +125,36 @@ async def chat_deleted(payload: dict):
         del cl._subscriptions["chats"][chat_id]
     await send_to_user(user_id, "chat_deleted", {"id": chat_id})
 
+@events.on("typing_start")
+async def typing_start(payload: dict):
+    await cl.send_packet_multicast(
+        "typing_start",
+        payload,
+        clients=cl._subscriptions["chats"].get(payload["chat_id"], set())
+    )
+
 @events.on("message_created")
 async def message_created(payload: dict):
-    chat_id = payload.pop("chat_id")
     await cl.send_packet_multicast(
         "message_created",
         payload,
-        clients=cl._subscriptions["chats"].get(chat_id, set())
+        clients=cl._subscriptions["chats"].get(payload["chat_id"], set())
     )
 
 @events.on("message_updated")
 async def message_updated(payload: dict):
-    chat_id = payload.pop("chat_id")
     await cl.send_packet_multicast(
         "message_updated",
         payload,
-        clients=cl._subscriptions["chats"].get(chat_id, set())
+        clients=cl._subscriptions["chats"].get(payload["chat_id"], set())
     )
 
 @events.on("message_deleted")
 async def message_deleted(payload: dict):
-    chat_id = payload.pop("chat_id")
     await cl.send_packet_multicast(
         "message_deleted",
         payload,
-        clients=cl._subscriptions["chats"].get(chat_id, set())
+        clients=cl._subscriptions["chats"].get(payload["chat_id"], set())
     )
 
 @events.on("cl_direct")

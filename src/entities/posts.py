@@ -1,10 +1,11 @@
 from datetime import datetime
 from copy import copy
 import time
+import random
 
 from src.util import status, uid, events, bitfield, flags
 from src.entities import users
-from src.database import db
+from src.database import db, redis
 
 class Post:
     def __init__(
@@ -277,6 +278,10 @@ def create_post(author: users.User, content: str):
     # Announce post creation
     events.emit_event("post_created", post.public)
 
+    # Add post ID to latest posts list
+    redis.lpush("latest_posts", post.id)
+    redis.ltrim("latest_posts", 0, 9999)
+
     # Return post object
     return post
 
@@ -300,7 +305,7 @@ def get_feed(user: users.User, before: str = None, after: str = None, limit: int
 
     # Get following list and posts that the user's followers have meowed
     following = user.get_following()
-    meowed_posts = [meow["post_id"] for meow in db.meows.find({"user_id": {"$in": following}, "_id": id_range}, sort=[("_id", -1)], limit=limit, projection={"post_id": 1})]
+    meowed_posts = [meow["post_id"] for meow in db.meows.find({"user_id": {"$in": following}, "post_id": id_range}, sort=[("post_id", -1)], limit=limit, projection={"post_id": 1})]
 
     # Create query
     query = {
@@ -317,9 +322,37 @@ def get_feed(user: users.User, before: str = None, after: str = None, limit: int
         ]
     }
     query["$or"][0]["_id"]["$in"] = meowed_posts
-    
-    # Fetch and return all posts
-    return [Post(**post) for post in db.posts.find(query, sort=[("_id", -1)], limit=limit)]
+
+    # Primary fetch
+    fetched_posts = [Post(**post) for post in db.posts.find(query, sort=[("_id", -1)], limit=limit)]
+
+    # Secondary fetch to fill results
+    if len(fetched_posts) < limit:
+        total_latest_posts = redis.llen("latest_posts")
+        attempts = 0
+        while (len(fetched_posts) < limit) and (len(fetched_posts) < total_latest_posts):
+            # Have an attempt limit so we don't get stuck in an infinite loop
+            if attempts >= 3:
+                break
+            else:
+                attempts += 1
+            
+            # Get random posts from latest posts list
+            for i in range(limit-len(fetched_posts)):
+                random_index = random.randint(0, total_latest_posts-1)
+                post_id = redis.lrange("latest_posts", random_index, random_index)[0].decode()
+                fetched_posts.insert(random.randint(0, len(fetched_posts)), get_post(post_id, error_on_deleted=False))
+
+            # Cleanup deleted and duplicates posts
+            post_ids = set()
+            for post in fetched_posts:
+                if post.deleted or (post.id in post_ids):
+                    fetched_posts.remove(post)
+                    continue
+                post_ids.add(post.id)
+
+    # Return fetched posts
+    return fetched_posts
 
 def get_latest_posts(before: str = None, after: str = None, limit: int = 25):
     # Create ID range

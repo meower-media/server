@@ -2,7 +2,7 @@ from sanic import Blueprint, json
 from sanic_ext import validate
 from pydantic import BaseModel, Field
 
-from src.util import status, security
+from src.util import security
 from src.entities import posts
 
 v0 = Blueprint("v0_home", url_prefix="/home")
