@@ -119,8 +119,8 @@ class Post:
             "comments": self.comments,
             "reputation": self.reputation
         }})
-        events.emit_event("post_updated", {
-            "post_id": self.id,
+        events.emit_event(f"post_updated:{self.id}", {
+            "id": self.id,
             "likes": self.likes,
             "meows": self.meows,
             "comments": self.comments,
@@ -143,9 +143,9 @@ class Post:
             "user_id": user.id,
             "time": uid.timestamp()
         })
-        events.emit_event("post_liked", {
-            "post_id": self.id,
-            "user_id": user.id
+        events.emit_event(f"post_status_updated:{user.id}", {
+            "id": self.id,
+            "liked": True
         })
 
         self.likes += 1
@@ -161,9 +161,9 @@ class Post:
             "user_id": user.id,
             "time": uid.timestamp()
         })
-        events.emit_event("post_meowed", {
-            "post_id": self.id,
-            "user_id": user.id
+        events.emit_event(f"post_status_updated:{user.id}", {
+            "id": self.id,
+            "meowed": True
         })
 
         self.meows += 1
@@ -177,9 +177,9 @@ class Post:
             "post_id": self.id,
             "user_id": user.id
         })
-        events.emit_event("post_unliked", {
-            "post_id": self.id,
-            "user_id": user.id
+        events.emit_event(f"post_status_updated:{user.id}", {
+            "id": self.id,
+            "liked": False
         })
 
         self.likes -= 1
@@ -193,9 +193,9 @@ class Post:
             "post_id": self.id,
             "user_id": user.id
         })
-        events.emit_event("post_unmeowed", {
-            "post_id": self.id,
-            "user_id": user.id
+        events.emit_event(f"post_status_updated:{user.id}", {
+            "id": self.id,
+            "meowed": False
         })
 
         self.meows -= 1
@@ -224,7 +224,7 @@ class Post:
             "flags": self.flags,
             "content": self.content
         }})
-        events.emit_event("post_updated", {
+        events.emit_event(f"post_updated:{self.id}", {
             "id": self.id,
             "flags": self.public_flags,
             "content": self.content
@@ -259,7 +259,9 @@ class Post:
             self.deleted = True
             self.delete_after = uid.timestamp(epoch=int(time.time() + 1209600))
             db.posts.update_one({"_id": self.id}, {"$set": {"deleted": self.deleted, "delete_after": self.delete_after}})
-            events.emit_event("post_deleted", {"id": self.id})
+            events.emit_event(f"post_deleted:{self.id}", {
+                "id": self.id
+            })
 
 def create_post(author: users.User, content: str):
     # Create post data

@@ -37,18 +37,18 @@ async def session_deleted(payload: dict):
 
 @events.on("notification_created")
 async def notification_created(payload: dict):
-    user_id = payload.pop("user_id")
-    await send_to_user(user_id, "notification_created", payload)
+    recipient_id = payload.pop("recipient_id")
+    await send_to_user(recipient_id, "notification_created", payload)
 
 @events.on("notification_updated")
 async def notification_updated(payload: dict):
-    user_id = payload.pop("user_id")
-    await send_to_user(user_id, "notification_updated", payload)
+    recipient_id = payload.pop("recipient_id")
+    await send_to_user(recipient_id, "notification_updated", payload)
 
 @events.on("notification_deleted")
 async def notification_deleted(payload: dict):
-    user_id = payload.pop("user_id")
-    await send_to_user(user_id, "notification_deleted", payload)
+    recipient_id = payload.pop("recipient_id")
+    await send_to_user(recipient_id, "notification_deleted", payload)
 
 @events.on("infraction_created")
 async def infraction_created(payload: dict):

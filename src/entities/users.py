@@ -159,7 +159,7 @@ class User:
         posts = db.posts.count_documents({"author_id": self.id})
         self.stats = {"followers": followers, "following": following, "posts": posts}
         db.users.update_one({"_id": self.id}, {"$set": {"stats": self.stats}})
-        events.emit_event("user_updated", {
+        events.emit_event(f"user_updated:{self.id}", {
             "id": self.id,
             "stats": self.stats
         })
@@ -219,22 +219,22 @@ class User:
         db.blocked_users.delete_one({"to": user.id, "from": self.id})
 
     @property
-    def username_history(self):
-        return list(db.username_history.find({"user_id": self._id}, projection={"_id": 0, "user_id": 0}, sort=[("_id", -1)]))
+    def profile_history(self):
+        return list(db.profile_history.find({"user_id": self._id}, projection={"_id": 0, "user_id": 0}, sort=[("_id", -1)]))
 
     def update_username(self, username: str, by_admin: bool = False, store_history: bool = True):
+        # Check whether username is available
         if not username_available(username):
             raise status.alreadyExists
 
-        # Add old username to username history
+        # Add old username to profile history
         if store_history:
             db.username_history.insert_one({
                 "_id": uid.snowflake(),
                 "user_id": self.id,
-                "old_username": self.username,
-                "new_username": username,
+                "username": self.username,
                 "by_admin": by_admin,
-                "time": int(time.time())
+                "time": uid.timestamp()
             })
 
         # Update current user
@@ -244,9 +244,30 @@ class User:
             "username": self.username,
             "lower_username": self.lower_username
         }})
-        events.emit_event("user_updated", {
+        events.emit_event(f"user_updated:{self.id}", {
             "id": self.id,
             "username": self.username
+        })
+
+    def update_quote(self, quote: str, by_admin: bool = False, store_history: bool = True):
+        # Add old quote to profile history
+        if store_history:
+            db.username_history.insert_one({
+                "_id": uid.snowflake(),
+                "user_id": self.id,
+                "quote": self.quote,
+                "by_admin": by_admin,
+                "time": uid.timestamp()
+            })
+
+        # Update current user
+        self.quote = quote
+        db.users.update_one({"_id": self.id}, {"$set": {
+            "quote": self.quote
+        }})
+        events.emit_event(f"user_updated:{self.id}", {
+            "id": self.id,
+            "quote": self.quote
         })
 
 def create_user(username: str, flags: int = 0):

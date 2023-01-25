@@ -1,11 +1,14 @@
+# FOR TOMORROW
+- Finish off events update
+
 # BEFORE BETA
-- /@me/account
-- /@me/notifications
+- Theme management
 - /@me/sessions
 - /@me/sync
 - API ratelimits
 - Email verification and notifications
 - Bot management
+- Message context
 - Message replying
 - Post comments
 - User/chat icon uploads (and /uploads API)

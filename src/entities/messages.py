@@ -52,9 +52,9 @@ class Message:
         
         self.likes.append(user.id)
         db.chat_messages.update_one({"_id": self.id}, {"$addToSet": {"likes": user.id}})
-        events.emit_event("message_updated", {
+        events.emit_event(f"message_updated:{self.chat_id}", {
+            "id": self.id,
             "chat_id": self.chat_id,
-            "message_id": self.id,
             "likes": self.likes
         })
 
@@ -64,9 +64,9 @@ class Message:
         
         self.likes.remove(user.id)
         db.chat_messages.update_one({"_id": self.id}, {"$pull": {"likes": user.id}})
-        events.emit_event("message_updated", {
+        events.emit_event(f"message_updated:{self.chat_id}", {
+            "id": self.id,
             "chat_id": self.chat_id,
-            "message_id": self.id,
             "likes": self.likes
         })
 
@@ -85,9 +85,9 @@ class Message:
             "flags": self.flags,
             "content": self.content
         }})
-        events.emit_event("message_updated", {
+        events.emit_event(f"message_updated:{self.chat_id}", {
+            "id": self.id,
             "chat_id": self.chat_id,
-            "message_id": self.id,
             "flags": self.flags,
             "content": self.content
         })
@@ -100,9 +100,9 @@ class Message:
             self.deleted = True
             self.delete_after = uid.timestamp(epoch=int(time.time() + 1209600))
             db.chat_messages.update_one({"_id": self.id}, {"$set": {"deleted": self.deleted, "delete_after": self.delete_after}})
-            events.emit_event("message_deleted", {
-                "chat_id": self.chat_id,
-                "message_id": self.id
+            events.emit_event(f"message_deleted:{self.chat_id}", {
+                "id": self.id,
+                "chat_id": self.chat_id
             })
 
 def create_message(chat: chats.Chat, author: users.User, content: str):
@@ -128,10 +128,7 @@ def create_message(chat: chats.Chat, author: users.User, content: str):
     message = Message(**message)
 
     # Announce message creation
-    events.emit_event("message_created", {
-        "chat_id": chat.id,
-        "message": message.public
-    })
+    events.emit_event(f"message_created:{chat.id}", message.public)
 
     # Return message object
     return message

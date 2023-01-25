@@ -31,11 +31,11 @@ def check_captcha(captcha_response: str, ip_address: str):
     }).json().get("success", False)
 
 def sign_data(key: bytes, data: bytes):
-    return b64encode(hmac.new(key=key, msg=data, digestmod=sha512)).decode()
+    return b64encode(hmac.new(key=key, msg=data, digestmod=sha512).digest())
 
-def validate_signature(key: bytes, signature: str, data: bytes):
-    signature = b64decode(signature.encode())
-    return hmac.compare_digest(signature, hmac.new(key=key, msg=data, digestmod=sha512))
+def validate_signature(key: bytes, signature: bytes, data: bytes):
+    signature = b64decode(signature)
+    return hmac.compare_digest(signature, hmac.new(key=key, msg=data, digestmod=sha512).digest())
 
 def encode_and_sign_data(key: bytes, data: str):
     encoded_data = b64encode(data.encode())

@@ -14,7 +14,7 @@ class Account:
         email: str = None,
         password: str = None,
         totp_secret: str = None,
-        totp_recovery: list = None,
+        recovery_codes: list = None,
         flags: int = 0,
         last_updated: int = 0
     ):
@@ -22,12 +22,22 @@ class Account:
         self.email = email
         self.password = password
         self.totp_secret = totp_secret
-        self.totp_recovery = totp_recovery
+        self.recovery_codes = recovery_codes
         self.flags = flags
         self.last_updated = last_updated
 
     @property
-    def require_mfa(self):
+    def client(self):
+        return {
+            "id": self.id,
+            "email": self.email,
+            "password_enabled": (self.password is not None),
+            "mfa_methods": self.mfa_methods,
+            "last_updated": int(self.last_updated.timestamp())
+        }
+
+    @property
+    def mfa_enabled(self):
         return (len(self.mfa_methods) > 0)
     
     @property
@@ -59,45 +69,49 @@ class Account:
 
             return False
 
+    def change_password(self, password: str):
+        self.password = bcrypt.hash(password, rounds=int(os.getenv("pswd_rounds", 12)))
+        db.accounts.update_one({"_id": self._id}, {"$set": {"password": self.password}})
+
     def check_totp(self, code: str):
         if self.totp_secret is None:
             raise status.totpNotEnabled
 
-        if code in self.totp_recovery:
-            self.totp_recovery.remove(code)
-            db.accounts.update_one({"_id": self.id}, {"$pull": {"totp_recovery": code}})
+        if redis.exists(f"totp:{self.id}:{code}") == 1:
+            return False
+
+        if code in self.recovery_codes:
+            self.recovery_codes.remove(code)
+            db.accounts.update_one({"_id": self.id}, {"$pull": {"recovery_codes": code}})
             return True
-        elif TOTP(self.totp_secret).verify(code) and (redis.get(f"totp:{self.id}:{code}") is None):
+        elif TOTP(self.totp_secret).verify(code):
             redis.set(f"totp:{self.id}:{code}", "", ex=30)
             return True
         else:
             return False
 
-    def change_password(self, password: str):
-        self.password = bcrypt.hash(password, rounds=int(os.getenv("pswd_rounds", 12)))
-        db.accounts.update_one({"_id": self._id}, {"$set": {"password": self.password}})
-        return status.ok
-
-    def add_totp(self, secret: str, code: str):
+    def enable_totp(self, secret: str, code: str):
         if self.totp_secret is not None:
             raise status.totpAlreadyEnabled
 
         if not TOTP(secret).verify(code):
             raise status.invalidTOTP
 
+        if not self.mfa_enabled:
+            self.regenerate_recovery_codes()
         self.totp_secret = secret
-        self.totp_recovery = [(token_hex(2) + "-" + token_hex(2)) for i in range(8)]
-        db.accounts.update_one({"_id": self._id}, {"$set": {"totp_secret": self.totp_secret, "totp_recovery": self.totp_recovery}})
-        return status.ok
+        db.accounts.update_one({"_id": self._id}, {"$set": {"totp_secret": self.totp_secret}})
 
-    def remove_totp(self):
+    def disable_totp(self):
         if self.totp_secret is None:
             raise status.totpNotEnabled
 
         self.totp_secret = None
-        self.totp_recovery = None
-        db.accounts.update_one({"_id": self._id}, {"$set": {"totp_secret": self.totp_secret, "totp_recovery": self.totp_recovery}})
-        return status.ok
+        db.accounts.update_one({"_id": self._id}, {"$set": {"totp_secret": self.totp_secret}})
+
+    def regenerate_recovery_codes(self):
+        self.recovery_codes = [token_hex(4) for i in range(8)]
+        db.accounts.update_one({"_id": self.id}, {"$set": {"recovery_codes": self.recovery_codes}})
 
 def create_account(username: str, password: str, child: bool):
     if not users.username_available(username):

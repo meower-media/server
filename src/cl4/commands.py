@@ -173,8 +173,7 @@ class CL4Commands:
             return await self.cl.send_code(client, "IDRequired", listener=listener)
 
         # Emit event
-        events.emit_event("cl_direct", {
-            "id": payload["id"],
+        events.emit_event(f"cl_direct:{payload['id']}", {
             "val": payload["val"],
             "origin": client.user_id
         })
