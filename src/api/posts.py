@@ -40,7 +40,7 @@ async def v1_get_post(request, post_id: str):
 
 @v1.patch("/")
 @validate(json=EditForm)
-@security.sanic_protected(check_suspension=True)
+@security.sanic_protected(ignore_suspension=False)
 async def v1_edit_post(request, post_id: str, body: EditForm):    
     post = posts.get_post(post_id)
     if post.author.id == request.ctx.user.id:
@@ -69,28 +69,28 @@ async def v1_post_status(request, post_id: str):
     })
 
 @v1.post("/like")
-@security.sanic_protected(check_suspension=True)
+@security.sanic_protected(ignore_suspension=False)
 async def v1_like_post(request, post_id: str):
     post = posts.get_post(post_id)
     post.like(request.ctx.user)
     return HTTPResponse(status=204)
 
 @v1.post("/unlike")
-@security.sanic_protected(check_suspension=True)
+@security.sanic_protected(ignore_suspension=False)
 async def v1_unlike_post(request, post_id: str):
     post = posts.get_post(post_id)
     post.unlike(request.ctx.user)
     return HTTPResponse(status=204)
 
 @v1.post("/meow")
-@security.sanic_protected(check_suspension=True)
+@security.sanic_protected(ignore_suspension=False)
 async def v1_meow_post(request, post_id: str):
     post = posts.get_post(post_id)
     post.meow(request.ctx.user)
     return HTTPResponse(status=204)
 
 @v1.post("/unmeow")
-@security.sanic_protected(check_suspension=True)
+@security.sanic_protected(ignore_suspension=False)
 async def v1_unmeow_post(request, post_id: str):
     post = posts.get_post(post_id)
     post.unmeow(request.ctx.user)

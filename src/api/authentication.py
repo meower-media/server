@@ -56,25 +56,35 @@ class TOTPVerificationForm(BaseModel):
         max_length=8
     )
 
-@v1.post("/")
+@v1.post("/register")
 @validate(json=RegistrationForm)
+@security.sanic_ratelimited("register")
 async def v1_register(request, body: RegistrationForm):
     # Get network and check whether it's blocked
     network = networks.get_network(request.ip)
-    if network.creation_blocked:
+    if network.blocked or network.creation_blocked:
         raise status.networkBlocked
 
     # Check captcha
     if not security.check_captcha(body.captcha, request.ip):
         raise status.invalidCaptcha
 
-    account = accounts.create_account(body.username, body.password, body.child)
-    session = sessions.create_user_session(account, request.ctx.device, networks.get_network(request.ip))
-    return json({"user_id": account.id, "token": session.signed_token})
+    # Create account
+    account = accounts.create_account(body.username, body.password, body.child, require_email=(len(network.users) >= 3))
+
+    # Complete authentication
+    session = sessions.create_user_session(account, request.ctx.device, network)
+    return json({"user_id": account.id, "access_token": session.signed_token})
 
 @v1.post("/password")
 @validate(json=LoginPasswordForm)
+@security.sanic_ratelimited("login")
 async def v1_login_password(request, body: LoginPasswordForm):
+    # Get network and check whether it's blocked
+    network = networks.get_network(request.ip)
+    if network.blocked:
+        raise status.networkBlocked
+
     # Get user ID by email or username
     try:
         if "@" in body.username:
@@ -92,7 +102,7 @@ async def v1_login_password(request, body: LoginPasswordForm):
         raise status.invalidCredentials
 
     # Ask for MFA or complete authentication
-    if account.require_mfa:
+    if account.mfa_enabled:
         mfa_ticket = tickets.create_ticket(account, "mfa")
         return json({
             "user_id": account.id,
@@ -102,7 +112,8 @@ async def v1_login_password(request, body: LoginPasswordForm):
             "mfa_methods": account.mfa_methods
         })
     else:
-        session = sessions.create_user_session(account, request.ctx.device, networks.get_network(request.ip))
+        session = sessions.create_user_session(account, request.ctx.device, network)
+        print(session)
         return json({
             "user_id": account.id,
             "access_token": session.signed_token,
@@ -113,6 +124,7 @@ async def v1_login_password(request, body: LoginPasswordForm):
 
 @v1.post("/mfa/totp")
 @validate(json=LoginTOTPForm)
+@security.sanic_ratelimited("mfa")
 async def v1_mfa_totp(request, body: LoginTOTPForm):
     # Get ticket details
     ticket = tickets.get_ticket_details(body.ticket)
@@ -138,6 +150,7 @@ async def v1_mfa_totp(request, body: LoginTOTPForm):
 
 @v1.post("/verify/password")
 @validate(json=PasswordVerificationForm)
+@security.sanic_ratelimited("verify")
 @security.sanic_protected()
 async def v1_verify_password(request, body: PasswordVerificationForm):
     # Get account
@@ -159,6 +172,7 @@ async def v1_verify_password(request, body: PasswordVerificationForm):
 
 @v1.post("/verify/totp")
 @validate(json=TOTPVerificationForm)
+@security.sanic_ratelimited("verify")
 @security.sanic_protected()
 async def v1_verify_totp(request, body: TOTPVerificationForm):
     # Get account

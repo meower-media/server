@@ -1,10 +1,9 @@
 from sanic import Blueprint, HTTPResponse, json
 from sanic_ext import validate
 from pydantic import BaseModel, Field
-from typing import Optional
 
 from src.util import status, security
-from src.entities import users, accounts, networks, sessions, tickets
+from src.entities import accounts, tickets
 
 v1 = Blueprint("v1_me_account", url_prefix="/account")
 

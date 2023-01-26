@@ -1,6 +1,6 @@
 from copy import copy
 from datetime import datetime
-import time
+import secrets
 import string
 
 from src.util import status, uid, events, bitfield, flags
@@ -56,6 +56,7 @@ class User:
         quote: str = "",
         badges: list = [],
         stats: dict = {"followers": 0, "following": 0},
+        hmac_key: bytes = None,
         guardian: dict = {
             "guardians": [],
             "disabled": False,
@@ -78,9 +79,14 @@ class User:
         self.quote = quote
         self.badges = badges
         self.stats = stats
+        self.hmac_key = hmac_key
         self.guardian = guardian
         self.redirect_to = redirect_to
         self.delete_after = delete_after
+
+        if self.hmac_key is None:
+            self.hmac_key = secrets.token_bytes(2048)
+            db.users.update_one({"_id": self.id}, {"$set": {"hmac_key": self.hmac_key}})
 
         if self.redirect_to is not None:
             self = get_user(self.redirect_to)

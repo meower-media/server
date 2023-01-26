@@ -33,10 +33,10 @@ EVENT_NAMES = set([
     "cl_direct"
 ])
 
-def emit_event(name: str, details: dict = {}):
+def emit_event(name: str, identifier: str, message: any):
     if name not in EVENT_NAMES:
         raise
-    redis.publish(f"meower:{name}", json.dumps(details))
+    redis.publish(f"meower:{name}", json.dumps({"i": identifier, "m": message}))
 
 def add_event_listener(name: str, callback: callable):
     def run():
@@ -44,8 +44,10 @@ def add_event_listener(name: str, callback: callable):
         pubsub.subscribe(f"meower:{name}")
         for message in pubsub.listen():
             try:
-                message = json.loads(message.get("data"))
-                asyncio.run(callback(message))
+                data = json.loads(message.get("data"))
+                identifier = data["i"]
+                message = data["m"]
+                asyncio.run(callback(identifier, message))
             except:
                 continue
     

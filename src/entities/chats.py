@@ -56,7 +56,7 @@ class Chat:
 
         self.name = name
         db.chats.update_one({"_id": self.id}, {"$set": {"name": self.name}})
-        events.emit_event(f"chat_updated:{self.id}", {
+        events.emit_event("chat_updated", self.id, {
             "chat_id": self.id,
             "name": self.name
         })
@@ -76,11 +76,11 @@ class Chat:
 
         self.members.append(user)
         db.chats.update_one({"_id": self.id}, {"$addToSet": {"members": user.id}})
-        events.emit_event(f"chat_updated:{self.id}", {
+        events.emit_event("chat_updated", self.id, {
             "chat_id": self.id,
             "members": self.partial_members
         })
-        events.emit_event(f"chat_created:{user.id}", self.public)
+        events.emit_event("chat_created", user.id, self.public)
 
         if len(self.members) == 1:
             self.transfer_ownership(user)
@@ -101,16 +101,15 @@ class Chat:
             "$pull": {"members": user.id},
             "$set": {"permissions": self.permissions}
         })
-        events.emit_event(f"chat_deleted:{self.id}", {
-            "chat_id": self.id,
-            "user_id": user.id
+        events.emit_event("chat_deleted", user.id, {
+            "id": self.id
         })
 
         if len(self.members) == 0:
             self.delete()
         else:
-            events.emit_event(f"chat_updated:{self.id}", {
-                "chat_id": self.id,
+            events.emit_event("chat_updated", self.id, {
+                "id": self.id,
                 "members": self.partial_members,
                 "permissions": self.permissions
             })
@@ -126,8 +125,8 @@ class Chat:
         if self.permissions.get(user.id, 0) < 1:
             self.permissions[user.id] = 1
             db.chats.update_one({"_id": self.id}, {"$set": {"permissions": self.permissions}})
-            events.emit_event(f"chat_updated:{self.id}", {
-                "chat_id": self.id,
+            events.emit_event("chat_updated", self.id, {
+                "id": self.id,
                 "permissions": self.permissions
             })
     
@@ -141,8 +140,8 @@ class Chat:
         if self.permissions.get(user.id, 0) == 1:
             self.permissions[user.id] = 0
             db.chats.update_one({"_id": self.id}, {"$set": {"permissions": self.permissions}})
-            events.emit_event(f"chat_updated:{self.id}", {
-                "chat_id": self.id,
+            events.emit_event("chat_updated", self.id, {
+                "id": self.id,
                 "permissions": self.permissions
             })
 
@@ -163,13 +162,13 @@ class Chat:
             self.permissions[user.id] = 2
 
             db.chats.update_one({"_id": self.id}, {"$set": {"permissions": self.permissions}})
-            events.emit_event(f"chat_updated:{self.id}", {
-                "chat_id": self.id,
+            events.emit_event("chat_updated", self.id, {
+                "id": self.id,
                 "permissions": self.permissions
             })
 
     def emit_typing(self, user: users.User):
-        events.emit_event(f"typing_start:{self.id}", {
+        events.emit_event("typing_start", self.id, {
             "chat_id": self.id,
             "user_id": user.id
         })
@@ -183,8 +182,8 @@ class Chat:
 
         self.invite_code = token_urlsafe(6)
         db.chats.update_one({"_id": self.id}, {"$set": {"invite_code": self.invite_code}})
-        events.emit_event(f"chat_updated:{self.id}", {
-            "chat_id": self.id,
+        events.emit_event("chat_updated", self.id, {
+            "id": self.id,
             "invite_code": self.invite_code
         })
 
@@ -201,8 +200,8 @@ class Chat:
             self.delete_after = uid.timestamp(epoch=int(time.time() + 1209600))
             db.chats.update_one({"_id": self.id}, {"$set": {"deleted": self.deleted, "delete_after": self.delete_after}})
             for member in self.members:
-                events.emit_event(f"chat_deleted:{self.id}", {
-                    "chat_id": self.id,
+                events.emit_event("chat_deleted", self.id, {
+                    "id": self.id,
                     "user_id": member.id
                 })
 
@@ -244,7 +243,7 @@ def get_dm_chat(user1: users.User, user2: users.User):
         db.chats.insert_one(chat)
 
         chat = Chat(**chat)
-        events.emit_event(f"chat_created:{user1.id}", chat.public)
+        events.emit_event("chat_created", user1.id, chat.public)
 
         return chat
 

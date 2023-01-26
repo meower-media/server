@@ -28,9 +28,9 @@ class UserSession:
 
     @property
     def signed_token(self):
-        encoded_data = b64encode(f"1:{self.id}:{str(self.version)}".encode()).decode()
-        signature = security.sign(encoded_data)
-        return f"{encoded_data}.{signature}"
+        encoded_data = b64encode(f"1:{self.id}:{str(self.version)}".encode())
+        signature = security.sign_data(encoded_data)
+        return f"{encoded_data.decode()}.{signature.decode()}"
 
     def refresh(self, device: dict, network: networks.Network):
         self.version += 1
@@ -62,11 +62,11 @@ def create_user_session(account: accounts.Account, device: dict, network: networ
         "last_used": uid.timestamp()
     }
     session = UserSession(**session_data)
-    redis.set(f"us:{session.id}:{str(session.version)}", session.user.id, ex=1800)
+    redis.set(f"sess:{session.id}:{str(session.version)}", session.user.id, ex=1800)
     db.sessions.insert_one(session_data)
     return session
 
-def get_session(session_id: str):
+def get_user_session(session_id: str):
     session = db.sessions.find_one({"_id": session_id})
     if session is None:
         raise status.notFound

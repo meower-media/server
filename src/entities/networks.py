@@ -45,6 +45,10 @@ class Network:
             "last_used": int(self.last_used.timestamp())
         }
 
+    @property
+    def users(self):
+        return
+
     def set_block_state(self, blocked: bool):
         self.blocked = blocked
         db.networks.update_one({"_id": self.id}, {"$set": {"blocked": self.blocked}})

@@ -7,7 +7,7 @@ class MeowerErrorHandler(ErrorHandler):
     def default(self, request, exception):
         # Try to convert default Sanic errors to Meower errors
         if not (hasattr(exception, "error") and hasattr(exception, "code") and hasattr(exception, "message") and hasattr(exception, "http_status")):
-            if False:
+            if False:  # temporarily disabled during dev
                 match getattr(exception, "status_code", 500):
                     case 400:
                         exception = status.invalidSyntax

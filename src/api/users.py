@@ -32,7 +32,7 @@ async def v1_get_user(request, user_id: str):
         return json(user.public)
 
 @v1.post("/follow")
-@security.sanic_protected(check_suspension=True)
+@security.sanic_protected(ignore_suspension=False)
 async def v1_follow_user(request, user_id: str):
     user = users.get_user(user_id)
 

@@ -42,7 +42,7 @@ async def v1_get_trending_posts(request):
 
 @v1.post("/")
 @validate(json=NewPostForm)
-@security.sanic_protected(check_suspension=True)
+@security.sanic_protected(ignore_suspension=False)
 async def v1_create_post(request, body: NewPostForm):
     post = posts.create_post(request.ctx.user, body.content)
     return json(post.public)

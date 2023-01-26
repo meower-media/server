@@ -98,16 +98,16 @@ class Infraction:
             setattr(self, key, value)
 
         db.infractions.update_one({"_id": self.id}, {"$set": updated_values})
-        events.emit_event(f"infraction_updated:{self.user.id}", self.client)
+        events.emit_event("infraction_updated", self.user.id, self.client)
 
     def update_expiration(self, expiration: datetime):
         self.expires = expiration
         db.infractions.update_one({"_id": self.id}, {"$set": {"expires": self.expires}})
-        events.emit_event(f"infraction_updated:{self.user.id}", self.client)
+        events.emit_event("infraction_updated", self.user.id, self.client)
 
     def delete(self):
         db.infractions.delete_one({"_id": self.id})
-        events.emit_event(f"infraction_deleted: {self.user.id}", {
+        events.emit_event("infraction_deleted", self.user.id, {
             "id": self.id
         })
         del self
@@ -131,7 +131,7 @@ def create_infraction(user: users.User, moderator: users.User, action: int, reas
     infraction = Infraction(**infraction)
 
     # Announce infraction creation
-    events.emit_event(f"infraction_created:{infraction.user.id}", infraction.client)
+    events.emit_event("infraction_created", infraction.user.id, infraction.client)
 
     # Return infraction object
     return infraction

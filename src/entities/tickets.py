@@ -21,9 +21,9 @@ def create_ticket(user: users.User, type: str, data: dict = {}):
     redis.set(f"tick:{ticket_id}", json.dumps(data), ex=TICKET_EXPIRATIONS[type])
 
     # Create, sign and return ticket
-    ticket_details = b64encode(f"0:{ticket_id}".encode())
-    signature = security.sign_data(user.hmac_key, ticket_details)
-    return f"{ticket_details.decode()}.{signature.decode()}"
+    ticket_metadata = b64encode(f"0:{ticket_id}".encode())
+    signature = security.sign_data(ticket_metadata)
+    return f"{ticket_metadata.decode()}.{signature.decode()}"
 
 def get_ticket_details(signed_ticket: str):
     try:

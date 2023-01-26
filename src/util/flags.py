@@ -9,11 +9,6 @@ class user:
     requireEmail = 7
     requireMFA = 8
 
-class guardian:
-    blocked = 0
-    forceFilter = 1
-    forcePrivate = 2
-
 class admin:
     accessReports = 0
     moderateUsers = 1

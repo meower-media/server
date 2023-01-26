@@ -106,7 +106,7 @@ def get_user_notification_unread_count(user: users.User):
 
 def emit_user_notification_unread_count(user: users.User):
     unread_notifications = get_user_notification_unread_count(user)
-    events.emit_event(f"notification_unread_count_updated", {
+    events.emit_event("notification_count_updated", user.id, {
         "unread": unread_notifications
     })
 

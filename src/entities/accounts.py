@@ -3,7 +3,7 @@ from pyotp import TOTP
 from secrets import token_hex
 import os
 
-from src.util import status, uid, bitfield
+from src.util import status, uid, bitfield, flags
 from src.entities import users
 from src.database import db, redis
 
@@ -113,14 +113,16 @@ class Account:
         self.recovery_codes = [token_hex(4) for i in range(8)]
         db.accounts.update_one({"_id": self.id}, {"$set": {"recovery_codes": self.recovery_codes}})
 
-def create_account(username: str, password: str, child: bool):
+def create_account(username: str, password: str, child: bool, require_email: bool = False):
     if not users.username_available(username):
         raise status.alreadyExists
 
+    user_flags = 0
     if child:
-        flags = bitfield.create([flags.user.child])
-    else:
-        flags = bitfield.create([])
+        bitfield.add(user_flags, flags.user.child)
+    if require_email:
+        bitfield.add(user_flags, flags.user.requireEmail)
+
     user = users.create_user(username, flags=flags)
 
     account = {

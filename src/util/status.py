@@ -185,3 +185,9 @@ class userBanned(SanicException):
     code = 1030
     http_status = 403
     message = "User is currently banned"
+
+class ratelimited(SanicException):
+    error = True
+    code = 1031
+    http_status = 429
+    message = "You are being ratelimited"
