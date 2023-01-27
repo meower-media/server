@@ -48,7 +48,8 @@ class UserSession:
 
     def revoke(self):
         db.sessions.delete_one({"_id": self.id})
-        redis.delete(f"us:{self.id}:{str(self.version)}")
+        for key in redis.keys(f"ses:{self.id}:*"):
+            redis.delete(key.decode())
 
 def create_user_session(account: accounts.Account, device: dict, network: networks.Network):
     session_data = {
@@ -62,7 +63,7 @@ def create_user_session(account: accounts.Account, device: dict, network: networ
         "last_used": uid.timestamp()
     }
     session = UserSession(**session_data)
-    redis.set(f"sess:{session.id}:{str(session.version)}", session.user.id, ex=1800)
+    redis.set(f"ses:{session.id}:{str(session.version)}", session.user.id, ex=3600)
     db.sessions.insert_one(session_data)
     return session
 
@@ -75,37 +76,50 @@ def get_user_session(session_id: str):
 
 def get_user_by_token(token: str):
     try:
-        data, signature = token.split(".")
-        if not security.valid_signature(signature, data):
+        # Decode signed token
+        token_metadata, signature = token.split(".")
+        token_metadata = token_metadata.encode()
+        signature = signature.encode()
+        ttype, session_id, version = b64decode(token_metadata).decode().split(":")
+
+        # Check token signature
+        if not security.validate_signature(signature, token_metadata):
             return None
-        
-        ttype, session_id, version = b64decode(data.encode()).decode().split(":")
-        if ttype != "1":
-            return None
-        user_id = redis.get(f"us:{session_id}:{str(version)}").decode()
-        if user_id is None:
-            return None
-        
-        user = users.get_user(user_id)
-        if bitfield.has(user.flags, flags.user.deleted) or bitfield.has(user.flags, flags.user.terminated):
-            return None
+
+        # Return user
+        if ttype == "1":  # regular user
+            user_id = redis.get(f"ses:{session_id}:{version}")
+            if user_id is None:
+                return None
+            else:
+                return users.get_user(user_id.decode())
+        elif ttype == "2":  # bot user
+            user = users.get_user(session_id)
+            if str(user.bot_session) != str(version):
+                return None
+            else:
+                return user
         else:
-            return user
+            return None
     except:
         return None
 
 def get_session_by_token(token: str):
     try:
-        data, signature = token.split(".")
-        if not security.valid_signature(signature, data):
+        # Decode signed token
+        token_metadata, signature = token.split(".")
+        token_metadata = token_metadata.encode()
+        signature = signature.encode()
+        ttype, session_id, version = b64decode(token_metadata).decode().split(":")
+
+        # Check token signature
+        if not security.validate_signature(signature, token_metadata):
             return None
-        
-        ttype, session_id, version = b64decode(data.encode()).decode().split(":")
-        if ttype != "1":
+
+        # Return session
+        if ttype == "1":
+            return get_user_session(session_id)
+        else:
             return None
-        if redis.exists(f"us:{session_id}:{str(version)}") != 1:
-            return None
-        
-        return get_session(session_id)
     except:
         return None

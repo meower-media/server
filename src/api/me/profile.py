@@ -33,7 +33,7 @@ async def v1_get_profile(request):
 
 @v1.patch("/")
 @validate(json=UpdateProfileForm)
-@security.sanic_protected(ignore_suspension=False)
+@security.sanic_protected(allow_bots=False, ignore_suspension=False)
 async def v1_update_profile(request, body: UpdateProfileForm):
     if body.username:
         request.ctx.user.update_username(body.username)
@@ -44,7 +44,7 @@ async def v1_update_profile(request, body: UpdateProfileForm):
 
 @v1.patch("/theme")
 @validate(json=UpdateProfileThemeForm)
-@security.sanic_protected(ignore_suspension=False)
+@security.sanic_protected(allow_bots=False, ignore_suspension=False)
 async def v1_update_profile_theme(request, body: UpdateProfileThemeForm):
     request.ctx.user.update_theme({})
     

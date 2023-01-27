@@ -40,12 +40,11 @@ class Post:
             "author": self.author.partial,
             "content": self.content,
             "filtered_content": self.content,  # Need to find a suitable filter, may end up being client-side
-            "flags": self.public_flags,
+            "public_flags": self.public_flags,
             "likes": self.likes,
             "meows": self.meows,
             "comments": self.comments,
             "time": int(self.time.timestamp()),
-            "deleted": self.deleted,
             "delete_after": (int(self.delete_after.timestamp()) if (self.delete_after is not None) else None)
         }
 

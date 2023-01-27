@@ -1,9 +1,9 @@
 from copy import copy
 from datetime import datetime
-import secrets
+from base64 import b64encode
 import string
 
-from src.util import status, uid, events, bitfield, flags
+from src.util import status, uid, events, security, bitfield, flags
 from src.database import db
 
 SERVER = {
@@ -56,7 +56,7 @@ class User:
         quote: str = "",
         badges: list = [],
         stats: dict = {"followers": 0, "following": 0},
-        hmac_key: bytes = None,
+        bot_session: int = 0,
         guardian: dict = {
             "guardians": [],
             "disabled": False,
@@ -79,14 +79,10 @@ class User:
         self.quote = quote
         self.badges = badges
         self.stats = stats
-        self.hmac_key = hmac_key
+        self.bot_session = bot_session
         self.guardian = guardian
         self.redirect_to = redirect_to
         self.delete_after = delete_after
-
-        if self.hmac_key is None:
-            self.hmac_key = secrets.token_bytes(2048)
-            db.users.update_one({"_id": self.id}, {"$set": {"hmac_key": self.hmac_key}})
 
         if self.redirect_to is not None:
             self = get_user(self.redirect_to)
@@ -276,9 +272,23 @@ class User:
             "quote": self.quote
         })
 
-def create_user(username: str, flags: int = 0):
+    def rotate_bot_session(self):
+        # Check whether user is bot
+        if not bitfield.has(self.flags, flags.user.bot):
+            raise status.missingPermissions # placeholder
+        
+        # Set new session version
+        self.bot_session += 1
+        db.users.update_one({"_id": self.id}, {"$set": {"bot_session": self.bot_session}})
+
+        # Return signed token
+        encoded_data = b64encode(f"2:{self.id}:{self.bot_session}".encode())
+        signature = security.sign_data(encoded_data)
+        return f"{encoded_data.decode()}.{signature.decode()}"
+
+def create_user(username: str, user_id: str = None, flags: int = 0):
     userdata = {
-        "_id": uid.snowflake(),
+        "_id": (uid.snowflake() if (user_id is None) else user_id),
         "username": username,
         "lower_username": username.lower(),
         "flags": flags,

@@ -32,7 +32,7 @@ async def v1_get_user(request, user_id: str):
         return json(user.public)
 
 @v1.post("/follow")
-@security.sanic_protected(ignore_suspension=False)
+@security.sanic_protected(ratelimit="change_relationship", allow_bots=False, ignore_suspension=False)
 async def v1_follow_user(request, user_id: str):
     user = users.get_user(user_id)
 
@@ -44,7 +44,7 @@ async def v1_follow_user(request, user_id: str):
     return HTTPResponse(status=204)
 
 @v1.post("/unfollow")
-@security.sanic_protected()
+@security.sanic_protected(ratelimit="change_relationship", allow_bots=False)
 async def v1_unfollow_user(request, user_id: str):
     user = users.get_user(user_id)
 
@@ -56,7 +56,7 @@ async def v1_unfollow_user(request, user_id: str):
     return HTTPResponse(status=204)
 
 @v1.post("/block")
-@security.sanic_protected()
+@security.sanic_protected(ratelimit="change_relationship", allow_bots=False)
 async def v1_block_user(request, user_id: str):
     user = users.get_user(user_id)
 
@@ -68,7 +68,7 @@ async def v1_block_user(request, user_id: str):
     return HTTPResponse(status=204)
 
 @v1.post("/unblock")
-@security.sanic_protected()
+@security.sanic_protected(ratelimit="change_relationship", allow_bots=False)
 async def v1_unblock_user(request, user_id: str):
     user = users.get_user(user_id)
 
@@ -80,7 +80,7 @@ async def v1_unblock_user(request, user_id: str):
     return HTTPResponse(status=204)
 
 @v1.get("/dm")
-@security.sanic_protected()
+@security.sanic_protected(ratelimit="open_chat")
 async def v1_dm_user(request, user_id: str):
     user = users.get_user(user_id)
 

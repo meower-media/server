@@ -1,5 +1,6 @@
 from sanic import Blueprint, json
 
+from src.util import security
 from src.entities import users, posts
 
 v0 = Blueprint("v0_search", url_prefix="/search")
@@ -28,11 +29,13 @@ async def v0_search_home(request):
     })
 
 @v1.get("/users")
+@security.sanic_protected(ratelimit="search", require_auth=False)
 async def v1_search_users(request):
     fetched_users = users.search_users(request.args.get("q", ""), before=request.args.get("before"), after=request.args.get("after"), limit=int(request.args.get("limit", 25)))
     return json({"users": [user.partial for user in fetched_users]})
 
 @v1.get("/posts")
+@security.sanic_protected(ratelimit="search", require_auth=False)
 async def v1_search_posts(request):
     fetched_posts = posts.search_posts(request.args.get("q", ""), before=request.args.get("before"), after=request.args.get("after"), limit=int(request.args.get("limit", 25)))
     return json({"posts": [post.public for post in fetched_posts]})

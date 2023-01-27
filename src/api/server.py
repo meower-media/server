@@ -1,20 +1,17 @@
 from sanic import Sanic, Blueprint
-from dotenv import load_dotenv
 import time
 import os
 
-# Load env variables
-load_dotenv()
-
 # General imports
 from .errors import MeowerErrorHandler
-from .middleware import parse_ua
+from .middleware import parse_ua, ratelimit_header
 
 # Initialize API server
 app = Sanic("MeowerAPI")
 app.config.REAL_IP_HEADER = os.getenv("IP_HEADER")
 app.error_handler = MeowerErrorHandler()
 app.register_middleware(parse_ua, "request")
+app.register_middleware(ratelimit_header, "response")
 
 # Start v0 API
 if time.time() < 1674532540:  # Check whether v0 has been discontinued
@@ -39,6 +36,7 @@ from .home import v1 as v1_home
 from .posts import v1 as v1_posts
 from .users import v1 as v1_users
 from .chats import v1 as v1_chats
+from .applications import v1 as v1_applications
 from .search import v1 as v1_search
 app.blueprint(Blueprint.group(
     v1_general,
@@ -48,6 +46,7 @@ app.blueprint(Blueprint.group(
     v1_posts,
     v1_users,
     v1_chats,
+    v1_applications,
     v1_search,
     version=1
 ))

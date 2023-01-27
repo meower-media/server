@@ -64,7 +64,7 @@ class Infraction:
     def active(self):
         if self.status == 4:
             return False
-        elif (self.expires is None) or (self.expires > uid.timestamp()):
+        elif (self.expires is None) or (self.expires.timestamp() > uid.timestamp().timestamp()):
             return True
         else:
             return False
@@ -169,14 +169,15 @@ def user_status(user: users.User):
         "suspended": False,
         "banned": False
     }
+
     for infraction in get_user_infractions(user):
         if not infraction.active:
             continue
-
         if infraction.action == 1:
             status["suspended"] = True
         elif infraction.action == 2:
             status["banned"] = True
+    
     return status
 
 def detect_ban_evasion(user: users.User, security_cookie: security_cookies.SecurityCookie, network: networks.Network):

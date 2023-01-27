@@ -58,7 +58,7 @@ class TOTPVerificationForm(BaseModel):
 
 @v1.post("/register")
 @validate(json=RegistrationForm)
-@security.sanic_ratelimited("register")
+@security.sanic_protected(ratelimit="register", require_auth=False)
 async def v1_register(request, body: RegistrationForm):
     # Get network and check whether it's blocked
     network = networks.get_network(request.ip)
@@ -78,7 +78,7 @@ async def v1_register(request, body: RegistrationForm):
 
 @v1.post("/password")
 @validate(json=LoginPasswordForm)
-@security.sanic_ratelimited("login")
+@security.sanic_protected(ratelimit="login", require_auth=False)
 async def v1_login_password(request, body: LoginPasswordForm):
     # Get network and check whether it's blocked
     network = networks.get_network(request.ip)
@@ -124,7 +124,7 @@ async def v1_login_password(request, body: LoginPasswordForm):
 
 @v1.post("/mfa/totp")
 @validate(json=LoginTOTPForm)
-@security.sanic_ratelimited("mfa")
+@security.sanic_protected(ratelimit="mfa", require_auth=False)
 async def v1_mfa_totp(request, body: LoginTOTPForm):
     # Get ticket details
     ticket = tickets.get_ticket_details(body.ticket)
@@ -150,8 +150,7 @@ async def v1_mfa_totp(request, body: LoginTOTPForm):
 
 @v1.post("/verify/password")
 @validate(json=PasswordVerificationForm)
-@security.sanic_ratelimited("verify")
-@security.sanic_protected()
+@security.sanic_protected(ratelimit="verify", allow_bots=False)
 async def v1_verify_password(request, body: PasswordVerificationForm):
     # Get account
     account = accounts.get_account(request.ctx.user.id)
@@ -172,8 +171,7 @@ async def v1_verify_password(request, body: PasswordVerificationForm):
 
 @v1.post("/verify/totp")
 @validate(json=TOTPVerificationForm)
-@security.sanic_ratelimited("verify")
-@security.sanic_protected()
+@security.sanic_protected(ratelimit="verify", allow_bots=False)
 async def v1_verify_totp(request, body: TOTPVerificationForm):
     # Get account
     account = accounts.get_account(request.ctx.user.id)

@@ -1,11 +1,10 @@
 # BEFORE BETA
 - Finish off events update (mainly in CL)
-- Finish off API ratelimits
 - /@me/sessions
 - /@me/sync
 - Message replying
 - Post comments
-- Bot management
+- Development applications
 - Email verification and notifications
 - User/chat icon uploads (and /uploads API)
 - Theme management

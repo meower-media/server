@@ -2,7 +2,7 @@ from sanic import Blueprint, HTTPResponse, json
 from sanic_ext import validate
 from pydantic import BaseModel, Field
 
-from . import get_chat_or_abort_if_no_membership
+from .util import get_chat_or_abort_if_no_membership
 from src.util import status, security
 from src.entities import messages
 
@@ -30,7 +30,7 @@ async def v1_get_chat_messages(request, chat_id: str):
 
 @v1.post("/")
 @validate(json=NewMessageForm)
-@security.sanic_protected(ignore_suspension=False)
+@security.sanic_protected(ratelimit="create_message", ignore_suspension=False)
 async def v1_create_chat_message(request, chat_id: str, body: NewMessageForm):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
@@ -51,7 +51,7 @@ async def v1_get_chat_message(request, chat_id: str, message_id: str):
 
 @v1.patch("/<message_id:str>")
 @validate(json=EditMessageForm)
-@security.sanic_protected()
+@security.sanic_protected(ratelimit="edit_message")
 async def v1_edit_chat_message(request, chat_id: str, message_id: str, body: EditMessageForm):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
@@ -68,7 +68,7 @@ async def v1_edit_chat_message(request, chat_id: str, message_id: str, body: Edi
         return json(message.public)
 
 @v1.delete("/<message_id:str>")
-@security.sanic_protected()
+@security.sanic_protected(ratelimit="edit_message")
 async def v1_delete_chat_message(request, chat_id: str, message_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 

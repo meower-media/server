@@ -24,7 +24,7 @@ if redis.exists("signing_key") != 1:
     redis.set("signing_key", secrets.token_urlsafe(2048))
 SIGNING_KEY = redis.get("signing_key")
 
-RATELIMIT_LIMITS = {
+RATELIMIT_LIMITS = {  # these are not good at all right now
     "register": {
         "hits": 1,
         "seconds": 60
@@ -40,6 +40,46 @@ RATELIMIT_LIMITS = {
     "verify": {
         "hits": 5,
         "seconds": 60
+    },
+    "change_relationship": {
+        "hits": 5,
+        "seconds": 10
+    },
+    "open_chat": {
+        "hits": 5,
+        "seconds": 10
+    },
+    "update_chat": {
+        "hits": 5,
+        "seconds": 10
+    },
+    "typing": {
+        "hits": 3,
+        "seconds": 1
+    },
+    "search": {
+        "hits": 5,
+        "seconds": 10
+    },
+    "create_post": {
+        "hits": 1,
+        "seconds": 2
+    },
+    "edit_post": {
+        "hits": 1,
+        "seconds": 1
+    },
+    "reputation": {
+        "hits": 1,
+        "seconds": 1
+    },
+    "create_message": {
+        "hits": 5,
+        "seconds": 5
+    },
+    "edit_message": {
+        "hits": 5,
+        "seconds": 5
     }
 }
 
@@ -60,55 +100,64 @@ def sign_data(data: bytes):
 def validate_signature(signature: bytes, data: bytes):
     return hmac.compare_digest(b64decode(signature), hmac.new(key=SIGNING_KEY, msg=data, digestmod=sha512).digest())
 
-def sanic_protected(allow_bots: bool = True, ignore_guardian: bool = False, ignore_ban: bool = False, ignore_suspension: bool = True):
-    def decorator(func: callable) -> callable:
-        def wrapper(request, *args, **kwargs) -> HTTPResponse:
-            # Get user from access token
-            token = request.headers.get("Authorization")
-            if token is None:
-                request.ctx.user = None
-            else:
-                request.ctx.user = sessions.get_user_by_token(token)
-            if request.ctx.user is None:
-                raise status.notAuthenticated
+def sanic_protected(
+        ratelimit: str = None,
+        require_auth: bool = True,
+        allow_bots: bool = True,
+        ignore_guardian: bool = False,
+        ignore_ban: bool = False,
+        ignore_suspension: bool = True
+    ):
+        def decorator(func: callable) -> callable:
+            def wrapper(request, *args, **kwargs) -> HTTPResponse:
+                # Check ratelimit
+                if ratelimit:
+                    # Get remaining limit
+                    remaining = redis.get(f"rtl:{ratelimit}:{request.ip}")
+                    expires = redis.ttl(f"rtl:{ratelimit}:{request.ip}")
+                    request.ctx.ratelimit_bucket = ratelimit
+                    request.ctx.ratelimit_remaining = remaining
+                    request.ctx.ratelimit_reset = expires
+                    if not remaining:
+                        remaining = RATELIMIT_LIMITS[ratelimit]["hits"]
+                        expires = RATELIMIT_LIMITS[ratelimit]["seconds"]
+                    else:
+                        remaining = int(remaining.decode())
+                        expires = int(expires.decode())
 
-            # Check whether user is a bot
-            if (not allow_bots) and bitfield.has(request.ctx.user, flags.user.bot):
-                raise status.missingPermissions # placeholder
+                    # Check whether ratelimit has been exceeded
+                    if remaining <= 0:
+                        raise status.ratelimited
 
-            # Check whether user is being restricted by guardian
-            if (not ignore_guardian) and (False):
-                raise status.missingPermissions # placeholder
+                    # Set new remaining count
+                    remaining -= 1
+                    request.ctx.ratelimit_remaining = remaining
+                    redis.set(f"rtl:{ratelimit}:{request.ip}", str(remaining), ex=expires)
 
-            # Check whether the user is banned/suspended
-            user_moderation_status = infractions.user_status(request.ctx.user)
-            if ((not ignore_ban) and user_moderation_status["banned"]):
-                raise status.userBanned
-            elif ((not ignore_suspension) and user_moderation_status["suspended"]):
-                raise status.userSuspended
+                # Get user from access token
+                if not request.token:
+                    request.ctx.user = None
+                else:
+                    request.ctx.user = sessions.get_user_by_token(request.token)
+                if require_auth and (not request.ctx.user):
+                    raise status.notAuthenticated
 
-            return func(request, *args, **kwargs)
-        return wrapper
-    return decorator
+                if request.ctx.user:
+                    # Check whether user is a bot
+                    if (not allow_bots) and bitfield.has(request.ctx.user.flags, flags.user.bot):
+                        raise status.missingPermissions # placeholder
 
-def sanic_ratelimited(bucket: str):
-    def decorator(func: callable) -> callable:
-        def wrapper(request, *args, **kwargs) -> HTTPResponse:
-            # Get remaining limit
-            remaining = redis.get(f"rtl:{bucket}:{request.ip}")
-            if remaining is None:
-                remaining = RATELIMIT_LIMITS[bucket]["hits"]
-            else:
-                remaining = int(remaining.decode())
+                    # Check whether user is being restricted by guardian
+                    if (not ignore_guardian) and (False):
+                        raise status.missingPermissions # placeholder
 
-            # Check whether ratelimit has been exceeded
-            if remaining <= 0:
-                raise status.ratelimited
+                    # Check whether the user is banned/suspended
+                    user_moderation_status = infractions.user_status(request.ctx.user)
+                    if ((not ignore_ban) and user_moderation_status["banned"]):
+                        raise status.userBanned
+                    elif ((not ignore_suspension) and user_moderation_status["suspended"]):
+                        raise status.userSuspended
 
-            # Set new remaining count
-            remaining -= 1
-            redis.set(f"rtl:{bucket}:{request.ip}", str(remaining), ex=RATELIMIT_LIMITS[bucket]["seconds"])
-
-            return func(request, *args, **kwargs)
-        return wrapper
-    return decorator
+                return func(request, *args, **kwargs)
+            return wrapper
+        return decorator

@@ -25,7 +25,7 @@ async def v0_get_home(request):
     })
 
 @v1.get("/")
-@security.sanic_protected()
+@security.sanic_protected(allow_bots=False)
 async def v1_get_feed(request):    
     fetched_posts = posts.get_feed(request.ctx.user, before=request.args.get("before"), after=request.args.get("after"), limit=int(request.args.get("limit", 25)))
     return json({"posts": [post.public for post in fetched_posts]})
@@ -42,7 +42,7 @@ async def v1_get_trending_posts(request):
 
 @v1.post("/")
 @validate(json=NewPostForm)
-@security.sanic_protected(ignore_suspension=False)
+@security.sanic_protected(ratelimit="create_post", ignore_suspension=False)
 async def v1_create_post(request, body: NewPostForm):
     post = posts.create_post(request.ctx.user, body.content)
     return json(post.public)
