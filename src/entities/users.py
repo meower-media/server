@@ -161,7 +161,7 @@ class User:
         posts = db.posts.count_documents({"author_id": self.id})
         self.stats = {"followers": followers, "following": following, "posts": posts}
         db.users.update_one({"_id": self.id}, {"$set": {"stats": self.stats}})
-        events.emit_event(f"user_updated:{self.id}", {
+        events.emit_event("user_updated", self.id, {
             "id": self.id,
             "stats": self.stats
         })
@@ -246,7 +246,7 @@ class User:
             "username": self.username,
             "lower_username": self.lower_username
         }})
-        events.emit_event(f"user_updated:{self.id}", {
+        events.emit_event("user_updated", self.id, {
             "id": self.id,
             "username": self.username
         })
@@ -267,7 +267,7 @@ class User:
         db.users.update_one({"_id": self.id}, {"$set": {
             "quote": self.quote
         }})
-        events.emit_event(f"user_updated:{self.id}", {
+        events.emit_event("user_updated", self.id, {
             "id": self.id,
             "quote": self.quote
         })
