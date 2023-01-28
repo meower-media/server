@@ -1,8 +1,8 @@
 import time
 
 from src.cl4.cloudlink import cloudlink
-from src.util import events, bitfield, flags
-from src.entities import users, sessions, chats, infractions
+from src.util import events
+from src.entities import sessions, chats, infractions
 
 class CL4Commands:
     def __init__(self, cl_server: cloudlink.server):

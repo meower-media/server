@@ -1,5 +1,4 @@
 # BEFORE BETA
-- Finish off events update (mainly in CL)
 - /@me/sessions
 - /@me/sync
 - Message replying

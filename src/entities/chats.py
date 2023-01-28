@@ -200,9 +200,8 @@ class Chat:
             self.delete_after = uid.timestamp(epoch=int(time.time() + 1209600))
             db.chats.update_one({"_id": self.id}, {"$set": {"deleted": self.deleted, "delete_after": self.delete_after}})
             for member in self.members:
-                events.emit_event("chat_deleted", self.id, {
-                    "id": self.id,
-                    "user_id": member.id
+                events.emit_event("chat_deleted", member.id, {
+                    "id": self.id
                 })
 
 def create_chat(name: str, owner: users.User):

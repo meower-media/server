@@ -277,7 +277,7 @@ def create_post(author: users.User, content: str):
     post = Post(**post)
 
     # Announce post creation
-    events.emit_event("post_created", "", post.public)
+    events.emit_event("post_created", post.id, post.public)
 
     # Add post ID to latest posts list
     redis.lpush("latest_posts", post.id)
