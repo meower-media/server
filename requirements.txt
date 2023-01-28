@@ -11,3 +11,7 @@ flask
 pymongo
 python-dotenv
 quart
+pydantic
+sanic_ext
+pyotp
+sanic
