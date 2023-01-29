@@ -1,7 +1,7 @@
 from datetime import datetime
 from base64 import b64encode, b64decode
 
-from src.util import status, uid, bitfield, flags, security
+from src.util import status, uid, events, security
 from src.entities import users, accounts, networks
 from src.database import db, redis
 
@@ -12,19 +12,28 @@ class UserSession:
         version: int = 0,
         user_id: str = None,
         device: dict = {},
-        init_ip: str = None,
-        last_ip: str = None,
-        created: datetime = None,
-        last_used: datetime = None
+        ip_address: str = None,
+        last_refreshed: datetime = None,
+        created: datetime = None
     ):
         self.id = _id
         self.version = version
         self.user = users.get_user(user_id)
         self.device = device
-        self.init_ip = init_ip
-        self.last_ip = last_ip
+        self.ip_address = ip_address
+        self.last_refreshed = last_refreshed
         self.created = created
-        self.last_used = last_used
+
+    @property
+    def client(self):
+        return {
+            "id": self.id,
+            "user": self.user.partial,
+            "device": self.device,
+            "ip_address": self.ip_address,
+            "last_refreshed": int(self.last_refreshed.timestamp()),
+            "created": int(self.created.timestamp())
+        }
 
     @property
     def signed_token(self):
@@ -50,6 +59,9 @@ class UserSession:
         db.sessions.delete_one({"_id": self.id})
         for key in redis.keys(f"ses:{self.id}:*"):
             redis.delete(key.decode())
+        events.emit_event("session_deleted", self.user.id, {
+            "id": self.id
+        })
 
 def create_user_session(account: accounts.Account, device: dict, network: networks.Network):
     session_data = {
@@ -73,6 +85,13 @@ def get_user_session(session_id: str):
         raise status.notFound
     
     return UserSession(**session)
+
+def get_all_user_sessions(user: users.User):
+    return [UserSession(**session) for session in db.sessions.find({"user_id": user.id})]
+
+def revoke_all_user_sessions(user: users.User):
+    for session in get_all_user_sessions(user):
+        session.revoke()
 
 def get_user_by_token(token: str):
     try:

@@ -26,7 +26,7 @@ async def session_created(user_id: str, payload: dict):
 
 @events.on("session_updated")
 async def session_updated(user_id: str, payload: dict):
-    await send_to_user(user_id, "session_created", payload)
+    await send_to_user(user_id, "session_updated", payload)
 
 @events.on("session_deleted")
 async def session_deleted(user_id: str, payload: dict):

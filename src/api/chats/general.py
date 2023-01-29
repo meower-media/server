@@ -16,7 +16,7 @@ class EditChatForm(BaseModel):
     )
     owner_id: Optional[str] = Field(
         min_length=1,
-        max_length=32
+        max_length=25
     )
 
 @v1.get("/")

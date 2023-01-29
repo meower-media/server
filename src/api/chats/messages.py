@@ -1,6 +1,7 @@
 from sanic import Blueprint, HTTPResponse, json
 from sanic_ext import validate
 from pydantic import BaseModel, Field
+from typing import Optional
 
 from .util import get_chat_or_abort_if_no_membership
 from src.util import status, security
@@ -9,6 +10,9 @@ from src.entities import messages
 v1 = Blueprint("v1_chats_messages", url_prefix="/messages")
 
 class NewMessageForm(BaseModel):
+    reply_to: Optional[str] = Field(
+        max_length=25
+    )
     content: str = Field(
         min_length=1,
         max_length=2000
@@ -34,7 +38,7 @@ async def v1_get_chat_messages(request, chat_id: str):
 async def v1_create_chat_message(request, chat_id: str, body: NewMessageForm):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
-    message = messages.create_message(chat, request.ctx.user, body.content)
+    message = messages.create_message(chat, request.ctx.user, body.content, reply_to=body.reply_to)
     return json(message.public)
 
 @v1.get("/<message_id:str>")

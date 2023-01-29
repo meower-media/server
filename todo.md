@@ -1,7 +1,5 @@
 # BEFORE BETA
-- /@me/sessions
 - /@me/sync
-- Message replying
 - Post comments
 - Development applications
 - Email verification and notifications

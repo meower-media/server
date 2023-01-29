@@ -37,7 +37,7 @@ class LoginPasswordForm(BaseModel):
 
 class LoginTOTPForm(BaseModel):
     ticket: str = Field(
-        min_length=1
+        max_length=255
     )
     code: str = Field(
         min_length=1,
