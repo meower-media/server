@@ -4,33 +4,32 @@ import time
 import random
 
 from src.util import status, uid, events, filter, bitfield, flags
-from src.entities import users
+from src.entities import users, posts
 from src.database import db, redis
 
-class Post:
+class Comment:
     def __init__(
         self,
         _id: str,
-        author_id: str,
+        post_id: str,
+        parent_id: str = None,
+        author_id: str = None,
         content: str = None,
         filtered_content: str = None,
         flags: str = 0,
         likes: int = 0,
-        meows: int = 0,
-        comments: int = 0,
-        reputation: int = 0,
         time: datetime = None,
         deleted: bool = False,
         delete_after: datetime = None
     ):
         self.id = _id
+        self.post_id = post_id
+        self.parent_id = parent_id
         self.author = users.get_user(author_id)
         self.content = content
         self.filtered_content = filtered_content
         self.flags = flags
         self.likes = likes
-        self.meows = meows
-        self.comments = comments
         self.time = time
         self.deleted = deleted
         self.delete_after = delete_after
@@ -39,13 +38,13 @@ class Post:
     def public(self):
         return {
             "id": self.id,
+            "post_id": self.post_id,
+            "parent_id": self.parent_id,
             "author": self.author.partial,
             "content": self.content,
             "filtered_content": self.filtered_content,
             "public_flags": self.public_flags,
             "likes": self.likes,
-            "meows": self.meows,
-            "comments": self.comments,
             "time": int(self.time.timestamp()),
             "delete_after": (int(self.delete_after.timestamp()) if (self.delete_after is not None) else None)
         }
@@ -58,34 +57,17 @@ class Post:
             "content": self.content,
             "filtered_content": self.filtered_content,
             "flags": self.flags,
+            "public_flags": self.public_flags,
             "likes": self.likes,
-            "meows": self.meows,
-            "reputation": self.reputation,
-            "last_counted": self.last_counted,
             "time": int(self.time.timestamp()),
             "deleted": self.deleted,
             "delete_after": (int(self.delete_after.timestamp()) if (self.delete_after is not None) else None)
         }
 
     @property
-    def legacy(self):
-        return {
-            "_id": self.id,
-            "type": 1,
-            "post_origin": "home",
-            "u": self.author.username,
-            "t": uid.timestamp(epoch=int(self.time.timestamp()), jsonify=True),
-            "p": self.filtered_content,
-            "post_id": self.id,
-            "isDeleted": self.deleted
-        }
-
-    @property
     def public_flags(self):
         pub_flags = copy(self.flags)
-        for flag in [
-            flags.post.reputationBanned
-        ]:
+        for flag in []:
             pub_flags = bitfield.remove(pub_flags, flag)
         return pub_flags
 
@@ -264,10 +246,11 @@ class Post:
                 "id": self.id
             })
 
-def create_post(author: users.User, content: str):
-    # Create post data
-    post = {
+def create_comment(post: posts.Post, author: users.User, content: str):
+    # Create comment data
+    comment = {
         "_id": uid.snowflake(),
+        "post_id": post.id,
         "author_id": author.id,
         "content": content,
         "filtered_content": None,
@@ -278,32 +261,28 @@ def create_post(author: users.User, content: str):
     # Filter profanity
     filtered_content = filter.censor(content)
     if filtered_content != content:
-        post["filtered_content"] = filtered_content
+        comment["filtered_content"] = filtered_content
 
-    # Insert post into database and convert into Post object
-    db.posts.insert_one(post)
-    post = Post(**post)
+    # Insert comment into database and convert into Comment object
+    db.comments.insert_one(comment)
+    comment = Comment(**comment)
 
-    # Announce post creation
-    events.emit_event("post_created", post.id, post.public)
+    # Announce comment creation
+    #events.emit_event("post_created", post.id, post.public)
 
-    # Add post ID to latest posts list
-    redis.lpush("latest_posts", post.id)
-    redis.ltrim("latest_posts", 0, 9999)
+    # Return comment object
+    return comment
 
-    # Return post object
-    return post
-
-def get_post(post_id: str, error_on_deleted: bool = True):
-    # Get post from database and check whether it's not found or deleted
-    post = db.posts.find_one({"_id": post_id})
-    if post is None or (error_on_deleted and post.get("deleted")):
+def get_comment(comment_id: str, error_on_deleted: bool = True):
+    # Get comment from database and check whether it's not found or deleted
+    comment = db.comments.find_one({"_id": comment_id})
+    if comment is None or (error_on_deleted and comment.get("deleted")):
         raise status.notFound
 
     # Return post object
-    return Post(**post)
+    return Comment(**comment)
 
-def get_feed(user: users.User, before: str = None, after: str = None, limit: int = 25):
+def get_post_comments(post: posts.Post, before: str = None, after: str = None, limit: int = 25):
     # Create ID range
     if before is not None:
         id_range = {"$lt": before}
@@ -312,89 +291,5 @@ def get_feed(user: users.User, before: str = None, after: str = None, limit: int
     else:
         id_range = {"$gt": "0"}
 
-    # Get following list and posts that the user's followers have meowed
-    following = user.get_following()
-    meowed_posts = [meow["post_id"] for meow in db.meows.find({"user_id": {"$in": following}, "post_id": id_range}, sort=[("post_id", -1)], limit=limit, projection={"post_id": 1})]
-
-    # Create query
-    query = {
-        "$or": [
-            {
-                "deleted": False,
-                "_id": copy(id_range)
-            },
-            {
-                "deleted": False,
-                "author_id": {"$in": following},
-                "_id": copy(id_range)
-            }
-        ]
-    }
-    query["$or"][0]["_id"]["$in"] = meowed_posts
-
-    # Primary fetch
-    fetched_posts = [Post(**post) for post in db.posts.find(query, sort=[("_id", -1)], limit=limit)]
-
-    # Secondary fetch to fill results
-    if len(fetched_posts) < limit:
-        total_latest_posts = redis.llen("latest_posts")
-        attempts = 0
-        while (len(fetched_posts) < limit) and (len(fetched_posts) < total_latest_posts):
-            # Have an attempt limit so we don't get stuck in an infinite loop
-            if attempts >= 3:
-                break
-            else:
-                attempts += 1
-            
-            # Get random posts from latest posts list
-            for i in range(limit-len(fetched_posts)):
-                random_index = random.randint(0, total_latest_posts-1)
-                post_id = redis.lrange("latest_posts", random_index, random_index)[0].decode()
-                fetched_posts.insert(random.randint(0, len(fetched_posts)), get_post(post_id, error_on_deleted=False))
-
-            # Cleanup deleted and duplicates posts
-            post_ids = set()
-            for post in fetched_posts:
-                if post.deleted or (post.id in post_ids):
-                    fetched_posts.remove(post)
-                    continue
-                post_ids.add(post.id)
-
-    # Return fetched posts
-    return fetched_posts
-
-def get_latest_posts(before: str = None, after: str = None, limit: int = 25):
-    # Create ID range
-    if before is not None:
-        id_range = {"$lt": before}
-    elif after is not None:
-        id_range = {"$gt": after}
-    else:
-        id_range = {"$gt": "0"}
-
-    # Fetch and return all posts
-    return [Post(**post) for post in db.posts.find({"deleted": False, "_id": id_range}, sort=[("_id", -1)], limit=limit)]
-
-def get_top_posts(before: str = None, after: str = None, limit: int = 25):
-    # Create ID range
-    if before is not None:
-        id_range = {"$lt": before}
-    elif after is not None:
-        id_range = {"$gt": after}
-    else:
-        id_range = {"$gt": "0"}
-
-    # Fetch and return all posts
-    return [Post(**post) for post in db.posts.find({"deleted": False, "_id": id_range}, sort=[("reputation", -1)], limit=limit)]
-
-def search_posts(query: str, before: str = None, after: str = None, limit: int = 25):
-    # Create ID range
-    if before is not None:
-        id_range = {"$lt": before}
-    elif after is not None:
-        id_range = {"$gt": after}
-    else:
-        id_range = {"$gt": "0"}
-
-    # Fetch and return all posts
-    return [Post(**post) for post in db.posts.find({"deleted": False, "$text": {"$search": query}, "_id": id_range}, sort=[("_id", -1)], limit=limit)]
+    # Fetch and return all comments
+    return [Comment(**comment) for comment in db.comments.find({"post_id": post.id, "deleted": False, "_id": id_range}, sort=[("_id", -1)], limit=limit)]

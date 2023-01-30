@@ -21,6 +21,9 @@ class post:
     protected = 4
     reputationBanned = 5
 
+class comment:
+    edited = 0
+
 class chat:
     inviteCodeDisabled = 0
     vanityInviteCode = 1
