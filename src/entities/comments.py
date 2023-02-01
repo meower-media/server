@@ -1,11 +1,11 @@
 from datetime import datetime
 from copy import copy
+from threading import Thread
 import time
-import random
 
 from src.util import status, uid, events, filter, bitfield, flags
 from src.entities import users, posts
-from src.database import db, redis
+from src.database import db
 
 class Comment:
     def __init__(
@@ -17,10 +17,14 @@ class Comment:
         content: str = None,
         filtered_content: str = None,
         flags: str = 0,
-        likes: int = 0,
+        stats: dict = {
+            "likes": 0,
+            "replies": 0,
+            "last_counted": 0
+        },
         time: datetime = None,
-        deleted: bool = False,
-        delete_after: datetime = None
+        delete_after: datetime = None,
+        deleted_at: datetime = None
     ):
         self.id = _id
         self.post_id = post_id
@@ -29,10 +33,10 @@ class Comment:
         self.content = content
         self.filtered_content = filtered_content
         self.flags = flags
-        self.likes = likes
+        self.stats = stats
         self.time = time
-        self.deleted = deleted
         self.delete_after = delete_after
+        self.deleted_at = deleted_at
 
     @property
     def public(self):
@@ -44,24 +48,26 @@ class Comment:
             "content": self.content,
             "filtered_content": self.filtered_content,
             "public_flags": self.public_flags,
-            "likes": self.likes,
+            "stats": self.stats,
             "time": int(self.time.timestamp()),
-            "delete_after": (int(self.delete_after.timestamp()) if (self.delete_after is not None) else None)
+            "delete_after": (int(self.delete_after.timestamp()) if self.delete_after else None)
         }
 
     @property
     def admin(self):
         return {
             "id": self.id,
+            "post_id": self.post_id,
+            "parent_id": self.parent_id,
             "author": self.author.partial,
             "content": self.content,
             "filtered_content": self.filtered_content,
             "flags": self.flags,
             "public_flags": self.public_flags,
-            "likes": self.likes,
+            "stats": self.stats,
             "time": int(self.time.timestamp()),
-            "deleted": self.deleted,
-            "delete_after": (int(self.delete_after.timestamp()) if (self.delete_after is not None) else None)
+            "delete_after": (int(self.delete_after.timestamp()) if self.delete_after else None),
+            "deleted_at": (int(self.deleted_at.timestamp()) if self.deleted_at else None)
         }
 
     @property
@@ -79,135 +85,76 @@ class Comment:
     def admin_revisions(self):
         return self.get_revisions(include_private=True)
 
-    @property
-    def reputation(self):
-        if bitfield.has(self.flags, flags.post.reputationBanned):
-            return 0
-        else:
-            reputation = ((self.likes + self.meows) - ((time.time() - self.time.timestamp()) ** -5))
-            if reputation < 0:
-                return 0
-            else:
-                return reputation
-
-    def count_stats(self, extensive: bool = False):
-        if extensive:
-            self.likes = db.post_likes.count_documents({"post_id": self.id})
-            self.meows = db.post_meows.count_documents({"post_id": self.id})
-            self.comments = db.post_comments.count_documents({"post_id": self.id}) 
-
-        db.posts.update_one({"_id": self.id}, {"$set": {
-            "likes": self.likes,
-            "meows": self.meows, 
-            "comments": self.comments,
-            "reputation": self.reputation
-        }})
-        events.emit_event("post_updated", self.id, {
-            "id": self.id,
-            "likes": self.likes,
-            "meows": self.meows,
-            "comments": self.comments,
-            "reputation": self.reputation
-        })
+    def update_stats(self):
+        def run():
+            self.stats = {
+                "likes": db.comment_likes.count_documents({"post_id": self.id}),
+                "replies": db.post_comments.count_documents({"post_id": self.post_id, "parent_id": self.id, "deleted_at": None}),
+                "last_counted": int(time.time())
+            }
+            db.post_comments.update_one({"_id": self.id}, {"$set": {"stats": self.stats}})
+            events.emit_event("comment_updated", self.post_id, {
+                "id": self.id,
+                "stats": self.stats
+            })
+        Thread(target=run).start()
 
     def liked(self, user: users.User):
-        return (db.post_likes.count_documents({"post_id": self.id, "user_id": user.id}) > 0)
-    
-    def meowed(self, user: users.User):
-        return (db.post_meows.count_documents({"post_id": self.id, "user_id": user.id}) > 0)
+        return (db.comment_likes.count_documents({"comment_id": self.id, "user_id": user.id}) > 0)
 
     def like(self, user: users.User):
         if self.liked(user):
             raise status.alreadyLiked
         
-        db.post_likes.insert_one({
+        db.comment_likes.insert_one({
             "_id": uid.snowflake(),
-            "post_id": self.id,
+            "comment_id": self.id,
             "user_id": user.id,
             "time": uid.timestamp()
         })
-        events.emit_event("post_status_updated", user.id, {
+        events.emit_event("comment_status_updated", user.id, {
             "id": self.id,
             "liked": True
         })
-
-        self.likes += 1
-        self.count_stats()
-
-    def meow(self, user: users.User):
-        if self.meowed(user):
-            raise status.alreadyMeowed
-        
-        db.post_meows.insert_one({
-            "_id": uid.snowflake(),
-            "post_id": self.id,
-            "user_id": user.id,
-            "time": uid.timestamp()
-        })
-        events.emit_event("post_status_updated", user.id, {
-            "id": self.id,
-            "meowed": True
-        })
-
-        self.meows += 1
-        self.count_stats()
+        self.update_stats()
 
     def unlike(self, user: users.User):
         if not self.liked(user):
             raise status.notLiked
 
-        db.post_likes.delete_one({
-            "post_id": self.id,
+        db.comment_likes.delete_one({
+            "comment_id": self.id,
             "user_id": user.id
         })
-        events.emit_event("post_status_updated", user.id, {
+        events.emit_event("comment_status_updated", user.id, {
             "id": self.id,
             "liked": False
         })
+        self.update_stats()
 
-        self.likes -= 1
-        self.count_stats()
-    
-    def unmeow(self, user: users.User):
-        if not self.meowed(user):
-            raise status.notMeowed
-
-        db.post_meows.delete_one({
-            "post_id": self.id,
-            "user_id": user.id
-        })
-        events.emit_event("post_status_updated", user.id, {
-            "id": self.id,
-            "meowed": False
-        })
-
-        self.meows -= 1
-        self.count_stats()
-
-    def edit(self, editor: users.User, content: str, public: bool = True):
+    def edit(self, editor: users.User, content: str):
         if bitfield.has(self.flags, flags.post.protected):
             raise status.postProtected
 
         if content == self.content:
             return
         
-        db.post_revisions.insert_one({
+        db.comment_revisions.insert_one({
             "_id": uid.snowflake(),
-            "post_id": self.id,
+            "comment_id": self.id,
             "old_content": self.content,
             "new_content": content,
             "editor_id": editor.id,
-            "public": public,
             "time": uid.timestamp()
         })
 
-        self.flags = bitfield.add(self.flags, flags.post.edited)
+        self.flags = bitfield.add(self.flags, flags.comment.edited)
         self.content = content
-        db.posts.update_one({"_id": self.id}, {"$set": {
+        db.post_comments.update_one({"_id": self.id}, {"$set": {
             "flags": self.flags,
             "content": self.content
         }})
-        events.emit_event("post_updated", self.id, {
+        events.emit_event("comment_updated", self.post_id, {
             "id": self.id,
             "flags": self.public_flags,
             "content": self.content
@@ -219,7 +166,7 @@ class Comment:
             query["public"] = True
         
         revisions = []
-        for revision in db.post_revisions.find({"post_id": self.id}):
+        for revision in db.comment_revisions.find(query):
             revision["id"] = revision["_id"]
             revision["editor"] = users.get_user(revision["editor_id"]).partial
             del revision["_id"]
@@ -227,35 +174,29 @@ class Comment:
         return revisions
 
     def change_revision_privacy(self, revision_id: str, public: bool):
-        db.post_revisions.update_one({"_id": revision_id}, {"$set": {"public": public}})
+        db.comment_revisions.update_one({"_id": revision_id}, {"$set": {"public": public}})
     
     def delete_revision(self, revision_id: str):
-        db.post_revisions.delete_one({"_id": revision_id})
+        db.comment_revisions.delete_one({"_id": revision_id})
 
-    def delete(self, moderated: bool = False, moderation_reason: str = None):
-        if self.deleted:
-            db.post_revisions.delete_many({"post_id": self.id})
-            db.post_likes.delete_many({"post_id": self.id})
-            db.post_meows.delete_many({"post_id": self.id})
-            db.posts.delete_one({"_id": self.id})
-        else:
-            self.deleted = True
-            self.delete_after = uid.timestamp(epoch=int(time.time() + 1209600))
-            db.posts.update_one({"_id": self.id}, {"$set": {"deleted": self.deleted, "delete_after": self.delete_after}})
-            events.emit_event("post_deleted", self.id, {
-                "id": self.id
-            })
+    def delete(self):
+        self.deleted_at = uid.timestamp()
+        db.post_comments.update_one({"_id": self.id}, {"$set": {"deleted_at": self.deleted_at}})
+        events.emit_event("comment_deleted", self.post_id, {
+            "id": self.id
+        })
 
-def create_comment(post: posts.Post, author: users.User, content: str):
+def create_comment(post: posts.Post, author: users.User, content: str, parent: Comment = None):
     # Create comment data
     comment = {
         "_id": uid.snowflake(),
         "post_id": post.id,
+        "parent_id": (parent.id if parent else None),
         "author_id": author.id,
         "content": content,
         "filtered_content": None,
         "time": uid.timestamp(),
-        "deleted": False
+        "deleted_at": None
     }
 
     # Filter profanity
@@ -264,19 +205,23 @@ def create_comment(post: posts.Post, author: users.User, content: str):
         comment["filtered_content"] = filtered_content
 
     # Insert comment into database and convert into Comment object
-    db.comments.insert_one(comment)
+    db.post_comments.insert_one(comment)
     comment = Comment(**comment)
 
+    # Update parent comment
+    if parent:
+        parent.update_stats()
+
     # Announce comment creation
-    #events.emit_event("post_created", post.id, post.public)
+    events.emit_event("comment_created", post.id, comment.public)
 
     # Return comment object
     return comment
 
 def get_comment(comment_id: str, error_on_deleted: bool = True):
     # Get comment from database and check whether it's not found or deleted
-    comment = db.comments.find_one({"_id": comment_id})
-    if comment is None or (error_on_deleted and comment.get("deleted")):
+    comment = db.post_comments.find_one({"_id": comment_id})
+    if comment is None or (error_on_deleted and comment.get("deleted_at")):
         raise status.notFound
 
     # Return post object
@@ -291,5 +236,17 @@ def get_post_comments(post: posts.Post, before: str = None, after: str = None, l
     else:
         id_range = {"$gt": "0"}
 
-    # Fetch and return all comments
-    return [Comment(**comment) for comment in db.comments.find({"post_id": post.id, "deleted": False, "_id": id_range}, sort=[("_id", -1)], limit=limit)]
+    # Fetch and return comments
+    return [Comment(**comment) for comment in db.post_comments.find({"post_id": post.id, "parent_id": None, "deleted_at": None, "_id": id_range}, sort=[("_id", -1)], limit=limit)]
+
+def get_comment_replies(comment: Comment, before: str = None, after: str = None, limit: int = 25):
+    # Create ID range
+    if before is not None:
+        id_range = {"$lt": before}
+    elif after is not None:
+        id_range = {"$gt": after}
+    else:
+        id_range = {"$gt": "0"}
+
+    # Fetch and return comments
+    return [Comment(**comment) for comment in db.post_comments.find({"post_id": comment.post_id, "parent_id": comment.id, "deleted_at": None, "_id": id_range}, sort=[("_id", -1)], limit=limit)]

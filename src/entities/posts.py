@@ -1,5 +1,6 @@
 from datetime import datetime
 from copy import copy
+from threading import Thread
 import time
 import random
 
@@ -15,25 +16,26 @@ class Post:
         content: str = None,
         filtered_content: str = None,
         flags: str = 0,
-        likes: int = 0,
-        meows: int = 0,
-        comments: int = 0,
+        stats: dict = {
+            "likes": 0,
+            "meows": 0,
+            "comments": 0,
+            "last_counted": 0
+        },
         reputation: int = 0,
         time: datetime = None,
-        deleted: bool = False,
-        delete_after: datetime = None
+        delete_after: datetime = None,
+        deleted_at: datetime = None
     ):
         self.id = _id
         self.author = users.get_user(author_id)
         self.content = content
         self.filtered_content = filtered_content
         self.flags = flags
-        self.likes = likes
-        self.meows = meows
-        self.comments = comments
+        self.stats = stats
         self.time = time
-        self.deleted = deleted
         self.delete_after = delete_after
+        self.deleted_at = deleted_at
 
     @property
     def public(self):
@@ -43,11 +45,9 @@ class Post:
             "content": self.content,
             "filtered_content": self.filtered_content,
             "public_flags": self.public_flags,
-            "likes": self.likes,
-            "meows": self.meows,
-            "comments": self.comments,
+            "stats": self.stats,
             "time": int(self.time.timestamp()),
-            "delete_after": (int(self.delete_after.timestamp()) if (self.delete_after is not None) else None)
+            "deleted_after": (int(self.delete_after.timestamp()) if self.delete_after else None)
         }
 
     @property
@@ -58,13 +58,11 @@ class Post:
             "content": self.content,
             "filtered_content": self.filtered_content,
             "flags": self.flags,
-            "likes": self.likes,
-            "meows": self.meows,
-            "reputation": self.reputation,
-            "last_counted": self.last_counted,
+            "public_flags": self.public_flags,
+            "stats": self.stats,
             "time": int(self.time.timestamp()),
-            "deleted": self.deleted,
-            "delete_after": (int(self.delete_after.timestamp()) if (self.delete_after is not None) else None)
+            "delete_after": (int(self.delete_after.timestamp()) if self.delete_after else None),
+            "deleted_at": (int(self.deleted_at.timestamp()) if self.deleted_at else None)
         }
 
     @property
@@ -75,9 +73,9 @@ class Post:
             "post_origin": "home",
             "u": self.author.username,
             "t": uid.timestamp(epoch=int(self.time.timestamp()), jsonify=True),
-            "p": self.filtered_content,
+            "p": (self.filtered_content if self.filtered_content else self.content),
             "post_id": self.id,
-            "isDeleted": self.deleted
+            "isDeleted": (self.deleted_at is not None)
         }
 
     @property
@@ -99,34 +97,32 @@ class Post:
 
     @property
     def reputation(self):
-        if bitfield.has(self.flags, flags.post.reputationBanned):
+        if bitfield.has(self.flags, flags.post.reputationBanned) or (time.time() > (time.time()+2592000)):
             return 0
         else:
-            reputation = ((self.likes + self.meows) - ((time.time() - self.time.timestamp()) ** -5))
+            reputation = ((self.stats.get("likes", 0) + self.stats.get("meows", 0)) - ((time.time() - self.time.timestamp()) ** -5))
             if reputation < 0:
                 return 0
             else:
                 return reputation
 
-    def count_stats(self, extensive: bool = False):
-        if extensive:
-            self.likes = db.post_likes.count_documents({"post_id": self.id})
-            self.meows = db.post_meows.count_documents({"post_id": self.id})
-            self.comments = db.post_comments.count_documents({"post_id": self.id}) 
-
-        db.posts.update_one({"_id": self.id}, {"$set": {
-            "likes": self.likes,
-            "meows": self.meows, 
-            "comments": self.comments,
-            "reputation": self.reputation
-        }})
-        events.emit_event("post_updated", self.id, {
-            "id": self.id,
-            "likes": self.likes,
-            "meows": self.meows,
-            "comments": self.comments,
-            "reputation": self.reputation
-        })
+    def update_stats(self):
+        def run():
+            self.stats = {
+                "likes": db.post_likes.count_documents({"post_id": self.id}),
+                "meows": db.post_meows.count_documents({"post_id": self.id}),
+                "comments": db.post_comments.count_documents({"post_id": self.id, "deleted_at": None}),
+                "last_counted": int(time.time())
+            }
+            db.posts.update_one({"_id": self.id}, {"$set": {
+                "stats": self.stats,
+                "reputation": self.reputation
+            }})
+            events.emit_event("post_updated", self.id, {
+                "id": self.id,
+                "stats": self.stats
+            })
+        Thread(target=run).start()
 
     def liked(self, user: users.User):
         return (db.post_likes.count_documents({"post_id": self.id, "user_id": user.id}) > 0)
@@ -148,9 +144,7 @@ class Post:
             "id": self.id,
             "liked": True
         })
-
-        self.likes += 1
-        self.count_stats()
+        self.update_stats()
 
     def meow(self, user: users.User):
         if self.meowed(user):
@@ -166,9 +160,7 @@ class Post:
             "id": self.id,
             "meowed": True
         })
-
-        self.meows += 1
-        self.count_stats()
+        self.update_stats()
 
     def unlike(self, user: users.User):
         if not self.liked(user):
@@ -182,9 +174,7 @@ class Post:
             "id": self.id,
             "liked": False
         })
-
-        self.likes -= 1
-        self.count_stats()
+        self.update_stats()
     
     def unmeow(self, user: users.User):
         if not self.meowed(user):
@@ -198,9 +188,7 @@ class Post:
             "id": self.id,
             "meowed": False
         })
-
-        self.meows -= 1
-        self.count_stats()
+        self.update_stats()
 
     def edit(self, editor: users.User, content: str, public: bool = True):
         if bitfield.has(self.flags, flags.post.protected):
@@ -237,7 +225,7 @@ class Post:
             query["public"] = True
         
         revisions = []
-        for revision in db.post_revisions.find({"post_id": self.id}):
+        for revision in db.post_revisions.find(query):
             revision["id"] = revision["_id"]
             revision["editor"] = users.get_user(revision["editor_id"]).partial
             del revision["_id"]
@@ -250,19 +238,12 @@ class Post:
     def delete_revision(self, revision_id: str):
         db.post_revisions.delete_one({"_id": revision_id})
 
-    def delete(self, moderated: bool = False, moderation_reason: str = None):
-        if self.deleted:
-            db.post_revisions.delete_many({"post_id": self.id})
-            db.post_likes.delete_many({"post_id": self.id})
-            db.post_meows.delete_many({"post_id": self.id})
-            db.posts.delete_one({"_id": self.id})
-        else:
-            self.deleted = True
-            self.delete_after = uid.timestamp(epoch=int(time.time() + 1209600))
-            db.posts.update_one({"_id": self.id}, {"$set": {"deleted": self.deleted, "delete_after": self.delete_after}})
-            events.emit_event("post_deleted", self.id, {
-                "id": self.id
-            })
+    def delete(self):
+        self.deleted_at = uid.timestamp()
+        db.posts.update_one({"_id": self.id}, {"$set": {"deleted_at": self.deleted_at}})
+        events.emit_event("post_deleted", self.id, {
+            "id": self.id
+        })
 
 def create_post(author: users.User, content: str):
     # Create post data
@@ -272,7 +253,7 @@ def create_post(author: users.User, content: str):
         "content": content,
         "filtered_content": None,
         "time": uid.timestamp(),
-        "deleted": False
+        #"deleted_at": None
     }
 
     # Filter profanity
@@ -297,7 +278,7 @@ def create_post(author: users.User, content: str):
 def get_post(post_id: str, error_on_deleted: bool = True):
     # Get post from database and check whether it's not found or deleted
     post = db.posts.find_one({"_id": post_id})
-    if post is None or (error_on_deleted and post.get("deleted")):
+    if post is None or (error_on_deleted and post.get("deleted_at")):
         raise status.notFound
 
     # Return post object
@@ -320,11 +301,11 @@ def get_feed(user: users.User, before: str = None, after: str = None, limit: int
     query = {
         "$or": [
             {
-                "deleted": False,
+                "deleted_at": None,
                 "_id": copy(id_range)
             },
             {
-                "deleted": False,
+                "deleted_at": None,
                 "author_id": {"$in": following},
                 "_id": copy(id_range)
             }
@@ -373,7 +354,7 @@ def get_latest_posts(before: str = None, after: str = None, limit: int = 25):
         id_range = {"$gt": "0"}
 
     # Fetch and return all posts
-    return [Post(**post) for post in db.posts.find({"deleted": False, "_id": id_range}, sort=[("_id", -1)], limit=limit)]
+    return [Post(**post) for post in db.posts.find({"deleted_at": None, "_id": id_range}, sort=[("time", -1)], limit=limit)]
 
 def get_top_posts(before: str = None, after: str = None, limit: int = 25):
     # Create ID range
@@ -385,7 +366,7 @@ def get_top_posts(before: str = None, after: str = None, limit: int = 25):
         id_range = {"$gt": "0"}
 
     # Fetch and return all posts
-    return [Post(**post) for post in db.posts.find({"deleted": False, "_id": id_range}, sort=[("reputation", -1)], limit=limit)]
+    return [Post(**post) for post in db.posts.find({"deleted_at": None, "_id": id_range}, sort=[("reputation", -1)], limit=limit)]
 
 def search_posts(query: str, before: str = None, after: str = None, limit: int = 25):
     # Create ID range
@@ -397,4 +378,4 @@ def search_posts(query: str, before: str = None, after: str = None, limit: int =
         id_range = {"$gt": "0"}
 
     # Fetch and return all posts
-    return [Post(**post) for post in db.posts.find({"deleted": False, "$text": {"$search": query}, "_id": id_range}, sort=[("_id", -1)], limit=limit)]
+    return [Post(**post) for post in db.posts.find({"deleted_at": None, "$text": {"$search": query}, "_id": id_range}, sort=[("time", -1)], limit=limit)]
