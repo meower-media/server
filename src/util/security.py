@@ -67,11 +67,19 @@ RATELIMIT_LIMITS = {  # these are not good at all right now
     },
     "edit_post": {
         "hits": 1,
-        "seconds": 1
+        "seconds": 2
     },
     "reputation": {
-        "hits": 1,
+        "hits": 2,
         "seconds": 1
+    },
+    "create_comment": {
+        "hits": 1,
+        "seconds": 2
+    },
+    "edit_comment": {
+        "hits": 1,
+        "seconds": 2
     },
     "create_message": {
         "hits": 5,

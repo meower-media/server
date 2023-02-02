@@ -119,11 +119,11 @@ def create_account(username: str, password: str, child: bool, require_email: boo
 
     user_flags = 0
     if child:
-        bitfield.add(user_flags, flags.user.child)
+        user_flags = bitfield.add(user_flags, flags.user.child)
     if require_email:
-        bitfield.add(user_flags, flags.user.requireEmail)
+        user_flags = bitfield.add(user_flags, flags.user.requireEmail)
 
-    user = users.create_user(username, flags=flags)
+    user = users.create_user(username, flags=user_flags)
 
     account = {
         "_id": user.id,

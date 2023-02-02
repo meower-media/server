@@ -1,6 +1,5 @@
 # BEFORE BETA
 - /@me/sync
-- Post comments
 - Development applications
 - Email verification and notifications
 - User/chat icon uploads (and /uploads API)

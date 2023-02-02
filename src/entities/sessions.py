@@ -44,15 +44,15 @@ class UserSession:
     def refresh(self, device: dict, network: networks.Network):
         self.version += 1
         self.device = device
-        self.last_ip = network.ip_address
-        self.last_used = uid.timestamp()
-        redis.set(f"us:{self.id}:{str(self.version)}", self.user.id, ex=1800)
-        redis.expire(f"us:{self.id}:{str(self.version-1)}", 5)
+        self.ip_address = network.ip_address
+        self.last_refreshed = uid.timestamp()
+        redis.set(f"ses:{self.id}:{str(self.version)}", self.user.id, ex=3600)
+        redis.expire(f"ses:{self.id}:{str(self.version-1)}", 5)
         db.sessions.update_one({"_id": self.id}, {"$set": {
             "version": self.version,
             "device": self.device,
-            "last_ip": self.last_ip,
-            "last_used": self.last_used
+            "ip_address": self.ip_address,
+            "last_refreshed": self.last_refreshed
         }})
 
     def revoke(self):
@@ -69,10 +69,9 @@ def create_user_session(account: accounts.Account, device: dict, network: networ
         "version": 0,
         "user_id": account.id,
         "device": device,
-        "init_ip": network.ip_address,
-        "last_ip": network.ip_address,
-        "created": uid.timestamp(),
-        "last_used": uid.timestamp()
+        "ip_address": network.ip_address,
+        "last_refreshed": uid.timestamp(),
+        "created": uid.timestamp()
     }
     session = UserSession(**session_data)
     redis.set(f"ses:{session.id}:{str(session.version)}", session.user.id, ex=3600)
