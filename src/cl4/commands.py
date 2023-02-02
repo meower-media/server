@@ -57,8 +57,8 @@ class CL4Commands:
                 "session_id": session.id,
                 "user": session.user.client,
                 "chats": [chat.public for chat in chats.get_active_chats(session.user)],
-                "following": session.user.get_following(),
-                "blocked": session.user.get_blocked(),
+                "following": session.user.get_following_ids(),
+                "blocked": session.user.get_blocked_ids(),
                 "infractions": [infraction.client for infraction in infractions.get_user_infractions(session.user)],
                 "time_taken": int((time.time()-timer_start)*1000)
             },
