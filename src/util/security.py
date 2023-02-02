@@ -115,15 +115,15 @@ def sanic_protected(
                     # Get remaining limit
                     remaining = redis.get(f"rtl:{ratelimit}:{request.ip}")
                     expires = redis.ttl(f"rtl:{ratelimit}:{request.ip}")
+                    if remaining:
+                        remaining = int(remaining.decode())
+                        expires = int(expires)
+                    else:
+                        remaining = RATELIMIT_LIMITS[ratelimit]["hits"]
+                        expires = RATELIMIT_LIMITS[ratelimit]["seconds"]
                     request.ctx.ratelimit_bucket = ratelimit
                     request.ctx.ratelimit_remaining = remaining
                     request.ctx.ratelimit_reset = expires
-                    if not remaining:
-                        remaining = RATELIMIT_LIMITS[ratelimit]["hits"]
-                        expires = RATELIMIT_LIMITS[ratelimit]["seconds"]
-                    else:
-                        remaining = int(remaining.decode())
-                        expires = int(expires.decode())
 
                     # Check whether ratelimit has been exceeded
                     if remaining <= 0:

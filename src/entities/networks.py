@@ -47,7 +47,7 @@ class Network:
 
     @property
     def users(self):
-        return
+        return [users.get_user(netlog["user_id"]) for netlog in db.netlog.find({"ip_address": self.ip_address})]
 
     def set_block_state(self, blocked: bool):
         self.blocked = blocked
