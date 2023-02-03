@@ -1,10 +1,11 @@
 from passlib.hash import bcrypt
 from pyotp import TOTP
 from secrets import token_hex
+from threading import Thread
 import os
 
-from src.util import status, uid, bitfield, flags
-from src.entities import users
+from src.util import status, uid, email, bitfield, flags
+from src.entities import users, tickets
 from src.database import db, redis
 
 class Account:
@@ -50,6 +51,20 @@ class Account:
     @property
     def locked(self):
         return (redis.exists(f"lock:{self.id}") == 1)
+
+    def change_email(self, new_email: str, require_verification: bool = True):
+        if require_verification:
+            user = users.get_user(self.id)
+            redis.set(f"pem:{self.id}", new_email, ex=3600)
+            ticket = tickets.create_ticket(user, "email_verification", data={"email": new_email})
+            Thread(target=email.send_email, args=(new_email, user.username, "email_verification", {
+                "username": user.username,
+                "email": new_email,
+                "uri": f"https://meower.org/email?ticket={ticket}"
+            },)).start()
+        else:
+            self.email = new_email
+            db.accounts.update_one({"_id": self.id}, {"$set": {"email": new_email}})
 
     def check_password(self, password: str):
         if bcrypt.verify(password, self.password):

@@ -2,8 +2,7 @@ from base64 import b64encode, b64decode
 import json
 
 from src.util import uid, security
-from src.entities import users
-from src.database import db, redis
+from src.database import redis
 
 TICKET_EXPIRATIONS = {
     "verification": 60,
@@ -14,7 +13,7 @@ TICKET_EXPIRATIONS = {
     "parent_link": 86400
 }
 
-def create_ticket(user: users.User, type: str, data: dict = {}):
+def create_ticket(user, type: str, data: dict = {}):
     # Create ticket data
     ticket_id = uid.snowflake()
     data["u"] = user.id

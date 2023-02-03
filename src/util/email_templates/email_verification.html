@@ -1,5 +1,68 @@
+<!doctype html>
 <html>
-    <body>
-        <h1>Hello there {{name}}!</h1>
-    </body>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            * {
+                font-family: Arial, Helvetica, sans-serif;
+            }
+            .email-container {
+                width: 600px;	
+                border-radius: 14px;
+                background-color: #E8F3FD;
+                padding: 0px 20px;
+                border: none;
+                font-size: 18px;
+                text-align: left 
+            }
+            h2 {
+                padding-left: 10px;
+                padding-top: 20px;	
+            }
+            p {
+                padding: 10px;
+                padding-bottom: 20px;
+            }
+            img {
+                margin-top: 20px;
+                margin-bottom:10px;
+            }
+            .button {
+                border-radius: 14px;
+                background-color: #F9A637;
+                color: #fff;
+                padding: 10px 50px 10px 50px;
+                border: none;
+                font-size: 18px;
+                margin-right: 15px;
+                cursor: pointer;
+                text-decoration: none;
+            }
+        </style>
+    </head>
+    <body><center>
+        <img height="70px" src="https://meower.org/assets/logo_black.png">
+        <div class="email-container">
+            <h2>Verify your email address</h2>
+            <p>
+                Dear {{username}},
+                <br><br>
+                Someone named {{username}} (likely you) tried to add your email address ({{email}}) to their Meower account.
+                <br><br><br>
+                To verify this email address, press the button below.
+                <br><br>
+                <a class="button" style="color: #fff;" href="{{uri}}">Verify Email Addess</a>
+                <br><br><br>
+                - Meower Media Co.
+            </p>
+        </div>
+        <div>
+            <p>
+                <a style="color: #000;" href="https://meower.org/">Meower</a> is a free, open-source, and non-profit social media platform, created by Meower Media Co.
+                <br><br>
+                If you have questions about Meower or this email, feel free to contact us at <a style="color: #000;" href="mailto:support@meower.org">support@meower.org</a><br><br>
+                <a style="color: #000;" href="https://meower.org/legal">Legal info</a> | <a style="color: #000;" href="https://meower.org">Meower</a>
+            </p>
+        </div>
+    </center></body>
 </html>

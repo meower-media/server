@@ -53,8 +53,8 @@ async def v1_get_account(request):
     account = accounts.get_account(request.ctx.user.id)
     if account is None:
         raise status.internal
-    else:
-        return json(account.client)
+    
+    return json(account.client)
 
 @v1.patch("/email")
 @validate(json=UpdateEmailForm)
@@ -67,10 +67,10 @@ async def v1_update_email(request, body: UpdateEmailForm):
     account = accounts.get_account(request.ctx.user.id)
     if account is None:
         raise status.internal
-    else:
-        account.change_email(body.email)
     
-    return HTTPResponse(staus=204)
+    account.change_email(body.email)
+    
+    return HTTPResponse(status=204)
 
 @v1.post("/password")
 @validate(json=UpdatePasswordForm)
@@ -83,8 +83,8 @@ async def v1_update_password(request, body: UpdatePasswordForm):
     account = accounts.get_account(request.ctx.user.id)
     if account is None:
         raise status.internal
-    else:
-        account.change_password(body.password)
+    
+    account.change_password(body.password)
     
     return HTTPResponse(staus=204)
 
@@ -99,8 +99,8 @@ async def v1_mfa_enable_totp(request, body: EnableTOTPForm):
     account = accounts.get_account(request.ctx.user.id)
     if account is None:
         raise status.internal
-    else:
-        account.enable_totp(body.secret, body.code)
+
+    account.enable_totp(body.secret, body.code)
     
     return json({"recovery_codes": account.recovery_codes})
 
@@ -115,8 +115,8 @@ async def v1_mfa_disable_totp(request, body: DisableTOTPForm):
     account = accounts.get_account(request.ctx.user.id)
     if account is None:
         raise status.internal
-    else:
-        account.disable_totp()
+
+    account.disable_totp()
     
     return HTTPResponse(status=204)
 

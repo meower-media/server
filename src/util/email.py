@@ -16,16 +16,16 @@ EMAIL_SUBJECTS = {
     "new_login_location": "Security Alert: Account logged in from a new location",
     "token_reuse": "Security Alert: Suspicious activity",
     "parent_link": "Verify your child's Meower account",
-    "parent_unlink": "Important changes about your child's Meower account",
+    "parent_unlink": "Important changes regarding your child's Meower account",
     "moderation_warning": "Notice of Terms of Service violation",
     "moderation_suspended": "Account suspended - Notice of Terms of Service violation",
     "moderation_banned": "Account banned - Notice of Terms of Service violation"
 }
 
-def send_email(email: str, name: str, template: str, args: dict):
+def send_email(email: str, name: str, template: str, kwargs: dict):
     # Get and render email template
     with open(f"src/util/email_templates/{template}.html", "r") as f:
-        email_body = Template(f.read()).render(**args)
+        email_body = Template(f.read()).render(**kwargs)
     
     # Send email
     if EMAIL_PROVIDER == "smtp":
@@ -36,7 +36,7 @@ def send_email(email: str, name: str, template: str, args: dict):
             headers={
                 "X-Auth-Token": os.environ["EMAIL_WORKER_TOKEN"]
             },
-            data={
+            json={
                 "email": email,
                 "name": name,
                 "subject": EMAIL_SUBJECTS[template],
