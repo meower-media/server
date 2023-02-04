@@ -9,7 +9,7 @@ TICKET_EXPIRATIONS = {
     "mfa": 300,
     "email_verification": 3600,
     "email_revert": 86400,
-    "password_reset": 900,
+    "password_reset": 3600,
     "parent_link": 86400
 }
 

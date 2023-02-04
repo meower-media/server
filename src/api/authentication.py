@@ -1,9 +1,9 @@
-from sanic import Blueprint, json
+from sanic import Blueprint, HTTPResponse, json
 from sanic_ext import validate
 from pydantic import BaseModel, Field
 from typing import Optional
 
-from src.util import status, security
+from src.util import status, security, email
 from src.entities import users, accounts, networks, sessions, tickets
 
 v1 = Blueprint("v1_authentication", url_prefix="/auth")
@@ -54,6 +54,11 @@ class TOTPVerificationForm(BaseModel):
     totp_code: str = Field(
         min_length=1,
         max_length=8
+    )
+
+class PasswordRecoveryForm(BaseModel):
+    email: str = Field(
+        max_length=255
     )
 
 @v1.post("/register")
@@ -189,3 +194,24 @@ async def v1_verify_totp(request, body: TOTPVerificationForm):
     # Create and return verification ticket
     ticket = tickets.create_ticket(request.ctx.user, "verification")
     return json({"verification_ticket": ticket})
+
+@v1.post("/recovery/password")
+@validate(json=PasswordRecoveryForm)
+@security.sanic_protected(ratelimit="verify", require_auth=False)  # placeholder ratelimit bucket
+async def v1_password_recovery(request, body: PasswordRecoveryForm):
+    # Get user ID
+    user_id = accounts.get_id_from_email(body.email)
+
+    # Get user
+    user = users.get_user(user_id, return_deleted=False)
+    
+    # Create password reset ticket
+    ticket = tickets.create_ticket(user, "password_reset")
+
+    # Send password reset email
+    email.send_email(body.email, user.username, "password_reset", {
+        "username": user.username,
+        "uri": f"https://meower.org/email?ticket={ticket}"
+    })
+
+    return HTTPResponse(status=204)
