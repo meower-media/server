@@ -47,7 +47,7 @@ class Post:
             "public_flags": self.public_flags,
             "stats": self.stats,
             "time": int(self.time.timestamp()),
-            "deleted_after": (int(self.delete_after.timestamp()) if self.delete_after else None)
+            "delete_after": (int(self.delete_after.timestamp()) if self.delete_after else None)
         }
 
     @property
