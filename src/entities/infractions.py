@@ -41,9 +41,9 @@ class Infraction:
             "offending_content": self.offending_content,
             "status": self.status,
             "created": int(self.created.timestamp()),
-            "expires": self.expires
+            "expires": (int(self.expires.timestamp()) if self.expires else None)
         }
-    
+
     @property
     def admin(self):
         return {
@@ -57,7 +57,7 @@ class Infraction:
             "status": self.status,
             "exempt_alts": self.exempt_alts,
             "created": self.created,
-            "expires": self.expires
+            "expires": (int(self.expires.timestamp()) if self.expires else None)
         }
 
     @property
@@ -141,7 +141,7 @@ def create_infraction(user: users.User, moderator: users.User, action: int, reas
                 "username": user.username,
                 "action": infraction.action,
                 "reason": infraction.reason,
-                "expires": (infraction.expires.strftime("%m/%d/%Y, %H:%M:%S") if infraction.expires else None)
+                "expires": (infraction.expires.strftime("%m/%d/%Y, %I:%M:%S %p").lower() if infraction.expires else None)
             })
 
     # Return infraction object

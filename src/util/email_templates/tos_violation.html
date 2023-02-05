@@ -57,16 +57,16 @@
             <p>
                 Dear {{username}},
                 <br><br>
-                The Meower moderation team have found your account to be in violation of Meower's <a style="color: #000;" href="https://meower.org/" target="_blank">Terms of Service</a>.
+                The Meower moderation team have found your account to be in violation of Meower's <a style="color: #000;" href="https://meower.org/legal" target="_blank">Terms of Service</a>.
                 <br><br>
                 {% if action == 0 %}
                 As a result, the Meower moderation team have decided to issue you a warning.
 
-                Your account is currently not affected by this action, but continuing to violate our Terms of Service may result in your account being restricted or banned.
+                Your account is currently not affected, but continuing to violate our Terms of Service may result in your account being restricted or banned.
                 {% elif action == 1 %}
                 As a result, the Meower moderation team have decided to {% if expires %}temporarily{% else %}permanently{% endif %} restrict your account{% if expires %} until {{expires}}{% endif %}.
 
-                While your account is restricted you will not be able create new posts, direct message people or interact with posts until this suspension expires.
+                While your account is restricted you will not be able create new posts, direct message people or interact with posts.
                 {% elif action == 2 %}
                 As a result, the Meower moderation team have decided to {% if expires %}temporarily{% else %}permanently{% endif %} ban your account{% if expires %} until {{expires}}{% endif %}.
 
