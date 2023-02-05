@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from src.util import status, uid, events, bitfield, flags
+from src.util import status, uid, events, email, bitfield, flags
 from src.entities import users, networks, security_cookies
 from src.database import db
 
@@ -112,7 +112,7 @@ class Infraction:
         })
         del self
 
-def create_infraction(user: users.User, moderator: users.User, action: int, reason: str, offending_content: list = [], flags: int = 0, expires: datetime = None):
+def create_infraction(user: users.User, moderator: users.User, action: int, reason: str, offending_content: list = [], flags: int = 0, expires: datetime = None, send_email_alert: bool = True):
     # Create infraction data
     infraction = {
         "_id": uid.snowflake(),
@@ -132,6 +132,17 @@ def create_infraction(user: users.User, moderator: users.User, action: int, reas
 
     # Announce infraction creation
     events.emit_event("infraction_created", infraction.user.id, infraction.client)
+
+    # Send email alert
+    if send_email_alert:
+        account = db.accounts.find_one({"_id": user.id}, projection={"email": 1})
+        if isinstance(account, dict) and account.get("email"):
+            email.send_email(account["email"], user.username, "tos_violation", {
+                "username": user.username,
+                "action": infraction.action,
+                "reason": infraction.reason,
+                "expires": (infraction.expires.strftime("%m/%d/%Y, %H:%M:%S") if infraction.expires else None)
+            })
 
     # Return infraction object
     return infraction
@@ -196,5 +207,6 @@ def detect_ban_evasion(user: users.User, security_cookie: security_cookies.Secur
                         flags.infractions.automatic,
                         flags.infractions.blockAppeals
                     ]),
-                    expires=infraction.expires
+                    expires=infraction.expires,
+                    send_email_alert=False
                 )

@@ -15,6 +15,16 @@
                 font-size: 18px;
                 text-align: left;
             }
+            .message-container {
+                width: 560px;	
+                border-radius: 14px;
+                background-color: #fff;
+                padding: 20px 20px;
+                border: none;	
+                color: #000;
+                font-size: 18px;
+                text-align: left;
+            }
             h2 {
                 padding-left: 10px;
                 padding-top: 20px;	
@@ -43,17 +53,34 @@
     <body><center>
         <img height="70px" src="https://meower.org/assets/logo_black.png">
         <div class="email-container">
-            <h2>Reset your account password</h2>
+            <h2>Notice of Terms of Service violation</h2>
             <p>
                 Dear {{username}},
                 <br><br>
-                Someone requested this password reset email. If this wasn't you, then please ignore this email.
+                The Meower moderation team have found your account to be in violation of Meower's <a style="color: #000;" href="https://meower.org/" target="_blank">Terms of Service</a>.
+                <br><br>
+                {% if action == 0 %}
+                As a result, the Meower moderation team have decided to issue you a warning.
+
+                Your account is currently not affected by this action, but continuing to violate our Terms of Service may result in your account being restricted or banned.
+                {% elif action == 1 %}
+                As a result, the Meower moderation team have decided to {% if expires %}temporarily{% else %}permanently{% endif %} restrict your account{% if expires %} until {{expires}}{% endif %}.
+
+                While your account is restricted you will not be able create new posts, direct message people or interact with posts until this suspension expires.
+                {% elif action == 2 %}
+                As a result, the Meower moderation team have decided to {% if expires %}temporarily{% else %}permanently{% endif %} ban your account{% if expires %} until {{expires}}{% endif %}.
+
+                While your account is banned you will not be able to access or use Meower.
+                {% endif %}
                 <br><br><br>
-                To reset your password, press the button below.
+                Reason for this action:
+                <div class="message-container">
+                    {{reason}}
+                </div>
+                <br><br><br>
+                If you would like to read more about what lead to this action and/or appeal this action, please view your infraction history by pressing the button below.
                 <br><br>
-                <a class="button" style="color: #fff;" href="{{uri}}" target="_blank">Reset Password</a>
-                <br><br>
-                <i>This link will expire in 1 hour.</i>
+                <a class="button" style="color: #fff;" href="{{uri}}" target="_blank">Infraction History</a>
                 <br><br><br>
                 - Meower Media
             </p>

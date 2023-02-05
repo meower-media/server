@@ -203,7 +203,7 @@ async def v1_password_recovery(request, body: PasswordRecoveryForm):
     user_id = accounts.get_id_from_email(body.email)
 
     # Get user
-    user = users.get_user(user_id, return_deleted=False)
+    user = users.get_user(user_id)
     
     # Create password reset ticket
     ticket = tickets.create_ticket(user, "password_reset")

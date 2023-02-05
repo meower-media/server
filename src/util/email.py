@@ -18,9 +18,7 @@ EMAIL_SUBJECTS = {
     "token_reuse": "Security Alert: Suspicious activity",
     "parent_link": "Verify your child's Meower account",
     "parent_unlink": "Important changes regarding your child's Meower account",
-    "moderation_warning": "Notice of Terms of Service violation",
-    "moderation_suspended": "Account suspended - Notice of Terms of Service violation",
-    "moderation_banned": "Account banned - Notice of Terms of Service violation"
+    "tos_violation": "Notice of Terms of Service violation"
 }
 
 def send_email(email: str, name: str, template: str, kwargs: dict):
