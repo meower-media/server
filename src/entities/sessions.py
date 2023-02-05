@@ -1,7 +1,7 @@
 from datetime import datetime
 from base64 import b64encode, b64decode
 
-from src.util import status, uid, events, security
+from src.util import status, uid, events, security, email
 from src.entities import users, accounts, networks
 from src.database import db, redis
 
@@ -64,19 +64,25 @@ class UserSession:
         })
 
 def create_user_session(account: accounts.Account, device: dict, network: networks.Network):
-    session_data = {
+    session = {
         "_id": uid.snowflake(),
-        "version": 0,
         "user_id": account.id,
-        "device": device,
-        "ip_address": network.ip_address,
-        "last_refreshed": uid.timestamp(),
         "created": uid.timestamp()
     }
-    session = UserSession(**session_data)
-    redis.set(f"ses:{session.id}:{str(session.version)}", session.user.id, ex=3600)
-    db.sessions.insert_one(session_data)
-    return session
+    session = UserSession(**session)
+    session.refresh(device, network)
+
+    if account.id not in network.user_ids:
+        networks.update_netlog(session.user, network)
+        if account.email:
+            email.send_email(account.email, session.user.username, "new_login_location", {
+                "username": session.user.username,
+                "client": device.get("client_name", "Meower"),
+                "ip_address": network.ip_address,
+                "country": network.country
+            })
+
+    return session.signed_token
 
 def get_user_session(session_id: str):
     session = db.sessions.find_one({"_id": session_id})

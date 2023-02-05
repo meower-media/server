@@ -2,7 +2,7 @@ from datetime import datetime
 import requests
 import os
 
-from src.util import uid
+from src.util import status, uid
 from src.entities import users
 from src.database import db
 
@@ -41,6 +41,7 @@ class Network:
             "vpn": self.vpn,
             "blocked": self.blocked,
             "creation_blocked": self.creation_blocked,
+            "users": self.users,
             "first_used": int(self.first_used.timestamp()),
             "last_used": int(self.last_used.timestamp())
         }
@@ -48,6 +49,10 @@ class Network:
     @property
     def users(self):
         return [users.get_user(netlog["user_id"]) for netlog in db.netlog.find({"ip_address": self.ip_address})]
+
+    @property
+    def user_ids(self):
+        return [netlog["user_id"] for netlog in db.netlog.find({"ip_address": self.ip_address})]
 
     def set_block_state(self, blocked: bool):
         self.blocked = blocked
@@ -123,19 +128,31 @@ def get_network(ip_address: str):
         db.networks.insert_one(network)
     return Network(**network)
 
-def get_netlog(ip: str, user: users.User):
-    netlog = db.netlog.find_one({"ip_address": ip, "user_id": user.id})
+def get_netlog(user: users.User, network: Network):
+    netlog = db.netlog.find_one({"user_id": user.id, "ip_address": network.ip_address})
     if netlog is None:
-        netlog = {
-            "_id": uid.snowflake(),
-            "ip_address": ip,
-            "user_id": user.id,
-            "first_used": uid.timestamp(),
-            "last_used": uid.timestamp()
-        }
-        db.netlog.insert_one(netlog)
+        raise status.notFound
     
     return Netlog(**netlog)
 
 def get_all_netlogs(user: users.User):
     return [Netlog(**netlog) for netlog in db.netlog.find({"user_id": user.id})]
+
+def update_netlog(user: users.User, network: Network):
+    try:
+        netlog = get_netlog(user, network)
+    except status.notFound:
+        netlog = {
+            "_id": uid.snowflake(),
+            "user_id": user.id,
+            "ip_address": network.ip_address,
+            "first_used": uid.timestamp(),
+            "last_used": uid.timestamp()
+        }
+        db.netlog.insert_one(netlog)
+    else:
+        db.netlog.update_one({"_id": netlog["_id"]}, {"$set": {
+            "ip_address": network.ip_address,
+            "last_used": uid.timestamp()
+        }})
+    network.update_last_used()

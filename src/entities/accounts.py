@@ -1,6 +1,7 @@
 from passlib.hash import bcrypt
 from pyotp import TOTP
 from secrets import token_hex
+from copy import copy
 import os
 
 from src.util import status, uid, email, bitfield, flags
@@ -51,19 +52,44 @@ class Account:
     def locked(self):
         return (redis.exists(f"lock:{self.id}") == 1)
 
-    def change_email(self, new_email: str, require_verification: bool = True):
+    def change_email(self, new_email: str, require_verification: bool = True, send_email_alert: bool = True):
+        # Get user
+        user = users.get_user(self.id)
+
         if require_verification:
-            user = users.get_user(self.id)
+            # Set pending email
             redis.set(f"pem:{self.id}", new_email, ex=3600)
+
+            # Generate ticket
             ticket = tickets.create_ticket(user, "email_verification", data={"email": new_email})
+
+            # Send verification email
             email.send_email(new_email, user.username, "email_verification", {
                 "username": user.username,
                 "email": new_email,
                 "uri": f"https://meower.org/email?ticket={ticket}"
             })
         else:
+            # Get old email
+            old_email = copy(self.email)
+
+            # Set new email
             self.email = new_email
             db.accounts.update_one({"_id": self.id}, {"$set": {"email": new_email}})
+
+            if send_email_alert and old_email:
+                # Generate revert ticket
+                revert_ticket = tickets.create_ticket(user, "email_revert", {
+                    "email": old_email
+                })
+
+                # Send email alert
+                email.send_email(old_email, user.username, "email_changed", {
+                    "username": user.username,
+                    "old_email": old_email,
+                    "new_email": new_email,
+                    "uri": f"https://meower.org/email?ticket={revert_ticket}"
+                })
 
     def check_password(self, password: str):
         if bcrypt.verify(password, self.password):
@@ -83,9 +109,19 @@ class Account:
 
             return False
 
-    def change_password(self, password: str):
+    def change_password(self, password: str, send_email_alert: bool = True):
+        # Set new password
         self.password = bcrypt.hash(password, rounds=int(os.getenv("pswd_rounds", 12)))
-        db.accounts.update_one({"_id": self._id}, {"$set": {"password": self.password}})
+        db.accounts.update_one({"_id": self.id}, {"$set": {"password": self.password}})
+
+        if send_email_alert and self.email:
+            # Get user
+            user = users.get_user(self.id)
+
+            # Send email alert
+            email.send_email(self.email, user.username, "password_changed", {
+                "username": user.username
+            })
 
     def check_totp(self, code: str):
         if self.totp_secret is None:
@@ -104,24 +140,47 @@ class Account:
         else:
             return False
 
-    def enable_totp(self, secret: str, code: str):
+    def enable_totp(self, secret: str, code: str, send_email_alert: bool = False):
+        # Check whether TOTP is enabled
         if self.totp_secret is not None:
             raise status.totpAlreadyEnabled
 
+        # Check TOTP code
         if not TOTP(secret).verify(code):
             raise status.invalidTOTP
 
+        # Set TOTP secret
         if not self.mfa_enabled:
             self.regenerate_recovery_codes()
         self.totp_secret = secret
         db.accounts.update_one({"_id": self._id}, {"$set": {"totp_secret": self.totp_secret}})
 
-    def disable_totp(self):
+        if send_email_alert and self.email:
+            # Get user
+            user = users.get_user(self.id)
+
+            # Send email alert
+            email.send_email(self.email, user.username, "mfa_enabled", {
+                "username": user.username
+            })
+
+    def disable_totp(self, send_email_alert: bool = False):
+        # Check whether TOTP is enabled
         if self.totp_secret is None:
             raise status.totpNotEnabled
 
+        # Remove TOTP secret
         self.totp_secret = None
         db.accounts.update_one({"_id": self._id}, {"$set": {"totp_secret": self.totp_secret}})
+
+        if send_email_alert and self.email:
+            # Get user
+            user = users.get_user(self.id)
+
+            # Send email alert
+            email.send_email(self.email, user.username, "mfa_disabled", {
+                "username": user.username
+            })
 
     def regenerate_recovery_codes(self):
         self.recovery_codes = [token_hex(4) for i in range(8)]
