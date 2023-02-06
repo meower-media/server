@@ -36,13 +36,13 @@ class UpdateProfileThemeForm(BaseModel):
     main_shadow: Optional[str] = Field(
         max_length=10
     )
-    main_text: Optional[str] = Field(
-        max_length=10
-    )
     background: Optional[str] = Field(
         max_length=10
     )
     text: Optional[str] = Field(
+        max_length=10
+    )
+    text_on_main: Optional[str] = Field(
         max_length=10
     )
 

@@ -5,7 +5,7 @@ from copy import copy
 import os
 
 from src.util import status, uid, email, bitfield, flags
-from src.entities import users, tickets
+from src.entities import users, tickets, notifications
 from src.database import db, redis
 
 class Account:
@@ -186,7 +186,7 @@ class Account:
         self.recovery_codes = [token_hex(4) for i in range(8)]
         db.accounts.update_one({"_id": self.id}, {"$set": {"recovery_codes": self.recovery_codes}})
 
-def create_account(username: str, password: str, child: bool, require_email: bool = False):
+def create_account(username: str, password: str, child: bool, require_email: bool = False, send_welcome_notification: bool = True):
     if not users.username_available(username):
         raise status.alreadyExists
 
@@ -197,6 +197,14 @@ def create_account(username: str, password: str, child: bool, require_email: boo
         user_flags = bitfield.add(user_flags, flags.user.requireEmail)
 
     user = users.create_user(username, flags=user_flags)
+
+    if send_welcome_notification:
+        notifications.create_notification(user, 0,
+        """
+        Welcome to Meower, we welcome you with open arms!
+        
+        You can get started by making friends by exploring posts in your home feed or searching for people. We hope you have fun!
+        """)
 
     account = {
         "_id": user.id,

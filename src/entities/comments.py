@@ -19,8 +19,7 @@ class Comment:
         flags: str = 0,
         stats: dict = {
             "likes": 0,
-            "replies": 0,
-            "last_counted": 0
+            "replies": 0
         },
         time: datetime = None,
         delete_after: datetime = None,
@@ -89,8 +88,7 @@ class Comment:
         def run():
             self.stats = {
                 "likes": db.comment_likes.count_documents({"post_id": self.id}),
-                "replies": db.post_comments.count_documents({"post_id": self.post_id, "parent_id": self.id, "deleted_at": None}),
-                "last_counted": int(time.time())
+                "replies": db.post_comments.count_documents({"post_id": self.post_id, "parent_id": self.id, "deleted_at": None})
             }
             db.post_comments.update_one({"_id": self.id}, {"$set": {"stats": self.stats}})
             events.emit_event("comment_updated", self.post_id, {

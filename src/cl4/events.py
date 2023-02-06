@@ -2,11 +2,7 @@ from src.cl4.server import cl
 from src.util import events
 
 async def send_to_user(user_id: str, cmd: str, val: dict):
-    await cl.send_packet_multicast(
-        cmd,
-        val,
-        clients=cl._users.get(user_id, set())
-    )
+    await cl.send_packet_multicast(cmd, val, clients=cl._users.get(user_id, set()))
 
 async def on_connect(client):
     client.user_id = None
@@ -14,7 +10,8 @@ async def on_connect(client):
 
 @events.on("user_updated")
 async def user_updated(user_id: str, payload: dict):
-    pass  # haven't implemented this yet
+    await send_to_user(user_id, "user_updated", payload)
+    pass  # haven't implemented this for other clients yet
 
 @events.on("sync_updated")
 async def sync_updated(user_id: str, payload: dict):

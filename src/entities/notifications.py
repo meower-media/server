@@ -75,7 +75,7 @@ def create_notification(recipient: users.User, type: int, content: str, link: st
     notification = Notification(**notification)
 
     # Announce new notification count
-    Thread(target=emit_user_notification_unread_count, args=(recipient)).start()
+    Thread(target=emit_user_notification_unread_count, args=(recipient,)).start()
 
     # Return notification object
     return notification
@@ -112,3 +112,4 @@ def emit_user_notification_unread_count(user: users.User):
 
 def clear_unread_user_notifications(user: users.User):
     db.notifications.update_many({"recipient_id": user.id, "read": False}, {"$set": {"read": True}})
+    Thread(target=emit_user_notification_unread_count, args=(user,)).start()

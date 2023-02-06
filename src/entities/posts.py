@@ -19,10 +19,10 @@ class Post:
         stats: dict = {
             "likes": 0,
             "meows": 0,
-            "comments": 0,
-            "last_counted": 0
+            "comments": 0
         },
         reputation: int = 0,
+        reputation_last_counted: datetime = None,
         time: datetime = None,
         delete_after: datetime = None,
         deleted_at: datetime = None
@@ -33,6 +33,7 @@ class Post:
         self.filtered_content = filtered_content
         self.flags = flags
         self.stats = stats
+        self.reputation_last_counted = reputation_last_counted
         self.time = time
         self.delete_after = delete_after
         self.deleted_at = deleted_at
@@ -97,6 +98,7 @@ class Post:
 
     @property
     def reputation(self):
+        self.reputation_last_counted = uid.timestamp()
         if bitfield.has(self.flags, flags.post.reputationBanned) or (time.time() > (time.time()+2592000)):
             return 0
         else:
@@ -111,12 +113,12 @@ class Post:
             self.stats = {
                 "likes": db.post_likes.count_documents({"post_id": self.id}),
                 "meows": db.post_meows.count_documents({"post_id": self.id}),
-                "comments": db.post_comments.count_documents({"post_id": self.id, "deleted_at": None}),
-                "last_counted": int(time.time())
+                "comments": db.post_comments.count_documents({"post_id": self.id, "deleted_at": None})
             }
             db.posts.update_one({"_id": self.id}, {"$set": {
                 "stats": self.stats,
-                "reputation": self.reputation
+                "reputation": self.reputation,
+                "reputation_last_counted": self.reputation_last_counted
             }})
             events.emit_event("post_updated", self.id, {
                 "id": self.id,
@@ -244,6 +246,7 @@ class Post:
         events.emit_event("post_deleted", self.id, {
             "id": self.id
         })
+        self.author.update_stats()
 
 def create_post(author: users.User, content: str):
     # Create post data
@@ -271,6 +274,9 @@ def create_post(author: users.User, content: str):
     # Add post ID to latest posts list
     redis.lpush("latest_posts", post.id)
     redis.ltrim("latest_posts", 0, 9999)
+
+    # Update user stats
+    post.author.update_stats()
 
     # Return post object
     return post

@@ -1,6 +1,7 @@
 from copy import copy
 from datetime import datetime
 from base64 import b64encode
+from threading import Thread
 import string
 
 from src.util import status, uid, events, security, bitfield, flags
@@ -57,14 +58,6 @@ class User:
         badges: list = [],
         stats: dict = {"followers": 0, "following": 0},
         bot_session: int = 0,
-        guardian: dict = {
-            "guardians": [],
-            "disabled": False,
-            "force_filter": True,
-            "schedules": [],
-            "blocked_users": [],
-            "blocked_chats": []
-        },
         redirect_to: str = None,
         delete_after: datetime = None
     ):
@@ -80,7 +73,6 @@ class User:
         self.badges = badges
         self.stats = stats
         self.bot_session = bot_session
-        self.guardian = guardian
         self.redirect_to = redirect_to
         self.delete_after = delete_after
 
@@ -113,8 +105,7 @@ class User:
             "icon": self.icon,
             "quote": self.quote,
             "badges": self.badges,
-            "stats": self.stats,
-            "guardian": self.guardian
+            "stats": self.stats
         }
 
     @property
@@ -152,19 +143,28 @@ class User:
         return pub_flags
 
     @property
-    def guardian_settings(self):
-        return db.guardian.find_one({"_id": self.id}, projection={"_id": 0})
+    def sync(self):
+        return db.user_sync.find_one({"_id": self.id}, projection={"_id": 0})
 
-    def count_stats(self):
-        followers = db.followed_users.count_documents({"to": self.id})
-        following = db.followed_users.count_documents({"from": self.id})
-        posts = db.posts.count_documents({"author_id": self.id})
-        self.stats = {"followers": followers, "following": following, "posts": posts}
-        db.users.update_one({"_id": self.id}, {"$set": {"stats": self.stats}})
-        events.emit_event("user_updated", self.id, {
-            "id": self.id,
-            "stats": self.stats
-        })
+    def update_sync(self, sync: dict):
+        _sync = copy(self.sync)
+        _sync.update(sync)
+        db.user_sync.update_one({"_id": self.id}, {"$set": sync})
+        events.emit_event("sync_updated", self.id, _sync)
+
+    def update_stats(self):
+        def run():
+            self.stats = {
+                "followers": db.followed_users.count_documents({"to": self.id}),
+                "following": db.followed_users.count_documents({"from": self.id}),
+                "posts": db.posts.count_documents({"author_id": self.id, "deleted_at": None})
+            }
+            db.users.update_one({"_id": self.id}, {"$set": {"stats": self.stats}})
+            events.emit_event("user_updated", self.id, {
+                "id": self.id,
+                "stats": self.stats
+            })
+        Thread(target=run).start()
 
     def get_following_ids(self):
         return [relationship["to"] for relationship in db.followed_users.find({"from": self.id})]
@@ -182,7 +182,7 @@ class User:
         return (db.blocked_users.find_one({"to": user.id, "from": self.id}) is not None)
 
     def is_blocked(self, user):
-        return (db.blocked_users.find_one({"to": self.id, "from": user.id}) is not None or user.id in self.guardian)
+        return (db.blocked_users.find_one({"to": self.id, "from": user.id}) is not None)
 
     def follow_user(self, user):
         if self.is_blocked(user):
@@ -197,18 +197,39 @@ class User:
             "time": uid.timestamp()
         })
 
+        self.update_stats()
+        user.update_stats()
+
     def unfollow_user(self, user):
+        if not self.is_following(user):
+            raise status.missingPermissions  # placeholder
+
         db.followed_users.delete_one({"to": user.id, "from": self.id})
 
+        self.update_stats()
+        user.update_stats()
+
     def remove_follower(self, user):
+        if not self.is_followed(user):
+            raise status.missingPermissions  # placeholder
+
         db.followed_users.delete_one({"to": self.id, "from": user.id})
+
+        self.update_stats()
+        user.update_stats()
 
     def block_user(self, user):
         if self.is_blocking(user):
             raise status.missingPermissions  # placeholder
         
-        self.unfollow_user(user)
-        self.remove_follower(user)
+        try:
+            self.unfollow_user(user)
+        except:
+            pass
+        try:
+            self.remove_follower(user)
+        except:
+            pass
 
         db.blocked_users.insert_one({
             "_id": uid.snowflake(),
@@ -218,11 +239,14 @@ class User:
         })
 
     def unblock_user(self, user):
+        if not self.is_blocking(user):
+            raise status.missingPermissions  # placeholder
+
         db.blocked_users.delete_one({"to": user.id, "from": self.id})
 
     @property
-    def profile_history(self):
-        return list(db.profile_history.find({"user_id": self._id}, projection={"_id": 0, "user_id": 0}, sort=[("_id", -1)]))
+    def username_history(self):
+        return list(db.username_history.find({"user_id": self._id}, projection={"_id": 0, "user_id": 0}, sort=[("_id", -1)]))
 
     def update_username(self, username: str, by_admin: bool = False, store_history: bool = True):
         # Check whether username is available

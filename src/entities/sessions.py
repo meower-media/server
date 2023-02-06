@@ -31,8 +31,8 @@ class UserSession:
             "user": self.user.partial,
             "device": self.device,
             "ip_address": self.ip_address,
-            "last_refreshed": int(self.last_refreshed.timestamp()),
-            "created": int(self.created.timestamp())
+            "last_refreshed": (int(self.last_refreshed.timestamp()) if self.last_refreshed else None),
+            "created": (int(self.created.timestamp()) if self.created else None)
         }
 
     @property
@@ -54,6 +54,13 @@ class UserSession:
             "ip_address": self.ip_address,
             "last_refreshed": self.last_refreshed
         }})
+        events.emit_event("session_updated", self.user.id, {
+            "id": self.id,
+            "version": self.version,
+            "device": self.device,
+            "ip_address": self.ip_address,
+            "last_refreshed": int(self.last_refreshed.timestamp())
+        })
 
     def revoke(self):
         db.sessions.delete_one({"_id": self.id})
@@ -71,6 +78,8 @@ def create_user_session(account: accounts.Account, device: dict, network: networ
     }
     session = UserSession(**session)
     session.refresh(device, network)
+
+    events.emit_event("session_created", account.id, session.client)
 
     if account.id not in network.user_ids:
         networks.update_netlog(session.user, network)

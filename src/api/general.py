@@ -1,6 +1,7 @@
 from sanic import Blueprint, text, json
+import time
 
-from src.database import db
+from src.database import db, redis
 
 v0 = Blueprint("v0_general", url_prefix="/")
 v1 = Blueprint("v1_general", url_prefix="/")
@@ -19,7 +20,10 @@ async def v0_get_client_ip(request):
 
 @v0.get("/status")
 async def v0_status(request):
-    return json({"isRepairMode": False, "scratchDeprecated": False})
+    return json({
+        "isRepairMode": (redis.exists("repair_mode") == 1),
+        "scratchDeprecated": (time.time() >= 1684540800)
+    })
 
 @v0.get("/statistics")
 async def v0_statistics(request):
