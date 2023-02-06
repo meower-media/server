@@ -16,8 +16,8 @@ class Message:
         flags: str = 0,
         likes: list = [],
         time: datetime = None,
-        deleted: bool = False,
-        delete_after: datetime = None
+        delete_after: datetime = None,
+        deleted_at: datetime = None
     ):
         self.id = _id
         self.chat_id = chat_id
@@ -27,8 +27,8 @@ class Message:
         self.flags = flags
         self.likes = likes
         self.time = time
-        self.deleted = deleted
         self.delete_after = delete_after
+        self.deleted_at = deleted_at
 
     @property
     def public(self):
@@ -42,7 +42,7 @@ class Message:
             "flags": self.flags,
             "likes": self.likes,
             "time": int(self.time.timestamp()),
-            "delete_after": (int(self.delete_after.timestamp()) if (self.delete_after is not None) else None)
+            "delete_after": (int(self.delete_after.timestamp()) if self.delete_after else None)
         }
 
     def liked(self, user: users.User):
@@ -95,17 +95,12 @@ class Message:
         })
 
     def delete(self):
-        if self.deleted:
-            db.chat_message_revisions.delete_many({"message_id": self.id})
-            db.chat_messages.delete_one({"_id": self.id})
-        else:
-            self.deleted = True
-            self.delete_after = uid.timestamp(epoch=int(time.time() + 1209600))
-            db.chat_messages.update_one({"_id": self.id}, {"$set": {"deleted": self.deleted, "delete_after": self.delete_after}})
-            events.emit_event("message_deleted", self.chat_id, {
-                "id": self.id,
-                "chat_id": self.chat_id
-            })
+        self.deleted_at = uid.timestamp()
+        db.chat_messages.update_one({"_id": self.id}, {"$set": {"deleted_at": self.deleted_at}})
+        events.emit_event("message_deleted", self.chat_id, {
+            "id": self.id,
+            "chat_id": self.chat_id
+        })
 
 def create_message(chat: chats.Chat, author: users.User, content: str, reply_to: str = None):
     # Check whether a DM can be sent
@@ -122,8 +117,7 @@ def create_message(chat: chats.Chat, author: users.User, content: str, reply_to:
         "author_id": author.id,
         "reply_to": reply_to,
         "content": content,
-        "time": uid.timestamp(),
-        "deleted": False
+        "time": uid.timestamp()
     }
 
     # Insert message into database and convert into message object
@@ -139,7 +133,7 @@ def create_message(chat: chats.Chat, author: users.User, content: str, reply_to:
 def get_message(message_id: str, error_on_deleted: bool = True):
     # Get message from database and check whether it's not found or deleted
     message = db.chat_messages.find_one({"_id": message_id})
-    if message is None or (error_on_deleted and message.get("deleted")):
+    if message is None or (error_on_deleted and message.get("deleted_at")):
         raise status.notFound
 
     # Return message object
@@ -155,7 +149,7 @@ def get_latest_messages(chat: chats.Chat, before: str = None, after: str = None,
         id_range = {"$gt": "0"}
 
     # Fetch and return all messages
-    return [Message(**message) for message in db.chat_messages.find({"chat_id": chat.id, "deleted": False, "_id": id_range}, sort=[("_id", -1)], limit=limit)]
+    return [Message(**message) for message in db.chat_messages.find({"chat_id": chat.id, "deleted_at": None, "_id": id_range}, sort=[("_id", -1)], limit=limit)]
 
 def get_message_context(chat: chats.Chat, message_id: str):
     return (get_latest_messages(chat, before=str(int(message_id)+1), limit=51) + get_latest_messages(chat, after=message_id))
@@ -170,4 +164,4 @@ def search_messages(chat: chats.Chat, query: str, before: str = None, after: str
         id_range = {"$gt": "0"}
 
     # Fetch and return all messages
-    return [Message(**message) for message in db.chat_messages.find({"chat_id": chat.id, "deleted": False, "$text": {"$search": query}, "_id": id_range}, sort=[("_id", -1)], limit=limit)]
+    return [Message(**message) for message in db.chat_messages.find({"chat_id": chat.id, "deleted_at": None, "$text": {"$search": query}, "_id": id_range}, sort=[("_id", -1)], limit=limit)]

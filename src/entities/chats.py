@@ -18,8 +18,7 @@ class Chat:
         permissions: dict = {},
         invite_code: str = None,
         created: datetime = None,
-        deleted: bool = False,
-        delete_after: datetime = None
+        deleted_at: datetime = None
     ):
         self.id = _id
         self.name = name
@@ -30,8 +29,7 @@ class Chat:
         self.permissions = permissions
         self.invite_code = invite_code
         self.created = created
-        self.deleted = deleted
-        self.delete_after = delete_after
+        self.deleted_at = deleted_at
 
     @property
     def public(self):
@@ -189,20 +187,14 @@ class Chat:
 
     def delete(self):
         if self.direct:
-            raise status.missingPermissions
-
-        if self.deleted:
-            db.chat_messages.delete_many({"chat_id": self.id})
-            db.chats.delete_one({"_id": self.id})
-            del self
-        else:
-            self.deleted = True
-            self.delete_after = uid.timestamp(epoch=int(time.time() + 1209600))
-            db.chats.update_one({"_id": self.id}, {"$set": {"deleted": self.deleted, "delete_after": self.delete_after}})
-            for member in self.members:
-                events.emit_event("chat_deleted", member.id, {
-                    "id": self.id
-                })
+            raise status.missingPermissions  # placeholder
+        
+        self.deleted_at = uid.timestamp()
+        db.chats.update_one({"_id": self.id}, {"$set": {"deleted_at": self.deleted_at}})
+        for member in self.members:
+            events.emit_event("chat_deleted", member.id, {
+                "id": self.id
+            })
 
 def create_chat(name: str, owner: users.User):
     chat = {
@@ -210,8 +202,7 @@ def create_chat(name: str, owner: users.User):
         "name": name,
         "direct": False,
         "invite_code": token_urlsafe(6),
-        "created": uid.timestamp(),
-        "deleted": False
+        "created": uid.timestamp()
     }
     db.chats.insert_one(chat)
 
@@ -228,7 +219,7 @@ def get_chat(chat_id: str):
     return Chat(**chat)
 
 def get_dm_chat(user1: users.User, user2: users.User):
-    chat = db.chats.find_one({"members": {"$all": [user1.id, user2.id]}, "direct": True})
+    chat = db.chats.find_one({"members": {"$all": [user1.id, user2.id]}, "direct": True, "deleted_at": None})
     if chat is not None:
         return Chat(**chat)
     else:
@@ -236,8 +227,7 @@ def get_dm_chat(user1: users.User, user2: users.User):
             "_id": uid.snowflake(),
             "direct": True,
             "members": [user1.id, user2.id],
-            "created": uid.timestamp(),
-            "deleted": False
+            "created": uid.timestamp()
         }
         db.chats.insert_one(chat)
 
@@ -247,4 +237,4 @@ def get_dm_chat(user1: users.User, user2: users.User):
         return chat
 
 def get_active_chats(user: users.User):
-    return [Chat(**chat) for chat in db.chats.find({"members": {"$all": [user.id]}, "active": {"$all": [user.id]}})]
+    return [Chat(**chat) for chat in db.chats.find({"members": {"$all": [user.id]}, "active": {"$all": [user.id]}, "deleted_at": None})]

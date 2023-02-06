@@ -1,6 +1,7 @@
 from passlib.hash import bcrypt
 from pyotp import TOTP
 from secrets import token_hex
+from datetime import datetime
 from copy import copy
 import os
 
@@ -16,16 +17,16 @@ class Account:
         password: str = None,
         totp_secret: str = None,
         recovery_codes: list = None,
-        flags: int = 0,
-        last_updated: int = 0
+        last_updated: datetime = None,
+        delete_after: datetime = None
     ):
         self.id = _id
         self.email = email
         self.password = password
         self.totp_secret = totp_secret
         self.recovery_codes = recovery_codes
-        self.flags = flags
         self.last_updated = last_updated
+        self.delete_after = delete_after
 
     @property
     def client(self):
@@ -34,7 +35,19 @@ class Account:
             "email": self.email,
             "password_enabled": (self.password is not None),
             "mfa_methods": self.mfa_methods,
-            "last_updated": int(self.last_updated.timestamp())
+            "last_updated": (int(self.last_updated.timestamp()) if self.last_updated else None)
+        }
+    
+    @property
+    def admin(self):
+        return {
+            "id": self.id,
+            "email": self.email,
+            "password_enabled": (self.password is not None),
+            "mfa_methods": self.mfa_methods,
+            "recovery_codes": (len(self.recovery_codes) if self.recovery_codes else None),
+            "last_updated": (int(self.last_updated.timestamp()) if self.last_updated else None),
+            "delete_after": (int(self.delete_after.timestamp()) if self.delete_after else None)
         }
 
     @property
@@ -185,6 +198,11 @@ class Account:
     def regenerate_recovery_codes(self):
         self.recovery_codes = [token_hex(4) for i in range(8)]
         db.accounts.update_one({"_id": self.id}, {"$set": {"recovery_codes": self.recovery_codes}})
+
+    def add_recovery_code(self):
+        code = token_hex(4)
+        db.accounts.update_one({"_id": self.id}, {"$push": {"recovery_codes": code}})
+        return code
 
 def create_account(username: str, password: str, child: bool, require_email: bool = False, send_welcome_notification: bool = True):
     if not users.username_available(username):
