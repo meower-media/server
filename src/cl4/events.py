@@ -10,8 +10,27 @@ async def on_connect(client):
 
 @events.on("user_updated")
 async def user_updated(user_id: str, payload: dict):
+    if payload.get("id") == "0":
+        if user_id in cl._subscriptions["users"]:
+            del cl._subscriptions["users"][user_id]
+            return
+
     await send_to_user(user_id, "user_updated", payload)
-    pass  # haven't implemented this for other clients yet
+
+    for key, val in payload.items():
+        if key in set([
+            "flags",
+            "admin",
+            "bot_session",
+            "redirect_to",
+            "delete_after"
+        ]):
+            del payload[key]
+    await cl.send_packet_multicast(
+        "user_updated",
+        payload,
+        clients=cl._subscriptions["users"].get(user_id, set())
+    )
 
 @events.on("sync_updated")
 async def sync_updated(user_id: str, payload: dict):
