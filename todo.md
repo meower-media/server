@@ -1,5 +1,4 @@
 # BEFORE BETA
-- Start using 'deleted_at' in every entity, instead of 'deleted' and 'delete_after' (easy)
 - Notifications for social actions
 - Implement 'user_updated' event for other users (probably will just use some field filtering for sensitive fields)
 - Account to bot migration (should be easy)
