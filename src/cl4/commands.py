@@ -1,8 +1,8 @@
 import time
 
 from src.cl4.cloudlink import cloudlink
-from src.util import events
-from src.entities import sessions, chats, infractions
+from src.util import events, bitfield, flags
+from src.entities import accounts, applications, sessions, chats, infractions
 
 class CL4Commands:
     def __init__(self, cl_server: cloudlink.server):
@@ -48,7 +48,7 @@ class CL4Commands:
         else:
             self.cl._users[session.user.id] = set([client])
 
-        # Initialize WebSocket session (get chats, relationships, etc.)
+        # Initialize WebSocket session (get user, chats, relationships, etc.)
         await self.cl.send_code(client, "OK", listener=listener)
         await self.cl.send_packet_unicast(
             client,
@@ -56,9 +56,12 @@ class CL4Commands:
             {
                 "session_id": session.id,
                 "user": session.user.client,
+                "account": (accounts.get_account(session.user.id).client if (not bitfield.has(session.user.flags, flags.user.bot)) else None),
+                "application": (applications.get_application(session.user.id).client if bitfield.has(session.user.flags, flags.user.bot) else None),
                 "chats": [chat.public for chat in chats.get_active_chats(session.user)],
                 "following": session.user.get_following_ids(),
                 "blocked": session.user.get_blocking_ids(),
+                "guardian": None,
                 "infractions": [infraction.client for infraction in infractions.get_user_infractions(session.user)],
                 "time_taken": int((time.time()-timer_start)*1000)
             },
