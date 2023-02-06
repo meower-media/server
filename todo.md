@@ -1,6 +1,5 @@
 # BEFORE BETA
 - Notifications for social actions
-- Implement 'user_updated' event for other users (probably will just use some field filtering for sensitive fields)
 - Account to bot migration (should be easy)
 - User/chat icon uploads (and /uploads API) (should be easy, apart from converting and compressing)
 - Post/comment/message masquerading (easy, just waiting on image uploads)
