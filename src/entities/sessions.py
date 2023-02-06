@@ -82,7 +82,7 @@ def create_user_session(account: accounts.Account, device: dict, network: networ
                 "country": network.country
             })
 
-    return session.signed_token
+    return session
 
 def get_user_session(session_id: str):
     session = db.sessions.find_one({"_id": session_id})

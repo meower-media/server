@@ -251,6 +251,14 @@ class User:
             "username": self.username
         })
 
+    def update_theme(self, theme: dict):
+        self.theme.update(theme)
+        db.users.update_one({"_id": self.id}, {"$set": {"theme": self.theme}})
+        events.emit_event("user_updated", self.id, {
+            "id": self.id,
+            "theme": self.theme
+        })
+
     def update_quote(self, quote: str, by_admin: bool = False, store_history: bool = True):
         # Add old quote to profile history
         if store_history:

@@ -24,7 +24,27 @@ class UpdateProfileForm(BaseModel):
     )
 
 class UpdateProfileThemeForm(BaseModel):
-    pass
+    main: Optional[str] = Field(
+        max_length=10
+    )
+    main_alternate: Optional[str] = Field(
+        max_length=10
+    )
+    main_highlight: Optional[str] = Field(
+        max_length=10
+    )
+    main_shadow: Optional[str] = Field(
+        max_length=10
+    )
+    main_text: Optional[str] = Field(
+        max_length=10
+    )
+    background: Optional[str] = Field(
+        max_length=10
+    )
+    text: Optional[str] = Field(
+        max_length=10
+    )
 
 @v1.get("/")
 @security.sanic_protected()
@@ -46,6 +66,6 @@ async def v1_update_profile(request, body: UpdateProfileForm):
 @validate(json=UpdateProfileThemeForm)
 @security.sanic_protected(allow_bots=False, ignore_suspension=False)
 async def v1_update_profile_theme(request, body: UpdateProfileThemeForm):
-    request.ctx.user.update_theme({})
+    request.ctx.user.update_theme(request.json)
     
     return json(request.ctx.user.client)
