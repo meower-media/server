@@ -18,7 +18,7 @@ What to report:
 - Server errors
 
 What NOT to report:
-- Bugs in unofficial server builds or anything not from our offical source repo.
+- Bugs in unofficial server builds or anything not from our official source repo.
 - Problems with clients: You are in the wrong repo!
 - Feature requests: You are using the wrong template!
 
