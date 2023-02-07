@@ -17,7 +17,7 @@ async def user_updated(user_id: str, payload: dict):
 
     await send_to_user(user_id, "user_updated", payload)
 
-    for key, val in payload.items():
+    for key in payload.keys():
         if key in set([
             "flags",
             "admin",

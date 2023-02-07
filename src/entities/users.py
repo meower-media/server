@@ -313,6 +313,11 @@ class User:
         self.bot_session += 1
         db.users.update_one({"_id": self.id}, {"$set": {"bot_session": self.bot_session}})
 
+        # Revoke session
+        events.emit_event("session_deleted", self.id, {
+            "id": self.id
+        })
+
         # Return signed token
         encoded_data = b64encode(f"2:{self.id}:{self.bot_session}".encode())
         signature = security.sign_data(encoded_data)

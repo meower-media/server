@@ -1,8 +1,8 @@
 from datetime import datetime
 import secrets
 
-from src.util import uid, status, bitfield, flags
-from src.entities import users
+from src.util import uid, status, events, bitfield, flags
+from src.entities import users, accounts, infractions, sessions
 from src.database import db
 
 class Application:
@@ -136,3 +136,69 @@ def get_application(application_id: str):
 
 def get_user_applications(user: users.User):
     return [Application(**application) for application in db.applications.find({"maintainers": {"$all": [user.id]}})]
+
+def migrate_user_to_bot(user: users.User, owner: users.User):    
+    # Check migration eligibility
+    try:
+        account = accounts.get_account(user.id)
+    except status.notFound:
+        raise status.missingPermissions  # placeholder
+    else:
+        if account.mfa_enabled:
+            raise status.missingPermissions  # placeholder
+        
+        moderation_status = infractions.user_status(user)
+        if moderation_status["suspended"] or moderation_status["banned"]:
+            raise status.missingPermissions  # placeholder
+
+    # Create application
+    application = {
+        "_id": user.id,
+        "name": user.username,
+        "description": "Migrated from standard user account.",
+        "flags": bitfield.create([flags.application.hasBot]),
+        "owner_id": owner.id,
+        "maintainers": [owner.id],
+        "created": uid.timestamp()
+    }
+    db.applications.insert_one(application)
+
+    # Update user
+    for flag in [
+        flags.user.child,
+        flags.user.ageNotConfirmed,
+        flags.user.requireEmail,
+        flags.user.requireMFA
+    ]:
+        user.flags = bitfield.remove(user.flags, flag)
+    user.flags = bitfield.add(user.flags, flags.user.bot)
+    user.admin = 0
+    user.badges = []
+    db.users.update_one({"_id": user.id}, {"$set": {
+        "flags": user.flags,
+        "admin": user.admin,
+        "badges": user.badges
+    }})
+    events.emit_event("user_updated", user.id, {
+        "id": user.id,
+        "flags": user.flags,
+        "admin": user.admin,
+        "badges": user.badges
+    })
+
+    # Delete all items that are not needed as a bot
+    db.followed_users.delete_many({"from": user.id})
+    db.blocked_users.delete_many({"from": user.id})
+    db.post_likes.delete_many({"user_id": user.id})
+    db.post_meows.delete_many({"user_id": user.id})
+    db.user_sync.delete_one({"_id": user.id})
+    db.accounts.delete_one({"_id": user.id})
+
+    # Update user stats
+    user.update_stats()
+
+    # Revoke all sessions
+    sessions.revoke_all_user_sessions(user)
+
+    # Return application
+    return Application(**application)

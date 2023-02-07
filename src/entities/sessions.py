@@ -76,6 +76,7 @@ def create_user_session(account: accounts.Account, device: dict, network: networ
         "user_id": account.id,
         "created": uid.timestamp()
     }
+    db.sessions.insert_one(session)
     session = UserSession(**session)
     session.refresh(device, network)
 

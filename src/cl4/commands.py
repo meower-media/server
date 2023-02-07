@@ -2,7 +2,7 @@ import time
 
 from src.cl4.cloudlink import cloudlink
 from src.util import events, bitfield, flags
-from src.entities import accounts, applications, sessions, chats, infractions
+from src.entities import sessions, accounts, applications, chats, infractions
 
 class CL4Commands:
     def __init__(self, cl_server: cloudlink.server):
@@ -12,12 +12,12 @@ class CL4Commands:
         # Validate payload
         validation = self.cl.supporter.validate(
             keys={
-                "token": str
+                "val": str
             },
             payload=payload,
             optional=[],
             sizes={
-                "token": 1000
+                "val": 1000
             }
         )
         match validation:
@@ -35,18 +35,30 @@ class CL4Commands:
         # Start session start timer
         timer_start = time.time()
 
-        # Validate token and get session info
-        session = sessions.get_session_by_token(payload["token"])
-        if (not isinstance(session, sessions.UserSession)):
+        # Validate token and get user info
+        user = sessions.get_user_by_token(payload["val"])
+        if user is None:
             return await self.cl.send_code(client, "InvalidToken", listener=listener)
 
-        # Set authenticated user
-        client.user_id = session.user.id
-        client.session_id = session.id
-        if session.user.id in self.cl._users:
-            self.cl._users[session.user.id].add(client)
+        # Get session info
+        if bitfield.has(user.flags, flags.user.bot):
+            session = sessions.UserSession(
+                _id=user.id,
+                version=user.bot_session,
+                user_id=user.id
+            )
         else:
-            self.cl._users[session.user.id] = set([client])
+            session = sessions.get_session_by_token(payload["val"])
+            if session is None:
+                return await self.cl.send_code(client, "InvalidToken", listener=listener)
+
+        # Set session info
+        client.user_id = user.id
+        client.session_id = session.id
+        if client.user_id in self.cl._users:
+            self.cl._users[client.user_id].add(client)
+        else:
+            self.cl._users[client.user_id] = set([client])
 
         # Initialize WebSocket session (get user, chats, relationships, etc.)
         await self.cl.send_code(client, "OK", listener=listener)
@@ -54,8 +66,9 @@ class CL4Commands:
             client,
             "ready",
             {
-                "session_id": session.id,
-                "user": session.user.client,
+                "session_id": client.session_id,
+                "bot_session": bitfield.has(user.flags, flags.user.bot),
+                "user": user.client,
                 "account": (accounts.get_account(session.user.id).client if (not bitfield.has(session.user.flags, flags.user.bot)) else None),
                 "application": (applications.get_application(session.user.id).client if bitfield.has(session.user.flags, flags.user.bot) else None),
                 "chats": [chat.public for chat in chats.get_active_chats(session.user)],
@@ -65,8 +78,7 @@ class CL4Commands:
                 "infractions": [infraction.client for infraction in infractions.get_user_infractions(session.user)],
                 "time_taken": int((time.time()-timer_start)*1000)
             },
-            listener=listener,
-            quirk=self.cl.supporter.quirk_update_msg
+            listener=listener
         )
 
     async def subscribe(self, client, payload, listener):
