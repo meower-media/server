@@ -300,7 +300,7 @@ def get_feed(user: users.User, before: str = None, after: str = None, limit: int
         id_range = {"$gt": "0"}
 
     # Get following list and posts that the user's followers have meowed
-    following = user.get_following()
+    following = user.get_following_ids()
     meowed_posts = [meow["post_id"] for meow in db.post_meows.find({"user_id": {"$in": following}, "post_id": id_range}, sort=[("post_id", -1)], limit=limit, projection={"post_id": 1})]
 
     # Create query
