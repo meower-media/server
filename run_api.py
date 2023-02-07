@@ -7,8 +7,10 @@ if __name__ == "__main__":
     load_dotenv()
 
     DEVELOPMENT = (os.getenv("DEVELOPMENT", "false") == "true")
+    HOST = os.getenv("HOST", "127.0.0.1")
+    REST_PORT = int(os.getenv("REST_PORT", 3001))
 
     try:
-        app.run(host="0.0.0.0", port=8000, debug=DEVELOPMENT, dev=DEVELOPMENT)
+        app.run(host=HOST, port=REST_PORT, debug=DEVELOPMENT, dev=DEVELOPMENT)
     except KeyboardInterrupt:
         exit()
