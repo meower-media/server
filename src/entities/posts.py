@@ -342,7 +342,7 @@ def get_feed(user: users.User, before: str = None, after: str = None, limit: int
             # Cleanup deleted and duplicates posts
             post_ids = set()
             for post in fetched_posts:
-                if post.deleted or (post.id in post_ids):
+                if post.deleted_at or (post.id in post_ids):
                     fetched_posts.remove(post)
                     continue
                 post_ids.add(post.id)
