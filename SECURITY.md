@@ -2,10 +2,10 @@
 Meower Media thanks you for taking time to help make Meower a safer place. Meower Media takes the security of all products and services seriously, including all open source repositories managed via our Github organization, [meower-media-co](https://github.com/meower-media-co).
 
 ## Version support
-| Codebase | Supported          |
-| -------- | ------------------ |
-| CL4      | :white_check_mark: |
-| CL3      | :x:                |
+| Version               | Supported                  |
+| --------------------- | -------------------------- |
+| 0.6.0 (aka. CL4 port) | ✅                         |
+| 0.5.0 (aka. CL3)      | ✅ (until June 24th, 2023) |
 
 Last updated (INSERT MONTH.DATE.YEAR).
 

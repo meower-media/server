@@ -3,7 +3,7 @@ import os
 
 from .snowflake import generate_snowflake
 
-MEOWER_EPOCH = 0  # NEVER CHANGE THIS
+MEOWER_EPOCH = 1577836800  # NEVER CHANGE THIS
 
 def timestamp(epoch: int = None, jsonify: bool = False) -> dict|datetime:
     if epoch is None:

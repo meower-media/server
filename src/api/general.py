@@ -22,7 +22,7 @@ async def v0_get_client_ip(request):
 async def v0_status(request):
     return json({
         "isRepairMode": (redis.exists("repair_mode") == 1),
-        "scratchDeprecated": (time.time() >= 1684540800)
+        "scratchDeprecated": (time.time() >= 1687564800)
     })
 
 @v0.get("/statistics")

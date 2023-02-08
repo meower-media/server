@@ -5,7 +5,7 @@ import time
 import random
 
 from src.util import status, uid, events, filter, bitfield, flags
-from src.entities import users
+from src.entities import users, notifications
 from src.database import db, redis
 
 class Post:
@@ -17,6 +17,11 @@ class Post:
         filtered_content: str = None,
         flags: str = 0,
         stats: dict = {
+            "likes": 0,
+            "meows": 0,
+            "comments": 0
+        },
+        top_stats: dict = {
             "likes": 0,
             "meows": 0,
             "comments": 0
@@ -33,6 +38,7 @@ class Post:
         self.filtered_content = filtered_content
         self.flags = flags
         self.stats = stats
+        self.top_stats = top_stats
         self.reputation_last_counted = reputation_last_counted
         self.time = time
         self.delete_after = delete_after
@@ -61,6 +67,7 @@ class Post:
             "flags": self.flags,
             "public_flags": self.public_flags,
             "stats": self.stats,
+            "top_stats": self.top_stats,
             "time": int(self.time.timestamp()),
             "delete_after": (int(self.delete_after.timestamp()) if self.delete_after else None),
             "deleted_at": (int(self.deleted_at.timestamp()) if self.deleted_at else None)
@@ -115,8 +122,28 @@ class Post:
                 "meows": db.post_meows.count_documents({"post_id": self.id}),
                 "comments": db.post_comments.count_documents({"post_id": self.id, "deleted_at": None})
             }
+            for key, val in self.stats.items():
+                if val > self.top_stats.get(key, 0):
+                    for milestone in [5, 10, 25, 50, 100, 1000]:
+                        if (val >= milestone) and (self.top_stats.get(key, 0) < milestone):
+                            if key == "likes":
+                                if bitfield.has(self.author.config.get("notifications", 63), flags.configNotifications.postLikes):
+                                    notifications.create_notification(self.author, 2, {
+                                        "post_id": self.id,
+                                        "milestone": milestone
+                                    })
+                            elif key == "meows":
+                                if bitfield.has(self.author.config.get("notifications", 63), flags.configNotifications.postMeows):
+                                    notifications.create_notification(self.author, 3, {
+                                        "post_id": self.id,
+                                        "milestone": milestone
+                                    })
+
+                    self.top_stats.update({key: val})
+
             db.posts.update_one({"_id": self.id}, {"$set": {
                 "stats": self.stats,
+                "top_stats": self.top_stats,
                 "reputation": self.reputation,
                 "reputation_last_counted": self.reputation_last_counted
             }})
@@ -341,7 +368,7 @@ def get_feed(user: users.User, before: str = None, after: str = None, limit: int
 
             # Cleanup deleted and duplicates posts
             post_ids = set()
-            for post in fetched_posts:
+            for post in copy(fetched_posts):
                 if post.deleted_at or (post.id in post_ids):
                     fetched_posts.remove(post)
                     continue

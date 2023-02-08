@@ -4,7 +4,7 @@ from threading import Thread
 import time
 
 from src.util import status, uid, events, filter, bitfield, flags
-from src.entities import users, posts
+from src.entities import users, posts, notifications
 from src.database import db
 
 class Comment:
@@ -17,10 +17,8 @@ class Comment:
         content: str = None,
         filtered_content: str = None,
         flags: str = 0,
-        stats: dict = {
-            "likes": 0,
-            "replies": 0
-        },
+        likes: int = 0,
+        top_likes: int = 0,
         time: datetime = None,
         delete_after: datetime = None,
         deleted_at: datetime = None
@@ -32,7 +30,8 @@ class Comment:
         self.content = content
         self.filtered_content = filtered_content
         self.flags = flags
-        self.stats = stats
+        self.likes = likes
+        self.top_likes = top_likes
         self.time = time
         self.delete_after = delete_after
         self.deleted_at = deleted_at
@@ -47,7 +46,7 @@ class Comment:
             "content": self.content,
             "filtered_content": self.filtered_content,
             "public_flags": self.public_flags,
-            "stats": self.stats,
+            "likes": self.likes,
             "time": int(self.time.timestamp()),
             "delete_after": (int(self.delete_after.timestamp()) if self.delete_after else None)
         }
@@ -63,7 +62,8 @@ class Comment:
             "filtered_content": self.filtered_content,
             "flags": self.flags,
             "public_flags": self.public_flags,
-            "stats": self.stats,
+            "likes": self.likes,
+            "top_likes": self.top_likes,
             "time": int(self.time.timestamp()),
             "delete_after": (int(self.delete_after.timestamp()) if self.delete_after else None),
             "deleted_at": (int(self.deleted_at.timestamp()) if self.deleted_at else None)
@@ -86,14 +86,25 @@ class Comment:
 
     def update_stats(self):
         def run():
-            self.stats = {
-                "likes": db.comment_likes.count_documents({"post_id": self.id}),
-                "replies": db.post_comments.count_documents({"post_id": self.post_id, "parent_id": self.id, "deleted_at": None})
-            }
-            db.post_comments.update_one({"_id": self.id}, {"$set": {"stats": self.stats}})
+            self.likes = db.comment_likes.count_documents({"post_id": self.id})
+            if self.likes > self.top_likes:
+                for milestone in [5, 10, 25, 50, 100, 1000]:
+                    if (self.likes >= milestone) and (self.top_likes < milestone):
+                        if bitfield.has(self.author.config.get("notifications", 63), flags.configNotifications.commentLikes):
+                            notifications.create_notification(self.author, 5, {
+                                "comment_id": self.id,
+                                "milestone": milestone
+                            })
+                
+                self.top_likes = self.likes
+
+            db.post_comments.update_one({"_id": self.id}, {"$set": {
+                "likes": self.likes,
+                "top_likes": self.top_likes
+            }})
             events.emit_event("comment_updated", self.post_id, {
                 "id": self.id,
-                "stats": self.stats
+                "likes": self.likes
             })
         Thread(target=run).start()
 
@@ -206,12 +217,20 @@ def create_comment(post: posts.Post, author: users.User, content: str, parent: C
     db.post_comments.insert_one(comment)
     comment = Comment(**comment)
 
-    # Update parent comment
-    if parent:
-        parent.update_stats()
-
     # Announce comment creation
     events.emit_event("comment_created", post.id, comment.public)
+
+    # Send notifications
+    if post.author.id != comment.author.id:
+        if bitfield.has(post.author.config.get("notifications", 63), flags.configNotifications.postComments):
+            notifications.create_notification(post.author, 4, {
+                "comment_id": comment.id
+            })
+    if parent.author.id != comment.author.id:
+        if parent and bitfield.has(parent.author.config.get("notifications", 63), flags.configNotifications.commentReplies):
+            notifications.create_notification(parent.author, 6, {
+                "comment_id": comment.id
+            })
 
     # Return comment object
     return comment

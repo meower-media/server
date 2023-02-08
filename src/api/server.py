@@ -14,7 +14,7 @@ app.register_middleware(parse_ua, "request")
 app.register_middleware(ratelimit_header, "response")
 
 # Start v0 API
-if time.time() < 1684540800:  # Check whether v0 has been discontinued
+if time.time() < 1687564800:  # Check whether v0 has been discontinued
     from .general import v0 as v0_general
     from .home import v0 as v0_home
     from .posts import v0 as v0_posts

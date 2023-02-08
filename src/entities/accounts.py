@@ -217,19 +217,16 @@ def create_account(username: str, password: str, child: bool, require_email: boo
     user = users.create_user(username, flags=user_flags)
 
     if send_welcome_notification:
-        notifications.create_notification(user, 0,
-        """
-        Welcome to Meower, we welcome you with open arms!
-        
-        You can get started by making friends by exploring posts in your home feed or searching for people. We hope you have fun!
-        """)
+        notifications.create_notification(user, 0, {
+            "content": "Welcome to Meower, we welcome you with open arms!\nYou can get started by making friends by exploring posts in your home feed or searching for people. We hope you have fun!"
+        })
 
     account = {
         "_id": user.id,
         "password": bcrypt.hash(password, rounds=int(os.getenv("pswd_rounds", 12))),
         "last_updated": uid.timestamp()
     }
-    db.user_sync.insert_one({"_id": user.id})
+    db.user_config.insert_one({"_id": user.id})
     db.accounts.insert_one(account)
 
     return Account(**account)

@@ -3,6 +3,7 @@ from datetime import datetime
 from base64 import b64encode
 from threading import Thread
 import string
+import time
 
 from src.util import status, uid, events, security, bitfield, flags
 from src.database import db
@@ -34,14 +35,6 @@ MEOWER = {
 }
 
 PERMITTED_CHARS_USERNAME = set(string.ascii_letters + string.digits + "_-.")
-
-CONFIG_KEYS = {
-    "theme": dict,
-    "sfx": bool,
-    "bgm": bool,
-    "bgm_song": int,
-    "debug": bool
-}
 
 class User:
     def __init__(
@@ -143,14 +136,14 @@ class User:
         return pub_flags
 
     @property
-    def sync(self):
-        return db.user_sync.find_one({"_id": self.id}, projection={"_id": 0})
+    def config(self):
+        return db.user_config.find_one({"_id": self.id}, projection={"_id": 0})
 
-    def update_sync(self, sync: dict):
-        _sync = copy(self.sync)
-        _sync.update(sync)
-        db.user_sync.update_one({"_id": self.id}, {"$set": sync})
-        events.emit_event("sync_updated", self.id, _sync)
+    def update_config(self, config: dict):
+        _config = copy(self.config)
+        _config.update(config)
+        db.user_sync.update_one({"_id": self.id}, {"$set": config})
+        events.emit_event("sync_updated", self.id, {"type": "config", "val": _config})
 
     def update_stats(self):
         def run():
@@ -185,6 +178,8 @@ class User:
         return (db.blocked_users.find_one({"to": self.id, "from": user.id}) is not None)
 
     def follow_user(self, user):
+        if self.id == user.id:
+            raise status.missingPermissions  # placeholder
         if self.is_blocked(user):
             raise status.missingPermissions  # placeholder
         if self.is_following(user):
@@ -196,6 +191,12 @@ class User:
             "from": self.id,
             "time": uid.timestamp()
         })
+
+        if bitfield.has(user.config.get("notifications", 63), flags.configNotifications.follows):
+            pass
+            #notifications.create_notification(self.author, 1, {
+            #    "user_id": self.id
+            #})
 
         self.update_stats()
         user.update_stats()
@@ -219,6 +220,8 @@ class User:
         user.update_stats()
 
     def block_user(self, user):
+        if self.id == user.id:
+            raise status.missingPermissions  # placeholder
         if self.is_blocking(user):
             raise status.missingPermissions  # placeholder
         
@@ -245,20 +248,30 @@ class User:
         db.blocked_users.delete_one({"to": user.id, "from": self.id})
 
     @property
-    def username_history(self):
-        return list(db.username_history.find({"user_id": self._id}, projection={"_id": 0, "user_id": 0}, sort=[("_id", -1)]))
+    def profile_history(self):
+        return list(db.profile_history.find({"user_id": self._id}, projection={"_id": 0, "user_id": 0}, sort=[("_id", -1)]))
 
-    def update_username(self, username: str, by_admin: bool = False, store_history: bool = True):
+    def update_username(self, username: str, by_admin: bool = False, store_history: bool = True, reserve_old_username: bool = True):
+        if username == self.username:
+            return
+
         # Check whether username is available
-        if not username_available(username):
-            raise status.alreadyExists
+        current_user = db.users.find_one({"lower_username": username.lower()}, projection={"_id": 1, "username": 1, "lower_username": 1, "redirect_to": 1})
+        if current_user:
+            if current_user.get("_id") == self.id:
+                reserve_old_username = False
+            elif current_user.get("redirect_to") == self.id:
+                db.users.delete_one({"_id": current_user["_id"]})
+            else:
+                raise status.alreadyExists
 
         # Add old username to profile history
+        old_username = copy(self.username)
         if store_history:
-            db.username_history.insert_one({
+            db.profile_history.insert_one({
                 "_id": uid.snowflake(),
                 "user_id": self.id,
-                "username": self.username,
+                "username": old_username,
                 "by_admin": by_admin,
                 "time": uid.timestamp()
             })
@@ -275,7 +288,32 @@ class User:
             "username": self.username
         })
 
-    def update_theme(self, theme: dict):
+        # Add reserved user for old username
+        if reserve_old_username:
+            db.users.insert_one({
+                "_id": uid.snowflake(),
+                "username": old_username,
+                "lower_username": old_username.lower(),
+                "created": uid.timestamp(),
+                "redirect_to": self.id,
+                "delete_after": uid.timestamp(epoch=int(time.time()+1296000))
+            })
+
+    def update_theme(self, theme: dict, by_admin: bool = False, store_history: bool = True):
+        if theme == self.theme:
+            return
+
+        # Add old theme to profile history
+        if store_history:
+            db.profile_history.insert_one({
+                "_id": uid.snowflake(),
+                "user_id": self.id,
+                "theme": self.theme,
+                "by_admin": by_admin,
+                "time": uid.timestamp()
+            })
+
+        # Update current user
         self.theme.update(theme)
         db.users.update_one({"_id": self.id}, {"$set": {"theme": self.theme}})
         events.emit_event("user_updated", self.id, {
@@ -284,9 +322,12 @@ class User:
         })
 
     def update_quote(self, quote: str, by_admin: bool = False, store_history: bool = True):
+        if quote == self.quote:
+            return
+
         # Add old quote to profile history
         if store_history:
-            db.username_history.insert_one({
+            db.profile_history.insert_one({
                 "_id": uid.snowflake(),
                 "user_id": self.id,
                 "quote": self.quote,

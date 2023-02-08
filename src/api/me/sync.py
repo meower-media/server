@@ -1,22 +1,36 @@
 from sanic import Blueprint, json
-from sys import getsizeof
-from json import dumps as json_encode
+from sanic_ext import validate
+from pydantic import BaseModel, Field
+from typing import Optional
 
-from src.util import status, security
+from src.util import security
 
 v1 = Blueprint("v1_me_sync", url_prefix="/sync")
 
-@v1.get("/")
+class UpdateConfig(BaseModel):
+    theme: Optional[str] = Field(
+        max_length=2000
+    )
+    notifications: Optional[int] = Field(
+        ge=0,
+        le=63
+    )
+    direct_messages: Optional[int] = Field(
+        ge=0,
+        le=2
+    )
+    filter: Optional[bool] = Field()
+    debug: Optional[bool] = Field()
+
+@v1.get("/config")
 @security.sanic_protected(allow_bots=False, ignore_ban=True)
-async def v1_get_sync(request):
-    return json(request.ctx.user.sync)
+async def v1_get_config(request):
+    return json(request.ctx.user.config)
 
-@v1.patch("/")
-@security.sanic_protected(allow_bots=False, ignore_suspension=False)
-async def v1_update_sync(request):
-    if getsizeof(json_encode(request.json)) > 1024:
-        raise status.missingPermissions  # placeholder
-
-    request.ctx.user.update_sync(request.json)
+@v1.patch("/config")
+@validate(json=UpdateConfig)
+@security.sanic_protected(allow_bots=False, ignore_ban=True)
+async def v1_update_config(request, body: UpdateConfig):
+    request.ctx.user.update_config(request.json)
     
-    return json(request.ctx.user.sync)
+    return json(request.ctx.user.config)

@@ -31,7 +31,8 @@ class chat:
 
 class message:
     systemAlert = 0
-    edited = 1 
+    bridged = 1
+    edited = 2
 
 class infractions:
     automatic = 0
@@ -49,3 +50,11 @@ class admin:
     manageBots = 6
     manageOAuth = 7
     manageSystem = 8
+
+class configNotifications:
+    follows = 0
+    postLikes = 1
+    postMeows = 2
+    postComments = 3
+    commentLikes = 4
+    commentReplies = 5

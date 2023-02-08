@@ -1,8 +1,9 @@
 from datetime import datetime
 from threading import Thread
+from copy import copy
 
 from src.util import status, uid, events
-from src.entities import users
+from src.entities import users, posts, comments
 from src.database import db
 
 class Notification:
@@ -11,61 +12,74 @@ class Notification:
         _id: str,
         recipient_id: str = None,
         type: int = None,
-        content: str = None,
-        link: str = None,
+        data: dict = {},
         read: bool = False,
         time: datetime = None
     ):
         self.id = _id
         self.recipient = users.get_user(recipient_id)
         self.type = type
-        self.content = content
-        self.link = link
+        self.data = data
         self.read = read
         self.time = time
 
     @property
     def client(self):
-        return {
+        data = {
             "id": self.id,
             "recipient": self.recipient.partial,
             "type": self.type,
-            "content": self.content,
-            "link": self.link,
             "read": self.read,
             "time": int(self.time.timestamp())
         }
 
-    def edit(self, content: str = None, link: str = None, read: bool = None):
-        if content is not None:
-            self.content = content
-        if link is not None:
-            self.link = link
-        if read is not None:
-            self.read = read
-        db.notifications.update_one({"_id": self.id}, {"$set": {
-            "content": self.content,
-            "link": self.link,
-            "read": self.read
-        }})
-        
-        if not self.read:
-            Thread(target=emit_user_notification_unread_count, args=(self.recipient)).start()
+        if self.type == 0:
+            data["content"] = self.data.get("content")
+        if self.type == 1:
+            try:
+                data["user"] = users.get_user(self.data["user_id"]).partial
+                data["milestone"] = self.data["milestone"]
+            except:
+                data["user"] = None
+                data["milestone"] = None
+        elif (self.type == 2) or (self.type == 3):
+            try:
+                data["post"] = posts.get_post(self.data["post_id"]).public
+                data["milestone"] = self.data["milestone"]
+            except:
+                data["post"] = None
+                data["milestone"] = None
+        elif (self.type == 4) or (self.type == 6):
+            try:
+                data["comment"] = comments.get_comment(self.data["comment_id"]).public
+            except:
+                data["comment"] = None
+        elif self.type == 5:
+            try:
+                data["comment"] = comments.get_comment(self.data["comment_id"]).public
+                data["milestone"] = self.data["milestone"]
+            except:
+                data["comment"] = None
+                data["milestone"] = None
+
+        return data
+
+    def mark(self, read_status: bool):
+        self.read = read_status
+        db.notifications.update_one({"_id": self.id}, {"$set": {"read": self.read}})
+        Thread(target=emit_user_notification_unread_count, args=(self.recipient)).start()
 
     def delete(self):
-        db.chat_messages.delete_one({"_id": self.id})
+        db.notifications.delete_one({"_id": self.id})
+        Thread(target=emit_user_notification_unread_count, args=(self.recipient)).start()
 
-        if not self.read:
-            Thread(target=emit_user_notification_unread_count, args=(self.recipient)).start()
-
-def create_notification(recipient: users.User, type: int, content: str, link: str = None):
+def create_notification(recipient: users.User, type: int, data: dict):
     # Create notification data
     notification = {
         "_id": uid.snowflake(),
         "recipient_id": recipient.id,
         "type": type,
-        "content": content,
-        "link": link,
+        "data": data,
         "read": False,
         "time": uid.timestamp()
     }
