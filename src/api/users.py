@@ -31,6 +31,16 @@ async def v1_get_user(request, user_id: str):
     else:
         return json(user.public)
 
+@v1.get("/followers")
+async def v1_get_user(request, user_id: str):
+    user = users.get_user(user_id)
+    return json(user.get_following_ids())
+
+@v1.get("/follows")
+async def v1_get_user(request, user_id: str):
+    user = users.get_user(user_id)
+    return json(user.get_followed_ids())
+
 @v1.post("/follow")
 @security.sanic_protected(ratelimit="change_relationship", allow_bots=False, ignore_suspension=False)
 async def v1_follow_user(request, user_id: str):

@@ -162,6 +162,9 @@ class User:
     def get_following_ids(self):
         return [relationship["to"] for relationship in db.followed_users.find({"from": self.id})]
 
+    def get_followed_ids(self):
+        return [relationship["from"] for relationship in db.followed_users.find({"to": self.id})]
+
     def get_blocking_ids(self):
         return [relationship["to"] for relationship in db.blocked_users.find({"from": self.id})]
 
