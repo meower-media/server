@@ -11,6 +11,7 @@ async def parse_ua(request):
         "client_type": client_type
     }
 
+
 async def ratelimit_header(request, response):
     if hasattr(request.ctx, "ratelimit_bucket"):
         response.headers["X-Ratelimit-Bucket"] = request.ctx.ratelimit_bucket

@@ -3,16 +3,19 @@ import traceback
 from datetime import datetime
 import logging
 
+
 class supporter:
     def __init__(self, parent):
         self.parent = parent
-        
+
         # Use logging library
         self.logger = logging
-        
+
         # Reconfigure when needed
-        self.logger.basicConfig(format="[%(asctime)s | %(created)f] (%(thread)d - %(threadName)s) %(levelname)s: %(message)s", level=self.logger.INFO)
-        
+        self.logger.basicConfig(
+            format="[%(asctime)s | %(created)f] (%(thread)d - %(threadName)s) %(levelname)s: %(message)s",
+            level=self.logger.INFO)
+
         # Define protocol types
         self.proto_unset = "proto_unset"
         self.proto_cloudlink = "proto_cloudlink"
@@ -83,7 +86,7 @@ class supporter:
             optional = []
         if (type(keys) != dict) or (type(payload) != dict):
             return self.not_a_dict
-        
+
         self.log_debug(f"Running validator: {keys}, {payload}, {optional}, {sizes}")
 
         for key in keys.keys():
@@ -98,7 +101,8 @@ class supporter:
                 if type(keys[key]) == list:
                     # Validate key datatype
                     if not type(payload[key]) in keys[key]:
-                        self.log_debug(f"Validator: Payload {payload} key {key} value is invalid type. Expecting {keys[key]}, got {type(payload[key])}")
+                        self.log_debug(
+                            f"Validator: Payload {payload} key {key} value is invalid type. Expecting {keys[key]}, got {type(payload[key])}")
                         return self.invalid
 
                     # Check if the size of the payload is too large 
@@ -110,7 +114,8 @@ class supporter:
                 else:
                     # Validate key datatype
                     if type(payload[key]) != keys[key]:
-                        self.log_debug(f"Validator: Payload {payload} key {key} value is invalid type. Expecting {keys[key]}, got {type(payload[key])}")
+                        self.log_debug(
+                            f"Validator: Payload {payload} key {key} value is invalid type. Expecting {keys[key]}, got {type(payload[key])}")
                         return self.invalid
 
                     # Check if the size of the payload is too large 
@@ -222,13 +227,13 @@ class supporter:
             # Ignore loading private methods
             if "__" in function:
                 continue
-            
+
             # Do not initialize server methods
             if hasattr(self.parent, function):
                 continue
             if hasattr(self.parent.supporter, function):
                 continue
-            
+
             # Ignore loading commands marked as ignore
             if hasattr(_class, "importer_ignore_functions"):
                 if function in _class.importer_ignore_functions:
@@ -236,7 +241,7 @@ class supporter:
 
             setattr(self.parent.custom_methods, function, getattr(_class, function))
             self.parent.safe_methods.add(function)
-    
+
     # This initializes methods that are guaranteed safe to use. This mitigates the possibility of clients accessing
     # private or sensitive methods.
     def init_builtin_cl_methods(self):
@@ -257,18 +262,18 @@ class supporter:
                     continue
 
             self.parent.safe_methods.add(function)
-    
+
     def log(self, msg):
         self.logger.info(msg)
-    
+
     def log_debug(self, msg):
         self.logger.debug(msg)
-    
+
     def log_warning(self, msg):
         self.logger.warning(msg)
-    
+
     def log_critical(self, msg):
         self.logger.critical(msg)
-    
+
     def log_error(self, msg):
         self.logger.error(msg)

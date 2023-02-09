@@ -8,6 +8,7 @@ from src.entities import users, accounts, networks, sessions, tickets
 
 v1 = Blueprint("v1_authentication", url_prefix="/auth")
 
+
 class RegistrationForm(BaseModel):
     username: str = Field(
         min_length=1,
@@ -22,6 +23,7 @@ class RegistrationForm(BaseModel):
         max_length=2048
     )
 
+
 class LoginPasswordForm(BaseModel):
     username: str = Field(
         min_length=1,
@@ -35,6 +37,7 @@ class LoginPasswordForm(BaseModel):
         max_length=2048
     )
 
+
 class LoginTOTPForm(BaseModel):
     ticket: str = Field(
         max_length=255
@@ -44,11 +47,13 @@ class LoginTOTPForm(BaseModel):
         max_length=8
     )
 
+
 class PasswordVerificationForm(BaseModel):
     password: str = Field(
         min_length=1,
         max_length=255
     )
+
 
 class TOTPVerificationForm(BaseModel):
     totp_code: str = Field(
@@ -56,10 +61,12 @@ class TOTPVerificationForm(BaseModel):
         max_length=8
     )
 
+
 class PasswordRecoveryForm(BaseModel):
     email: str = Field(
         max_length=255
     )
+
 
 @v1.post("/register")
 @validate(json=RegistrationForm)
@@ -80,6 +87,7 @@ async def v1_register(request, body: RegistrationForm):
     # Complete authentication
     session = sessions.create_user_session(account, request.ctx.device, network)
     return json({"user_id": account.id, "access_token": session.signed_token})
+
 
 @v1.post("/password")
 @validate(json=LoginPasswordForm)
@@ -127,6 +135,7 @@ async def v1_login_password(request, body: LoginPasswordForm):
             "mfa_methods": None
         })
 
+
 @v1.post("/mfa/totp")
 @validate(json=LoginTOTPForm)
 @security.sanic_protected(ratelimit="mfa", require_auth=False)
@@ -153,6 +162,7 @@ async def v1_mfa_totp(request, body: LoginTOTPForm):
             "access_token": session.signed_token
         })
 
+
 @v1.post("/verify/password")
 @validate(json=PasswordVerificationForm)
 @security.sanic_protected(ratelimit="verify", allow_bots=False)
@@ -161,10 +171,10 @@ async def v1_verify_password(request, body: PasswordVerificationForm):
     account = accounts.get_account(request.ctx.user.id)
     if account is None:
         raise status.internal
-    
+
     # Check whether verifying via password is allowed
     if account.mfa_enabled:
-        raise status.missingPermissions # placeholder
+        raise status.missingPermissions  # placeholder
 
     # Verify account password
     if not account.check_password(body.password):
@@ -174,6 +184,7 @@ async def v1_verify_password(request, body: PasswordVerificationForm):
     ticket = tickets.create_ticket(request.ctx.user, "verification")
     return json({"verification_ticket": ticket})
 
+
 @v1.post("/verify/totp")
 @validate(json=TOTPVerificationForm)
 @security.sanic_protected(ratelimit="verify", allow_bots=False)
@@ -182,7 +193,7 @@ async def v1_verify_totp(request, body: TOTPVerificationForm):
     account = accounts.get_account(request.ctx.user.id)
     if account is None:
         raise status.internal
-    
+
     # Check whether verifying via TOTP is allowed
     if "mfa" not in account.mfa_methods:
         raise status.totpNotEnabled
@@ -195,6 +206,7 @@ async def v1_verify_totp(request, body: TOTPVerificationForm):
     ticket = tickets.create_ticket(request.ctx.user, "verification")
     return json({"verification_ticket": ticket})
 
+
 @v1.post("/recovery/password")
 @validate(json=PasswordRecoveryForm)
 @security.sanic_protected(ratelimit="verify", require_auth=False)  # placeholder ratelimit bucket
@@ -204,7 +216,7 @@ async def v1_password_recovery(request, body: PasswordRecoveryForm):
 
     # Get user
     user = users.get_user(user_id)
-    
+
     # Create password reset ticket
     ticket = tickets.create_ticket(user, "password_reset")
 

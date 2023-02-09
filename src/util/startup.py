@@ -4,10 +4,9 @@
 version = "0.6.0-cl4-dev"
 
 # buildDate - Provide an epoch time stamp of the server's most recent change before commits.
-buildDate = 1675864218
+buildDate = 1675960612
 
 
-@property
 def displayMeowerVersion():
-    # TODO: Make this a log event
-    print(f"Meower Server - Version {version} - Build {buildDate}")
+    # TODO: Make this a log event...
+    print(f"\nMeower Server - Version {version} - Build {buildDate}\n")
