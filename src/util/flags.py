@@ -1,4 +1,4 @@
-class user:
+class users:
     system = 0
     child = 1
     bot = 2
@@ -9,30 +9,35 @@ class user:
     requireEmail = 7
     requireMFA = 8
 
-class application:
+class applications:
     firstParty = 0
     hasBot = 1
     notSafeForKids = 2
 
-class post:
+class posts:
     reputationHidden = 0
     commentsDisabled = 1
     edited = 3
     protected = 4
     reputationBanned = 5
 
-class comment:
+class comments:
     edited = 0
 
-class chat:
+class chats:
     inviteCodeDisabled = 0
     vanityInviteCode = 1
     notSafeForKids = 2
 
-class message:
+class messages:
     systemAlert = 0
     bridged = 1
     edited = 2
+
+class uploads:
+    blocked = 0
+    censored = 1
+    poisoned = 2
 
 class infractions:
     automatic = 0
@@ -40,7 +45,7 @@ class infractions:
     poisonous = 2
     blockAppeals = 3
 
-class admin:
+class adminPermissions:
     accessReports = 0
     moderateUsers = 1
     moderateIPs = 2
@@ -53,8 +58,9 @@ class admin:
 
 class configNotifications:
     follows = 0
-    postLikes = 1
-    postMeows = 2
-    postComments = 3
-    commentLikes = 4
-    commentReplies = 5
+    mentions = 1
+    postLikes = 2
+    postMeows = 3
+    postComments = 4
+    commentLikes = 5
+    commentReplies = 6

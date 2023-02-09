@@ -90,7 +90,7 @@ class Post:
     def public_flags(self):
         pub_flags = copy(self.flags)
         for flag in [
-            flags.post.reputationBanned
+            flags.posts.reputationBanned
         ]:
             pub_flags = bitfield.remove(pub_flags, flag)
         return pub_flags
@@ -106,7 +106,7 @@ class Post:
     @property
     def reputation(self):
         self.reputation_last_counted = uid.timestamp()
-        if bitfield.has(self.flags, flags.post.reputationBanned) or (time.time() > (time.time()+2592000)):
+        if bitfield.has(self.flags, flags.posts.reputationBanned) or (time.time() > (time.time()+2592000)):
             return 0
         else:
             reputation = ((self.stats.get("likes", 0) + self.stats.get("meows", 0)) - ((time.time() - self.time.timestamp()) ** -5))
@@ -127,13 +127,13 @@ class Post:
                     for milestone in [5, 10, 25, 50, 100, 1000]:
                         if (val >= milestone) and (self.top_stats.get(key, 0) < milestone):
                             if key == "likes":
-                                if bitfield.has(self.author.config.get("notifications", 63), flags.configNotifications.postLikes):
+                                if bitfield.has(self.author.config.get("notifications", 127), flags.configNotifications.postLikes):
                                     notifications.create_notification(self.author, 2, {
                                         "post_id": self.id,
                                         "milestone": milestone
                                     })
                             elif key == "meows":
-                                if bitfield.has(self.author.config.get("notifications", 63), flags.configNotifications.postMeows):
+                                if bitfield.has(self.author.config.get("notifications", 127), flags.configNotifications.postMeows):
                                     notifications.create_notification(self.author, 3, {
                                         "post_id": self.id,
                                         "milestone": milestone
@@ -220,7 +220,7 @@ class Post:
         self.update_stats()
 
     def edit(self, editor: users.User, content: str, public: bool = True):
-        if bitfield.has(self.flags, flags.post.protected):
+        if bitfield.has(self.flags, flags.posts.protected):
             raise status.postProtected
 
         if content == self.content:
@@ -236,7 +236,7 @@ class Post:
             "time": uid.timestamp()
         })
 
-        self.flags = bitfield.add(self.flags, flags.post.edited)
+        self.flags = bitfield.add(self.flags, flags.posts.edited)
         self.content = content
         db.posts.update_one({"_id": self.id}, {"$set": {
             "flags": self.flags,

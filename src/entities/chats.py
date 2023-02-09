@@ -175,7 +175,7 @@ class Chat:
         if self.direct:
             raise status.missingPermissions
 
-        if bitfield.has(self.flags, flags.chat.vanityInviteCode):
+        if bitfield.has(self.flags, flags.chats.vanityInviteCode):
             raise status.chatHasVanityInviteCode
 
         self.invite_code = token_urlsafe(6)

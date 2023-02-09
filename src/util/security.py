@@ -152,7 +152,7 @@ def sanic_protected(
 
                 if request.ctx.user:
                     # Check whether user is a bot
-                    if (not allow_bots) and bitfield.has(request.ctx.user.flags, flags.user.bot):
+                    if (not allow_bots) and bitfield.has(request.ctx.user.flags, flags.users.bot):
                         raise status.missingPermissions # placeholder
 
                     # Check whether user is being restricted by guardian

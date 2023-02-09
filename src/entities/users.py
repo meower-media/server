@@ -12,7 +12,7 @@ SERVER = {
     "_id": "0",
     "username": "Server",
     "lower_username": "server",
-    "flags": bitfield.create([flags.user.system]),
+    "flags": bitfield.create([flags.users.system]),
     "created": uid.timestamp(epoch=0),
     "badges": ["MEOWY"]
 }
@@ -21,7 +21,7 @@ DELETED = {
     "_id": "1",
     "username": "Deleted",
     "lower_username": "deleted",
-    "flags": bitfield.create([flags.user.deleted]),
+    "flags": bitfield.create([flags.users.deleted]),
     "created": uid.timestamp(epoch=0)
 }
 
@@ -29,12 +29,12 @@ MEOWER = {
     "_id": "2",
     "username": "Meower",
     "lower_username": "meower",
-    "flags": bitfield.create([flags.user.system]),
+    "flags": bitfield.create([flags.users.system]),
     "created": uid.timestamp(epoch=0),
     "badges": ["MEOWY"]
 }
 
-PERMITTED_CHARS_USERNAME = set(string.ascii_letters + string.digits + "_-.")
+PERMITTED_CHARS_USERNAME = set(string.ascii_letters + string.digits + "_-")
 
 class User:
     def __init__(
@@ -127,10 +127,10 @@ class User:
     def public_flags(self):
         pub_flags = copy(self.flags)
         for flag in [
-            flags.user.child,
-            flags.user.ageNotConfirmed,
-            flags.user.requireEmail,
-            flags.user.requireMFA
+            flags.users.child,
+            flags.users.ageNotConfirmed,
+            flags.users.requireEmail,
+            flags.users.requireMFA
         ]:
             pub_flags = bitfield.remove(pub_flags, flag)
         return pub_flags
@@ -192,7 +192,7 @@ class User:
             "time": uid.timestamp()
         })
 
-        if bitfield.has(user.config.get("notifications", 63), flags.configNotifications.follows):
+        if bitfield.has(user.config.get("notifications", 127), flags.configNotifications.follows):
             pass
             #notifications.create_notification(self.author, 1, {
             #    "user_id": self.id
@@ -347,7 +347,7 @@ class User:
 
     def rotate_bot_session(self):
         # Check whether user is bot
-        if not bitfield.has(self.flags, flags.user.bot):
+        if not bitfield.has(self.flags, flags.users.bot):
             raise status.missingPermissions # placeholder
         
         # Set new session version

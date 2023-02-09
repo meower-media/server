@@ -9,6 +9,7 @@ from .middleware import parse_ua, ratelimit_header
 # Initialize API server
 app = Sanic("MeowerAPI")
 app.config.REAL_IP_HEADER = os.getenv("IP_HEADER")
+app.config.REQUEST_MAX_SIZE = 10000000
 app.error_handler = MeowerErrorHandler()
 app.register_middleware(parse_ua, "request")
 app.register_middleware(ratelimit_header, "response")
@@ -36,6 +37,7 @@ from .home import v1 as v1_home
 from .posts import v1 as v1_posts
 from .users import v1 as v1_users
 from .chats import v1 as v1_chats
+from .uploads import v1 as v1_uploads
 from .applications import v1 as v1_applications
 from .search import v1 as v1_search
 app.blueprint(Blueprint.group(
@@ -46,6 +48,7 @@ app.blueprint(Blueprint.group(
     v1_posts,
     v1_users,
     v1_chats,
+    v1_uploads,
     v1_applications,
     v1_search,
     version=1

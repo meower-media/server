@@ -90,7 +90,7 @@ class Comment:
             if self.likes > self.top_likes:
                 for milestone in [5, 10, 25, 50, 100, 1000]:
                     if (self.likes >= milestone) and (self.top_likes < milestone):
-                        if bitfield.has(self.author.config.get("notifications", 63), flags.configNotifications.commentLikes):
+                        if bitfield.has(self.author.config.get("notifications", 127), flags.configNotifications.commentLikes):
                             notifications.create_notification(self.author, 5, {
                                 "comment_id": self.id,
                                 "milestone": milestone
@@ -142,7 +142,7 @@ class Comment:
         self.update_stats()
 
     def edit(self, editor: users.User, content: str):
-        if bitfield.has(self.flags, flags.post.protected):
+        if bitfield.has(self.flags, flags.posts.protected):
             raise status.postProtected
 
         if content == self.content:
@@ -157,7 +157,7 @@ class Comment:
             "time": uid.timestamp()
         })
 
-        self.flags = bitfield.add(self.flags, flags.comment.edited)
+        self.flags = bitfield.add(self.flags, flags.comments.edited)
         self.content = content
         db.post_comments.update_one({"_id": self.id}, {"$set": {
             "flags": self.flags,
@@ -222,12 +222,12 @@ def create_comment(post: posts.Post, author: users.User, content: str, parent: C
 
     # Send notifications
     if post.author.id != comment.author.id:
-        if bitfield.has(post.author.config.get("notifications", 63), flags.configNotifications.postComments):
+        if bitfield.has(post.author.config.get("notifications", 127), flags.configNotifications.postComments):
             notifications.create_notification(post.author, 4, {
                 "comment_id": comment.id
             })
     if parent.author.id != comment.author.id:
-        if parent and bitfield.has(parent.author.config.get("notifications", 63), flags.configNotifications.commentReplies):
+        if parent and bitfield.has(parent.author.config.get("notifications", 127), flags.configNotifications.commentReplies):
             notifications.create_notification(parent.author, 6, {
                 "comment_id": comment.id
             })

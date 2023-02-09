@@ -95,14 +95,14 @@ class Application:
 
     def create_bot(self, username: str):
         # Check if application already has a bot
-        if bitfield.has(self.flags, flags.application.hasBot):
+        if bitfield.has(self.flags, flags.applications.hasBot):
             raise status.missingPermissions # placeholder
 
         # Create new user for bot
-        bot = users.create_user(username, user_id=self.id, flags=bitfield.create([flags.user.bot]))
+        bot = users.create_user(username, user_id=self.id, flags=bitfield.create([flags.users.bot]))
 
         # Add hasBot flag to application
-        self.flags = bitfield.add(self.flags, flags.application.hasBot)
+        self.flags = bitfield.add(self.flags, flags.applications.hasBot)
         db.applications.update_one({"_id": self.id}, {"$set": {"flags": self.flags}})
 
         # Return bot
@@ -156,7 +156,7 @@ def migrate_user_to_bot(user: users.User, owner: users.User):
         "_id": user.id,
         "name": user.username,
         "description": "Migrated from standard user account.",
-        "flags": bitfield.create([flags.application.hasBot]),
+        "flags": bitfield.create([flags.applications.hasBot]),
         "owner_id": owner.id,
         "maintainers": [owner.id],
         "created": uid.timestamp()
@@ -165,13 +165,13 @@ def migrate_user_to_bot(user: users.User, owner: users.User):
 
     # Update user
     for flag in [
-        flags.user.child,
-        flags.user.ageNotConfirmed,
-        flags.user.requireEmail,
-        flags.user.requireMFA
+        flags.users.child,
+        flags.users.ageNotConfirmed,
+        flags.users.requireEmail,
+        flags.users.requireMFA
     ]:
         user.flags = bitfield.remove(user.flags, flag)
-    user.flags = bitfield.add(user.flags, flags.user.bot)
+    user.flags = bitfield.add(user.flags, flags.users.bot)
     user.admin = 0
     user.badges = []
     db.users.update_one({"_id": user.id}, {"$set": {

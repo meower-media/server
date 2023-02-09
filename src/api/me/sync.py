@@ -13,7 +13,7 @@ class UpdateConfig(BaseModel):
     )
     notifications: Optional[int] = Field(
         ge=0,
-        le=63
+        le=127
     )
     direct_messages: Optional[int] = Field(
         ge=0,

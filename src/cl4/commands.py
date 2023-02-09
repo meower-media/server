@@ -41,7 +41,7 @@ class CL4Commands:
             return await self.cl.send_code(client, "InvalidToken", listener=listener)
 
         # Get session info
-        if bitfield.has(user.flags, flags.user.bot):
+        if bitfield.has(user.flags, flags.users.bot):
             session = sessions.UserSession(
                 _id=user.id,
                 version=user.bot_session,
@@ -67,10 +67,10 @@ class CL4Commands:
             "ready",
             {
                 "session_id": client.session_id,
-                "bot_session": bitfield.has(user.flags, flags.user.bot),
+                "bot_session": bitfield.has(user.flags, flags.users.bot),
                 "user": user.client,
-                "account": (accounts.get_account(session.user.id).client if (not bitfield.has(session.user.flags, flags.user.bot)) else None),
-                "application": (applications.get_application(session.user.id).client if bitfield.has(session.user.flags, flags.user.bot) else None),
+                "account": (accounts.get_account(session.user.id).client if (not bitfield.has(session.user.flags, flags.users.bot)) else None),
+                "application": (applications.get_application(session.user.id).client if bitfield.has(session.user.flags, flags.users.bot) else None),
                 "chats": [chat.public for chat in chats.get_active_chats(session.user)],
                 "following": session.user.get_following_ids(),
                 "blocked": session.user.get_blocking_ids(),

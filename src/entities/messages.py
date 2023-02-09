@@ -81,7 +81,7 @@ class Message:
             "time": uid.timestamp()
         })
 
-        self.flags = bitfield.add(self.flags, flags.message.edited)
+        self.flags = bitfield.add(self.flags, flags.messages.edited)
         self.content = content
         db.chat_messages.update_one({"_id": self.id}, {"$set": {
             "flags": self.flags,
