@@ -7,7 +7,6 @@ version = "0.6.0-cl4-dev"
 buildDate = 1675864218
 
 
-@property
-def displayMeowerVersion():
+def display_version():
     # TODO: Make this a log event
     print(f"Meower Server - Version {version} - Build {buildDate}")

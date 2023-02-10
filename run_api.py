@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 import os
 
 from src.api.server import app
-from src.util.startup import displayMeowerVersion
+from src.util.startup import display_version
 
 if __name__ == "__main__":
     load_dotenv()
@@ -11,7 +11,7 @@ if __name__ == "__main__":
     HOST = os.getenv("HOST", "127.0.0.1")
     REST_PORT = int(os.getenv("REST_PORT", 3000))
 
-    displayMeowerVersion()
+    display_version()
 
     try:
         app.run(host=HOST, port=REST_PORT, debug=DEVELOPMENT, dev=DEVELOPMENT)

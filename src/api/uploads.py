@@ -13,7 +13,7 @@ async def v1_get_upload(request, hash: str, token: str):
 
     # Check token
     if token not in upload.tokens:
-        raise status.missingPermissions  # placeholder
+        raise status.notFound  # placeholder
 
     return raw(upload.data)
 
