@@ -162,11 +162,32 @@ class User:
     def get_following_ids(self):
         return [relationship["to"] for relationship in db.followed_users.find({"from": self.id})]
 
-    def get_followed_ids(self):
-        return [relationship["from"] for relationship in db.followed_users.find({"to": self.id})]
-
     def get_blocking_ids(self):
         return [relationship["to"] for relationship in db.blocked_users.find({"from": self.id})]
+
+    def get_following(self, before: str = None, after: str = None, limit: int = 50):
+        # Create ID range
+        if before is not None:
+            id_range = {"$lt": before}
+        elif after is not None:
+            id_range = {"$gt": after}
+        else:
+            id_range = {"$gt": "0"}
+
+        # Fetch and return all users
+        return [get_user(relationship["to"]) for relationship in db.followed_users.find({"from": self.id, "_id": id_range}, sort=[("to", -1)], limit=limit)]
+
+    def get_followed(self, before: str = None, after: str = None, limit: int = 50):
+        # Create ID range
+        if before is not None:
+            id_range = {"$lt": before}
+        elif after is not None:
+            id_range = {"$gt": after}
+        else:
+            id_range = {"$gt": "0"}
+
+        # Fetch and return all users
+        return [get_user(relationship["from"]) for relationship in db.followed_users.find({"to": self.id, "_id": id_range}, sort=[("from", -1)], limit=limit)]
 
     def is_following(self, user):
         return (db.followed_users.find_one({"to": user.id, "from": self.id}, projection={"_id": 1}) is not None)
@@ -184,6 +205,8 @@ class User:
         if self.id == user.id:
             raise status.missingPermissions  # placeholder
         if self.is_blocked(user):
+            raise status.missingPermissions  # placeholder
+        if self.is_blocking(user):
             raise status.missingPermissions  # placeholder
         if self.is_following(user):
             raise status.missingPermissions  # placeholder
