@@ -34,11 +34,6 @@ class messages:
     bridged = 1
     edited = 2
 
-class uploads:
-    blocked = 0
-    censored = 1
-    poisoned = 2
-
 class infractions:
     automatic = 0
     detectAlts = 1

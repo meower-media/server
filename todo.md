@@ -1,11 +1,10 @@
 # CURRENT ISSUES
-- Followers/following counts in /v1/users/<id> not matching up with /v1/users/<id>/follows or /v1/users/<id>/following
+- /v1/home is going really slow (some slowdown in /latest as well, but not as bad)
 - Implement a sane version system (startup version text)
 - Fix cyclic import error for src/entities/notifications.py when importing from src/entities/users.py
 
 # BEFORE RELEASE
 - Account to bot migration (should be easy) (half done, need to do API endpoint)
-- Uploads (mostly done)
 - Post/comment/message masquerading (easy, just waiting on image uploads)
 - Background worker thing to manage and cleanup stuff
 - Account exports and deletions

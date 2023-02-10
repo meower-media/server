@@ -28,7 +28,7 @@ async def v0_get_user(request, username: str):
 async def v1_get_user(request, user_id: str):
     user = users.get_user(user_id)
 
-    if request.ctx.user.id == user.id:
+    if request.ctx.user and (request.ctx.user.id == user.id):
         return json(user.client)
     else:
         return json(user.public)
@@ -40,7 +40,7 @@ async def v1_get_following(request, user_id: str):
     fetched_users = user.get_following(before=request.args.get("before"),
                                             after=request.args.get("after"),
                                             limit=int(request.args.get("limit", 50)))
-    return json({"users": [user.partial for user in fetched_users]})
+    return json([user.partial for user in fetched_users])
 
 
 @v1.get("/followers")
@@ -49,7 +49,7 @@ async def v1_get_followers(request, user_id: str):
     fetched_users = user.get_followed(before=request.args.get("before"),
                                             after=request.args.get("after"),
                                             limit=int(request.args.get("limit", 50)))
-    return json({"users": [user.partial for user in fetched_users]})
+    return json([user.partial for user in fetched_users])
 
 
 @v1.post("/follow")
@@ -74,7 +74,7 @@ async def v1_unfollow_user(request, user_id: str):
 @security.sanic_protected(ratelimit="change_relationship", allow_bots=False)
 async def v1_block_user(request, user_id: str):
     user = users.get_user(user_id)
-    requext.ctx.user.block_user(user)
+    request.ctx.user.block_user(user)
 
     return HTTPResponse(status=204)
 

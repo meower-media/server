@@ -357,6 +357,9 @@ def get_feed(user: users.User, before: str = None, after: str = None, limit: int
             # Have an attempt limit so we don't get stuck in an infinite loop
             if attempts >= 3:
                 break
+            elif attempts > 0:
+                if total_latest_posts < (limit-len(fetched_posts)):
+                    break
             else:
                 attempts += 1
             
@@ -400,6 +403,18 @@ def get_top_posts(before: str = None, after: str = None, limit: int = 25):
 
     # Fetch and return all posts
     return [Post(**post) for post in db.posts.find({"deleted_at": None, "_id": id_range}, sort=[("reputation", -1)], limit=limit)]
+
+def get_user_posts(user: users.User, before: str = None, after: str = None, limit: int = 25):
+    # Create ID range
+    if before is not None:
+        id_range = {"$lt": before}
+    elif after is not None:
+        id_range = {"$gt": after}
+    else:
+        id_range = {"$gt": "0"}
+
+    # Fetch and return all posts
+    return [Post(**post) for post in db.posts.find({"deleted_at": None, "author_id": user.id, "_id": id_range}, sort=[("time", -1)], limit=limit)]
 
 def search_posts(query: str, before: str = None, after: str = None, limit: int = 25):
     # Create ID range

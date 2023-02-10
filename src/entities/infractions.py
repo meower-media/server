@@ -21,7 +21,7 @@ class Infraction:
         self.id = _id
         self.user = users.get_user(user_id)
         self.moderator = users.get_user(moderator_id)
-        self.action = action
+        self.action = action  # 0: warning, 1: suspension, 2: ban
         self.reason = reason
         self.offending_content = offending_content
         self.flags = flags
@@ -79,19 +79,19 @@ class Infraction:
         exempt_alts: list = []
     ):
         updated_values = {}
-        if user is not None:
+        if user:
             updated_values["user"] = user
-        if action is not None:
+        if action:
             updated_values["action"] = action
-        if reason is not None:
+        if reason:
             updated_values["reason"] = reason
-        if offending_content is not None:
+        if offending_content:
             updated_values["offending_content"] = offending_content
-        if flags is not None:
+        if flags:
             updated_values["flags"] = flags
-        if status is not None:
+        if status:
             updated_values["status"] = status
-        if exempt_alts is not None:
+        if exempt_alts:
             updated_values["exempt_alts"] = exempt_alts
 
         for key, value in updated_values.items():
