@@ -219,6 +219,9 @@ def get_chat(chat_id: str):
     return Chat(**chat)
 
 def get_dm_chat(user1: users.User, user2: users.User):
+    if user1.id == user2.id:
+        raise status.missingPermissions  # placeholder
+
     chat = db.chats.find_one({"members": {"$all": [user1.id, user2.id]}, "direct": True, "deleted_at": None})
     if chat is not None:
         return Chat(**chat)

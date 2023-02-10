@@ -6,17 +6,21 @@ from src.database import db, redis
 v0 = Blueprint("v0_general", url_prefix="/")
 v1 = Blueprint("v1_general", url_prefix="/")
 
+
 @v0.get("/")
 async def v0_welcome(request):
-    return text("Welcome to v0 of the Meower API! This API version is no longer being worked on and will be discontinued on May 20th at 12am GMT. Please consider using v1 of the Meower API.")
+    return text("Welcome to v0 of the Meower API! This API will be retired May 20th @ 12AM GMT. Please use the v1 API.")
+
 
 @v1.get("/")
 async def v1_welcome(request):
-    return text("Welcome to v1 of the Meower API! This is the most current API verison.")
+    return text("Welcome to v1 of the Meower API! This is the most current API version.")
+
 
 @v0.get("/ip")
 async def v0_get_client_ip(request):
     return text(request.ip)
+
 
 @v0.get("/status")
 async def v0_status(request):
@@ -25,6 +29,7 @@ async def v0_status(request):
         "scratchDeprecated": (time.time() >= 1687564800)
     })
 
+
 @v0.get("/statistics")
 async def v0_statistics(request):
     users = db.users.estimated_document_count()
@@ -32,6 +37,7 @@ async def v0_statistics(request):
     chats = db.chats.estimated_document_count()
 
     return json({"error": False, "users": users, "posts": posts, "chats": chats})
+
 
 @v1.get("/statistics")
 async def v1_statistics(request):

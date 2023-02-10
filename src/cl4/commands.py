@@ -4,6 +4,7 @@ from src.cl4.cloudlink import cloudlink
 from src.util import events, bitfield, flags
 from src.entities import sessions, accounts, applications, chats, infractions
 
+
 class CL4Commands:
     def __init__(self, cl_server: cloudlink.server):
         self.cl = cl_server
@@ -58,7 +59,7 @@ class CL4Commands:
         if client.user_id in self.cl._users:
             self.cl._users[client.user_id].add(client)
         else:
-            self.cl._users[client.user_id] = set([client])
+            self.cl._users[client.user_id] = {client}
 
         # Initialize WebSocket session (get user, chats, relationships, etc.)
         await self.cl.send_code(client, "OK", listener=listener)
@@ -69,14 +70,16 @@ class CL4Commands:
                 "session_id": client.session_id,
                 "bot_session": bitfield.has(user.flags, flags.users.bot),
                 "user": user.client,
-                "account": (accounts.get_account(session.user.id).client if (not bitfield.has(session.user.flags, flags.users.bot)) else None),
-                "application": (applications.get_application(session.user.id).client if bitfield.has(session.user.flags, flags.users.bot) else None),
+                "account": (accounts.get_account(session.user.id).client if (
+                    not bitfield.has(session.user.flags, flags.users.bot)) else None),
+                "application": (applications.get_application(session.user.id).client if bitfield.has(session.user.flags,
+                                                                                                     flags.users.bot) else None),
                 "chats": [chat.public for chat in chats.get_active_chats(session.user)],
                 "following": session.user.get_following_ids(),
                 "blocked": session.user.get_blocking_ids(),
                 "guardian": None,
                 "infractions": [infraction.client for infraction in infractions.get_user_infractions(session.user)],
-                "time_taken": int((time.time()-timer_start)*1000)
+                "time_taken": int((time.time() - timer_start) * 1000)
             },
             listener=listener
         )
@@ -119,7 +122,7 @@ class CL4Commands:
             return await self.cl.send_code(client, "InvalidSubscriptionType", listener=listener)
 
         return await self.cl.send_code(client, "OK", listener=listener)
-    
+
     async def unsubscribe(self, client, payload, listener):
         # Validate payload
         validation = self.cl.supporter.validate(
