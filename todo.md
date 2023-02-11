@@ -1,5 +1,4 @@
 # CURRENT ISSUES
-- /v1/home is going really slow (some slowdown in /latest as well, but not as bad)
 - Implement a sane version system (startup version text)
 - Fix cyclic import error for src/entities/notifications.py when importing from src/entities/users.py
 

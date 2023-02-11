@@ -351,31 +351,19 @@ def get_feed(user: users.User, before: str = None, after: str = None, limit: int
 
     # Secondary fetch to fill results
     if len(fetched_posts) < limit:
-        total_latest_posts = redis.llen("latest_posts")
-        attempts = 0
-        while (len(fetched_posts) < limit) and (len(fetched_posts) < total_latest_posts):
-            # Have an attempt limit so we don't get stuck in an infinite loop
-            if attempts >= 3:
-                break
-            elif attempts > 0:
-                if total_latest_posts < (limit-len(fetched_posts)):
-                    break
-            else:
-                attempts += 1
-            
-            # Get random posts from latest posts list
+        latest_post_ids = redis.lrange("latest_posts", 0, 9999)
+        while (len(fetched_posts) < limit) and (len(latest_post_ids) > limit-len(fetched_posts)):
             for i in range(limit-len(fetched_posts)):
-                random_index = random.randint(0, total_latest_posts-1)
-                post_id = redis.lrange("latest_posts", random_index, random_index)[0].decode()
-                fetched_posts.insert(random.randint(0, len(fetched_posts)), get_post(post_id, error_on_deleted=False))
-
-            # Cleanup deleted and duplicates posts
-            post_ids = set()
-            for post in copy(fetched_posts):
-                if post.deleted_at or (post.id in post_ids):
-                    fetched_posts.remove(post)
+                try:
+                    post_id = random.choice(latest_post_ids)
+                    latest_post_ids.remove(post_id)
+                    fetched_posts.insert(random.randint(0, len(fetched_posts)), get_post(post_id.decode()))
+                except Exception as e:
+                    print(e)
                     continue
-                post_ids.add(post.id)
+
+            if len(fetched_posts) == limit:
+                break
 
     # Return fetched posts
     return fetched_posts
