@@ -1,7 +1,9 @@
 from sanic import Blueprint, json
 from sanic_ext import validate
 from pydantic import BaseModel, Field
+from typing import Optional
 
+from .global_models import AuthorMasquerade
 from src.util import security
 from src.entities import posts
 
@@ -10,6 +12,8 @@ v1 = Blueprint("v1_home", url_prefix="/home")
 
 
 class NewPostForm(BaseModel):
+    masquerade: AuthorMasquerade = None
+    bridged: Optional[bool] = Field()
     content: str = Field(
         min_length=1,
         max_length=4000

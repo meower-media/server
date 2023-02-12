@@ -13,6 +13,7 @@ class Post:
         self,
         _id: str,
         author_id: str,
+        masquerade: dict = None,
         content: str = None,
         filtered_content: str = None,
         flags: str = 0,
@@ -34,6 +35,7 @@ class Post:
     ):
         self.id = _id
         self.author = users.get_user(author_id)
+        self.masquerade = masquerade
         self.content = content
         self.filtered_content = filtered_content
         self.flags = flags
@@ -49,6 +51,7 @@ class Post:
         return {
             "id": self.id,
             "author": self.author.partial,
+            "masquerade": self.masquerade,
             "content": self.content,
             "filtered_content": self.filtered_content,
             "public_flags": self.public_flags,
@@ -62,6 +65,7 @@ class Post:
         return {
             "id": self.id,
             "author": self.author.partial,
+            "masquerade": self.masquerade,
             "content": self.content,
             "filtered_content": self.filtered_content,
             "flags": self.flags,
@@ -275,11 +279,12 @@ class Post:
         })
         self.author.update_stats()
 
-def create_post(author: users.User, content: str):
+def create_post(author: users.User, content: str, masquerade: dict = None):
     # Create post data
     post = {
         "_id": uid.snowflake(),
         "author_id": author.id,
+        "masquerade": masquerade,
         "content": content,
         "filtered_content": None,
         "time": uid.timestamp(),
@@ -358,8 +363,7 @@ def get_feed(user: users.User, before: str = None, after: str = None, limit: int
                     post_id = random.choice(latest_post_ids)
                     latest_post_ids.remove(post_id)
                     fetched_posts.insert(random.randint(0, len(fetched_posts)), get_post(post_id.decode()))
-                except Exception as e:
-                    print(e)
+                except:
                     continue
 
             if len(fetched_posts) == limit:
