@@ -14,8 +14,6 @@ class Post:
         _id: str,
         author_id: str,
         masquerade: dict = None,
-        content: str = None,
-        filtered_content: str = None,
         flags: int = 0,
         stats: dict = {
             "likes": 0,
@@ -29,6 +27,8 @@ class Post:
         },
         reputation: int = 0,
         reputation_last_counted: datetime = None,
+        content: str = None,
+        filtered_content: str = None,
         time: datetime = None,
         delete_after: datetime = None,
         deleted_at: datetime = None
@@ -36,12 +36,12 @@ class Post:
         self.id = _id
         self.author = users.get_user(author_id)
         self.masquerade = masquerade
-        self.content = content
-        self.filtered_content = filtered_content
         self.flags = flags
         self.stats = stats
         self.top_stats = top_stats
         self.reputation_last_counted = reputation_last_counted
+        self.content = content
+        self.filtered_content = filtered_content
         self.time = time
         self.delete_after = delete_after
         self.deleted_at = deleted_at
@@ -52,10 +52,10 @@ class Post:
             "id": self.id,
             "author": self.author.partial,
             "masquerade": self.masquerade,
-            "content": self.content,
-            "filtered_content": self.filtered_content,
             "public_flags": self.public_flags,
             "stats": self.stats,
+            "content": self.content,
+            "filtered_content": self.filtered_content,
             "time": int(self.time.timestamp()),
             "delete_after": (int(self.delete_after.timestamp()) if self.delete_after else None)
         }
@@ -66,12 +66,12 @@ class Post:
             "id": self.id,
             "author": self.author.partial,
             "masquerade": self.masquerade,
-            "content": self.content,
-            "filtered_content": self.filtered_content,
             "flags": self.flags,
             "public_flags": self.public_flags,
             "stats": self.stats,
             "top_stats": self.top_stats,
+            "content": self.content,
+            "filtered_content": self.filtered_content,
             "time": int(self.time.timestamp()),
             "delete_after": (int(self.delete_after.timestamp()) if self.delete_after else None),
             "deleted_at": (int(self.deleted_at.timestamp()) if self.deleted_at else None)
@@ -279,16 +279,16 @@ class Post:
         })
         self.author.update_stats()
 
-def create_post(author: users.User, content: str, masquerade: dict = None):
+def create_post(author: users.User, content: str, masquerade: dict = None, bridged: bool = False):
     # Create post data
     post = {
         "_id": uid.snowflake(),
         "author_id": author.id,
         "masquerade": masquerade,
+        "flags": (bitfield.create([flags.posts.bridged]) if bridged else 0),
         "content": content,
         "filtered_content": None,
-        "time": uid.timestamp(),
-        #"deleted_at": None
+        "time": uid.timestamp()
     }
 
     # Filter profanity
@@ -363,7 +363,7 @@ def get_feed(user: users.User, before: str = None, after: str = None, limit: int
                     post_id = random.choice(latest_post_ids)
                     latest_post_ids.remove(post_id)
                     fetched_posts.insert(random.randint(0, len(fetched_posts)), get_post(post_id.decode()))
-                except:
+                except Exception as e:
                     continue
 
             if len(fetched_posts) == limit:

@@ -1,7 +1,6 @@
 from datetime import datetime
 from copy import copy
 from threading import Thread
-import time
 
 from src.util import status, uid, events, filter, bitfield, flags
 from src.entities import users, posts, notifications
@@ -15,11 +14,11 @@ class Comment:
         parent_id: str = None,
         author_id: str = None,
         masquerade: dict = None,
-        content: str = None,
-        filtered_content: str = None,
         flags: int = 0,
         likes: int = 0,
         top_likes: int = 0,
+        content: str = None,
+        filtered_content: str = None,
         time: datetime = None,
         delete_after: datetime = None,
         deleted_at: datetime = None
@@ -29,11 +28,11 @@ class Comment:
         self.parent_id = parent_id
         self.author = users.get_user(author_id)
         self.masquerade = masquerade
-        self.content = content
-        self.filtered_content = filtered_content
         self.flags = flags
         self.likes = likes
         self.top_likes = top_likes
+        self.content = content
+        self.filtered_content = filtered_content
         self.time = time
         self.delete_after = delete_after
         self.deleted_at = deleted_at
@@ -46,10 +45,10 @@ class Comment:
             "parent_id": self.parent_id,
             "author": self.author.partial,
             "masquerade": self.masquerade,
-            "content": self.content,
-            "filtered_content": self.filtered_content,
             "public_flags": self.public_flags,
             "likes": self.likes,
+            "content": self.content,
+            "filtered_content": self.filtered_content,
             "time": int(self.time.timestamp()),
             "delete_after": (int(self.delete_after.timestamp()) if self.delete_after else None)
         }
@@ -62,12 +61,12 @@ class Comment:
             "parent_id": self.parent_id,
             "author": self.author.partial,
             "masquerade": self.masquerade,
-            "content": self.content,
-            "filtered_content": self.filtered_content,
             "flags": self.flags,
             "public_flags": self.public_flags,
             "likes": self.likes,
             "top_likes": self.top_likes,
+            "content": self.content,
+            "filtered_content": self.filtered_content,
             "time": int(self.time.timestamp()),
             "delete_after": (int(self.delete_after.timestamp()) if self.delete_after else None),
             "deleted_at": (int(self.deleted_at.timestamp()) if self.deleted_at else None)
@@ -207,6 +206,7 @@ def create_comment(post: posts.Post, author: users.User, content: str, parent: C
         "parent_id": (parent.id if parent else None),
         "author_id": author.id,
         "masquerade": masquerade,
+        "flags": (bitfield.create([flags.comments.bridged]) if bridged else 0),
         "content": content,
         "filtered_content": None,
         "time": uid.timestamp(),
@@ -231,8 +231,8 @@ def create_comment(post: posts.Post, author: users.User, content: str, parent: C
             notifications.create_notification(post.author, 4, {
                 "comment_id": comment.id
             })
-    if parent.author.id != comment.author.id:
-        if parent and bitfield.has(parent.author.config.get("notifications", 127), flags.configNotifications.commentReplies):
+    if parent and (parent.author.id != comment.author.id):
+        if bitfield.has(parent.author.config.get("notifications", 127), flags.configNotifications.commentReplies):
             notifications.create_notification(parent.author, 6, {
                 "comment_id": comment.id
             })

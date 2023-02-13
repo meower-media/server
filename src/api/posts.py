@@ -19,7 +19,7 @@ class PostEditForm(BaseModel):
 
 
 class CommentCreateForm(BaseModel):
-    masquerade: Optional[AuthorMasquerade] = None
+    masquerade: Optional[dict] = Field()
     bridged: Optional[bool] = Field()
     content: str = Field(
         min_length=1,
@@ -138,8 +138,11 @@ async def v1_get_comments(request, post_id: str):
 @validate(json=CommentCreateForm)
 @security.sanic_protected(ratelimit="create_comment", ignore_suspension=False)
 async def v1_create_comment(request, post_id: str, body: CommentCreateForm):
+    if body.masquerade:
+        AuthorMasquerade(**body.masquerade)
+
     post = posts.get_post(post_id)
-    comment = comments.create_comment(post, request.ctx.user, body.content)
+    comment = comments.create_comment(post, request.ctx.user, body.content, masquerade=body.masquerade, bridged=body.bridged)
     return json(comment.public)
 
 
@@ -217,7 +220,10 @@ async def v1_get_comment_replies(request, post_id: str, comment_id: str):
 @validate(json=CommentCreateForm)
 @security.sanic_protected(ratelimit="create_comment", ignore_suspension=False)
 async def v1_create_comment_reply(request, post_id: str, comment_id: str, body: CommentCreateForm):
+    if body.masquerade:
+        AuthorMasquerade(**body.masquerade)
+
     post = posts.get_post(post_id)
     parent_comment = comments.get_comment(comment_id)
-    comment = comments.create_comment(post, request.ctx.user, body.content, parent=parent_comment)
+    comment = comments.create_comment(post, request.ctx.user, body.content, parent=parent_comment, masquerade=body.masquerade, bridged=body.bridged)
     return json(comment.public)

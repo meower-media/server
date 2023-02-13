@@ -47,7 +47,7 @@ async def v1_get_chat_messages(request, chat_id: str):
 async def v1_create_chat_message(request, chat_id: str, body: NewMessageForm):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
-    message = messages.create_message(chat, request.ctx.user, body.content, reply_to=body.reply_to)
+    message = messages.create_message(chat, request.ctx.user, body.content, reply_to=body.reply_to, masquerade=body.masquerade, bridged=body.bridged)
     return json(message.public)
 
 

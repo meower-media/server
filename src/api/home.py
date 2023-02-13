@@ -1,7 +1,7 @@
 from sanic import Blueprint, json
 from sanic_ext import validate
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Dict, Union
 
 from .global_models import AuthorMasquerade
 from src.util import security
@@ -12,7 +12,7 @@ v1 = Blueprint("v1_home", url_prefix="/home")
 
 
 class NewPostForm(BaseModel):
-    masquerade: Optional[AuthorMasquerade] = None
+    masquerade: Optional[dict] = Field()
     bridged: Optional[bool] = Field()
     content: str = Field(
         min_length=1,
@@ -57,5 +57,8 @@ async def v1_get_trending_posts(request):
 @validate(json=NewPostForm)
 @security.sanic_protected(ratelimit="create_post", ignore_suspension=False)
 async def v1_create_post(request, body: NewPostForm):
-    post = posts.create_post(request.ctx.user, body.content)
+    if body.masquerade:
+        AuthorMasquerade(**body.masquerade)
+
+    post = posts.create_post(request.ctx.user, body.content, masquerade=body.masquerade, bridged=body.bridged)
     return json(post.public)

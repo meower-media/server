@@ -13,8 +13,8 @@ class Message:
         author_id: str = None,
         masquerade: dict = None,
         reply_to: str = None,
-        content: str = None,
         flags: int = 0,
+        content: str = None,
         likes: list = [],
         time: datetime = None,
         delete_after: datetime = None,
@@ -25,8 +25,8 @@ class Message:
         self.author = users.get_user(author_id)
         self.masquerade = masquerade
         self.reply_to = reply_to
-        self.content = content
         self.flags = flags
+        self.content = content
         self.likes = likes
         self.time = time
         self.delete_after = delete_after
@@ -40,9 +40,9 @@ class Message:
             "author": self.author.partial,
             "masquerade": self.masquerade,
             "reply_to": self.reply_to,
+            "flags": self.flags,
             "content": self.content,
             "filtered_content": self.content,  # Need to find a suitable filter, may end up being client-side
-            "flags": self.flags,
             "likes": self.likes,
             "time": int(self.time.timestamp()),
             "delete_after": (int(self.delete_after.timestamp()) if self.delete_after else None)
@@ -105,7 +105,7 @@ class Message:
             "chat_id": self.chat_id
         })
 
-def create_message(chat: chats.Chat, author: users.User, content: str, masquerade: dict = None, reply_to: str = None):
+def create_message(chat: chats.Chat, author: users.User, content: str, reply_to: str = None, masquerade: dict = None, bridged: bool = False):
     # Check whether a DM can be sent
     if chat.direct:
         for member in chat.members:
@@ -120,6 +120,7 @@ def create_message(chat: chats.Chat, author: users.User, content: str, masquerad
         "author_id": author.id,
         "masquerade": masquerade,
         "reply_to": reply_to,
+        "flags": (bitfield.create([flags.messages.bridged]) if bridged else 0),
         "content": content,
         "time": uid.timestamp()
     }
