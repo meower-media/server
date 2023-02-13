@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from .util import get_chat_or_abort_if_no_membership
+from ..global_models import AuthorMasquerade
 from src.util import status, security
 from src.entities import messages
 
@@ -14,6 +15,8 @@ class NewMessageForm(BaseModel):
     reply_to: Optional[str] = Field(
         max_length=25
     )
+    masquerade: Optional[AuthorMasquerade] = None
+    bridged: Optional[bool] = Field()
     content: str = Field(
         min_length=1,
         max_length=2000
