@@ -4,7 +4,8 @@
 
 # BEFORE RELEASE
 - Account to bot migration (should be easy) (half done, need to do API endpoint)
-- Post/comment/message masquerading (easy, just waiting on image uploads -- but uplaods are done now) (posts done, comments and messages need doing now)
+- Bridged flag for posts/comments/messages
+- Move file uploads to a CDN server
 - Background worker thing to manage and cleanup stuff
 - Account exports and deletions
 - Fix up ratelimits and placeholder status codes
