@@ -12,7 +12,7 @@ v1 = Blueprint("v1_home", url_prefix="/home")
 
 
 class NewPostForm(BaseModel):
-    masquerade: AuthorMasquerade = None
+    masquerade: Optional[AuthorMasquerade] = None
     bridged: Optional[bool] = Field()
     content: str = Field(
         min_length=1,

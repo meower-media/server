@@ -3,6 +3,7 @@ from sanic_ext import validate
 from pydantic import BaseModel, Field
 from typing import Optional
 
+from .global_models import AuthorMasquerade
 from src.util import status, security
 from src.entities import posts, comments
 
@@ -18,6 +19,8 @@ class PostEditForm(BaseModel):
 
 
 class CommentCreateForm(BaseModel):
+    masquerade: Optional[AuthorMasquerade] = None
+    bridged: Optional[bool] = Field()
     content: str = Field(
         min_length=1,
         max_length=2000
