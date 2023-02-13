@@ -11,9 +11,10 @@ class Message:
         _id: str,
         chat_id: str,
         author_id: str = None,
+        masquerade: dict = None,
         reply_to: str = None,
         content: str = None,
-        flags: str = 0,
+        flags: int = 0,
         likes: list = [],
         time: datetime = None,
         delete_after: datetime = None,
@@ -22,6 +23,7 @@ class Message:
         self.id = _id
         self.chat_id = chat_id
         self.author = users.get_user(author_id)
+        self.masquerade = masquerade
         self.reply_to = reply_to
         self.content = content
         self.flags = flags
@@ -36,6 +38,7 @@ class Message:
             "id": self.id,
             "chat_id": self.chat_id,
             "author": self.author.partial,
+            "masquerade": self.masquerade,
             "reply_to": self.reply_to,
             "content": self.content,
             "filtered_content": self.content,  # Need to find a suitable filter, may end up being client-side
@@ -102,7 +105,7 @@ class Message:
             "chat_id": self.chat_id
         })
 
-def create_message(chat: chats.Chat, author: users.User, content: str, reply_to: str = None):
+def create_message(chat: chats.Chat, author: users.User, content: str, masquerade: dict = None, reply_to: str = None):
     # Check whether a DM can be sent
     if chat.direct:
         for member in chat.members:
@@ -115,6 +118,7 @@ def create_message(chat: chats.Chat, author: users.User, content: str, reply_to:
         "_id": uid.snowflake(),
         "chat_id": chat.id,
         "author_id": author.id,
+        "masquerade": masquerade,
         "reply_to": reply_to,
         "content": content,
         "time": uid.timestamp()

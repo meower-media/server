@@ -14,9 +14,10 @@ class Comment:
         post_id: str,
         parent_id: str = None,
         author_id: str = None,
+        masquerade: dict = None,
         content: str = None,
         filtered_content: str = None,
-        flags: str = 0,
+        flags: int = 0,
         likes: int = 0,
         top_likes: int = 0,
         time: datetime = None,
@@ -27,6 +28,7 @@ class Comment:
         self.post_id = post_id
         self.parent_id = parent_id
         self.author = users.get_user(author_id)
+        self.masquerade = masquerade
         self.content = content
         self.filtered_content = filtered_content
         self.flags = flags
@@ -43,6 +45,7 @@ class Comment:
             "post_id": self.post_id,
             "parent_id": self.parent_id,
             "author": self.author.partial,
+            "masquerade": self.masquerade,
             "content": self.content,
             "filtered_content": self.filtered_content,
             "public_flags": self.public_flags,
@@ -58,6 +61,7 @@ class Comment:
             "post_id": self.post_id,
             "parent_id": self.parent_id,
             "author": self.author.partial,
+            "masquerade": self.masquerade,
             "content": self.content,
             "filtered_content": self.filtered_content,
             "flags": self.flags,
@@ -195,13 +199,14 @@ class Comment:
             "id": self.id
         })
 
-def create_comment(post: posts.Post, author: users.User, content: str, parent: Comment = None):
+def create_comment(post: posts.Post, author: users.User, content: str, parent: Comment = None, masquerade: dict = None, bridged: bool = False):
     # Create comment data
     comment = {
         "_id": uid.snowflake(),
         "post_id": post.id,
         "parent_id": (parent.id if parent else None),
         "author_id": author.id,
+        "masquerade": masquerade,
         "content": content,
         "filtered_content": None,
         "time": uid.timestamp(),

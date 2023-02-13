@@ -5,6 +5,7 @@ from threading import Thread
 import string
 import time
 
+import src.entities.sessions as sessions
 from src.util import status, uid, events, security, bitfield, flags
 from src.database import db
 
@@ -389,6 +390,13 @@ class User:
         encoded_data = b64encode(f"2:{self.id}:{self.bot_session}".encode())
         signature = security.sign_data(encoded_data)
         return f"{encoded_data.decode()}.{signature.decode()}"
+
+    def delete(self):
+        # Update user
+        db.users.update_one({"_id": self.id}, {"$set": {"delete_after": uid.timestamp(epoch=int(time.time()+1209600))}})
+
+        # Revoke all sessions
+        # uhh, circular import issue again
 
 def create_user(username: str, user_id: str = None, flags: int = 0):
     userdata = {

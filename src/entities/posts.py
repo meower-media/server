@@ -16,7 +16,7 @@ class Post:
         masquerade: dict = None,
         content: str = None,
         filtered_content: str = None,
-        flags: str = 0,
+        flags: int = 0,
         stats: dict = {
             "likes": 0,
             "meows": 0,
