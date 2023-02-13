@@ -15,14 +15,16 @@ class applications:
     notSafeForKids = 2
 
 class posts:
-    reputationHidden = 0
-    commentsDisabled = 1
+    bridged = 0
+    reputationHidden = 1
+    commentsDisabled = 2
     edited = 3
     protected = 4
     reputationBanned = 5
 
 class comments:
-    edited = 0
+    bridged = 0
+    edited = 1
 
 class chats:
     inviteCodeDisabled = 0
