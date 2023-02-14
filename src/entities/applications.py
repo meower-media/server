@@ -144,7 +144,7 @@ def migrate_user_to_bot(user: users.User, owner: users.User):
     except status.notFound:
         raise status.missingPermissions  # placeholder
     else:
-        if account.mfa_enabled:
+        if account.email or account.mfa_enabled:
             raise status.missingPermissions  # placeholder
         
         moderation_status = infractions.user_status(user)

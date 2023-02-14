@@ -1,6 +1,7 @@
 from sanic import Blueprint, text, json
 import time
 
+from src.util import uid
 from src.database import db, redis
 
 v0 = Blueprint("v0_general", url_prefix="/")
@@ -9,7 +10,7 @@ v1 = Blueprint("v1_general", url_prefix="/")
 
 @v0.get("/")
 async def v0_welcome(request):
-    return text("Welcome to v0 of the Meower API! This API will be retired May 20th @ 12AM GMT. Please use the v1 API.")
+    return text(f"Welcome to v0 of the Meower API! Meower API v0 will be discontinued on {uid.timestamp(epoch=1688169600).isoformat()}. Please use the v1 API.")
 
 
 @v1.get("/")
@@ -26,7 +27,7 @@ async def v0_get_client_ip(request):
 async def v0_status(request):
     return json({
         "isRepairMode": (redis.exists("repair_mode") == 1),
-        "scratchDeprecated": (time.time() >= 1687564800)
+        "scratchDeprecated": (time.time() > 1688169599)
     })
 
 

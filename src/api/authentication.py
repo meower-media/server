@@ -30,7 +30,6 @@ class LoginPasswordForm(BaseModel):
         max_length=20
     )
     password: str = Field(
-        min_length=1,
         max_length=255
     )
     captcha: Optional[str] = Field(
@@ -50,7 +49,6 @@ class LoginTOTPForm(BaseModel):
 
 class PasswordVerificationForm(BaseModel):
     password: str = Field(
-        min_length=1,
         max_length=255
     )
 
@@ -105,7 +103,7 @@ async def v1_login_password(request, body: LoginPasswordForm):
         else:
             user_id = users.get_id_from_username(body.username)
     except status.notFound:
-        raise status.invalidCredentials  # Placeholder error
+        raise status.invalidCredentials  # placeholder
 
     # Get account and check password
     account = accounts.get_account(user_id)
