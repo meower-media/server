@@ -3,7 +3,6 @@
 - Fix cyclic import error for src/entities/notifications.py when importing from src/entities/users.py
 
 # BEFORE RELEASE
-- Move file uploads to a CDN server
 - Background worker thing to manage and cleanup stuff
 - Account exports and deletions
 - Fix up ratelimits and placeholder status codes

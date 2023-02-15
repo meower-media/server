@@ -14,7 +14,7 @@ app.error_handler = MeowerErrorHandler()
 app.register_middleware(parse_ua, "request")
 app.register_middleware(ratelimit_header, "response")
 
-# Start v0 API
+# Initialize v0 API Blueprints
 if not time.time() > 1688169599:  # Check whether v0 has been discontinued
     from .general import v0 as v0_general
     from .home import v0 as v0_home
@@ -29,7 +29,7 @@ if not time.time() > 1688169599:  # Check whether v0 has been discontinued
         v0_search
     ))
 
-# Start v1 API
+# Initialize v1 API Blueprints
 from .general import v1 as v1_general
 from .authentication import v1 as v1_authentication
 from .me import v1 as v1_me
@@ -37,7 +37,6 @@ from .home import v1 as v1_home
 from .posts import v1 as v1_posts
 from .users import v1 as v1_users
 from .chats import v1 as v1_chats
-from .uploads import v1 as v1_uploads
 from .applications import v1 as v1_applications
 from .search import v1 as v1_search
 app.blueprint(Blueprint.group(
@@ -48,7 +47,6 @@ app.blueprint(Blueprint.group(
     v1_posts,
     v1_users,
     v1_chats,
-    v1_uploads,
     v1_applications,
     v1_search,
     version=1

@@ -5,7 +5,6 @@ from threading import Thread
 import string
 import time
 
-import src.entities.sessions as sessions
 from src.util import status, uid, events, security, bitfield, flags
 from src.database import db
 

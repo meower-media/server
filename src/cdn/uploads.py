@@ -1,5 +1,5 @@
 from sanic import Blueprint, json
-from sanic.response import raw, file
+from sanic.response import raw
 
 from src.util import status, security
 from src.entities import uploads
@@ -27,7 +27,7 @@ async def v1_get_upload(request, upload_id: str, token: str):
 
 
 @v1.post("/")
-@security.sanic_protected(allow_bots=False, ignore_suspension=False)
+@security.sanic_protected(ignore_suspension=False)
 async def v1_create_upload(request):
     # Get file
     file = request.files.get("file")
