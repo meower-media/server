@@ -224,7 +224,11 @@ class Meower:
                                     FileCheck, FileRead, ValidAuth, Banned = self.accounts.authenticate(username, password)
                                     if FileCheck and FileRead:
                                         if ValidAuth:
-                                            self.supporter.kickUser(username, status="IDConflict") # Kick bad clients missusing the username
+                                            try:
+                                                self.supporter.kickUser(username, status="IDConflict") # Kick bad clients missusing the username
+                                            except:
+                                                self.cl._closed_connection_server(client, self.cl)
+
                                             self.filesystem.create_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]), {"users": [], "last_user": username})
                                             status, netlog = self.filesystem.load_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]))
                                             if status:
@@ -845,7 +849,10 @@ class Meower:
                                 if FileRead:
                                     for user in netlog["users"]:
                                         if user in self.cl.getUsernames() and (self.cl.statedata["ulist"]["objs"][self.cl.statedata["ulist"]["usernames"][user]]["ip"] == val):
-                                            self.supporter.kickUser(user, "Blocked")
+                                            try:
+                                                self.supporter.kickUser(user, "Blocked")
+                                            except:
+                                                self.cl._closed_connection_server(client, self.cl)
                                 
                             result = self.filesystem.write_item("config", "IPBanlist", payload)
                             if result:
@@ -924,7 +931,10 @@ class Meower:
                             FileCheck, FileRead, FileWrite = self.accounts.update_setting(val, {"tokens": []}, forceUpdate=True)
                             if FileCheck and FileRead and FileWrite:
                                 # Kick the user
-                                self.supporter.kickUser(val)
+                                try:
+                                    self.supporter.kickUser(val)
+                                except:
+                                    self.cl._closed_connection_server(client, self.cl)
                                 
                                 # Tell client it kicked the user
                                 self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
