@@ -1377,7 +1377,11 @@ class Meower:
     def get_chat_list(self, client, val, listener_detected, listener_id):
         # Check if the client is already authenticated
         if self.supporter.isAuthenticated(client):
-            chat_index = self.getIndex(location="chats", query={"members": {"$all": [client]}}, truncate=True, sort="nickname")
+            if (type(val) == dict) and ("page" in val) and self.checkForInt(val["page"]):
+                page = int(val["page"])
+            else:
+                page = 1
+            chat_index = self.getIndex(location="chats", query={"members": {"$all": [client]}}, truncate=True, page=page, sort="nickname")
             chat_index["all_chats"] = []
             for i in range(len(chat_index["index"])):
                 chat_index["all_chats"].append(chat_index["index"][i])
