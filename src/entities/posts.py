@@ -165,7 +165,7 @@ class Post:
 
     def like(self, user: users.User):
         if self.liked(user):
-            raise status.alreadyLiked
+            return
         
         db.post_likes.insert_one({
             "_id": uid.snowflake(),
@@ -181,7 +181,7 @@ class Post:
 
     def meow(self, user: users.User):
         if self.meowed(user):
-            raise status.alreadyMeowed
+            return
         
         db.post_meows.insert_one({
             "_id": uid.snowflake(),
@@ -197,7 +197,7 @@ class Post:
 
     def unlike(self, user: users.User):
         if not self.liked(user):
-            raise status.notLiked
+            return
 
         db.post_likes.delete_one({
             "post_id": self.id,
@@ -211,7 +211,7 @@ class Post:
     
     def unmeow(self, user: users.User):
         if not self.meowed(user):
-            raise status.notMeowed
+            return
 
         db.post_meows.delete_one({
             "post_id": self.id,
@@ -225,9 +225,8 @@ class Post:
 
     def edit(self, editor: users.User, content: str, public: bool = True):
         if bitfield.has(self.flags, flags.posts.protected):
-            raise status.postProtected
-
-        if content == self.content:
+            raise status.missingPermissions
+        elif content == self.content:
             return
         
         db.post_revisions.insert_one({
@@ -317,7 +316,7 @@ def get_post(post_id: str, error_on_deleted: bool = True):
     # Get post from database and check whether it's not found or deleted
     post = db.posts.find_one({"_id": post_id})
     if post is None or (error_on_deleted and post.get("deleted_at")):
-        raise status.notFound
+        raise status.resourceNotFound
 
     # Return post object
     return Post(**post)

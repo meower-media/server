@@ -2,32 +2,27 @@ from sanic import Blueprint, HTTPResponse, json
 from sanic_ext import validate
 from pydantic import BaseModel, Field
 
+from ..global_models import RequestVerification
 from src.util import status, security
 from src.entities import accounts, tickets
 
 v1 = Blueprint("v1_me_account", url_prefix="/account")
 
 class UpdateEmailForm(BaseModel):
-    ticket: str = Field(
-        max_length=255
-    )
+    auth: RequestVerification = None
     email: str = Field(
         max_length=255
     )
 
 class UpdatePasswordForm(BaseModel):
-    ticket: str = Field(
-        max_length=255
-    )
+    auth: RequestVerification = None
     password: str = Field(
         min_length=8,
         max_length=255
     )
 
 class EnableTOTPForm(BaseModel):
-    ticket: str = Field(
-        max_length=255
-    )
+    auth: RequestVerification = None
     secret: str = Field(
         max_length=64
     )
@@ -37,22 +32,16 @@ class EnableTOTPForm(BaseModel):
     )
 
 class DisableTOTPForm(BaseModel):
-    ticket: str = Field(
-        max_length=255
-    )
+    auth: RequestVerification = None
 
 class MFARecoveryCodesForm(BaseModel):
-    ticket: str = Field(
-        max_length=255
-    )
+    auth: RequestVerification = None
     regenerate: bool = Field()
 
 @v1.get("/")
 @security.sanic_protected(allow_bots=False)
 async def v1_get_account(request):
     account = accounts.get_account(request.ctx.user.id)
-    if account is None:
-        raise status.internal
     
     return json(account.client)
 
@@ -60,13 +49,7 @@ async def v1_get_account(request):
 @validate(json=UpdateEmailForm)
 @security.sanic_protected(allow_bots=False)
 async def v1_update_email(request, body: UpdateEmailForm):
-    verification_ticket = tickets.get_ticket_details(body.ticket)
-    if (verification_ticket is None) or (verification_ticket["t"] != "verification") or (verification_ticket["u"] != request.ctx.user.id):
-        raise status.notAuthenticated
-
     account = accounts.get_account(request.ctx.user.id)
-    if account is None:
-        raise status.internal
     
     account.change_email(body.email)
     
@@ -76,13 +59,7 @@ async def v1_update_email(request, body: UpdateEmailForm):
 @validate(json=UpdatePasswordForm)
 @security.sanic_protected(allow_bots=False)
 async def v1_update_password(request, body: UpdatePasswordForm):
-    verification_ticket = tickets.get_ticket_details(body.ticket)
-    if (verification_ticket is None) or (verification_ticket["t"] != "verification") or (verification_ticket["u"] != request.ctx.user.id):
-        raise status.notAuthenticated
-
     account = accounts.get_account(request.ctx.user.id)
-    if account is None:
-        raise status.internal
     
     account.change_password(body.password)
     
@@ -92,13 +69,7 @@ async def v1_update_password(request, body: UpdatePasswordForm):
 @validate(json=EnableTOTPForm)
 @security.sanic_protected(allow_bots=False)
 async def v1_mfa_enable_totp(request, body: EnableTOTPForm):
-    verification_ticket = tickets.get_ticket_details(body.ticket)
-    if (verification_ticket is None) or (verification_ticket["t"] != "verification") or (verification_ticket["u"] != request.ctx.user.id):
-        raise status.notAuthenticated
-
     account = accounts.get_account(request.ctx.user.id)
-    if account is None:
-        raise status.internal
 
     account.enable_totp(body.secret, body.code)
     
@@ -108,13 +79,7 @@ async def v1_mfa_enable_totp(request, body: EnableTOTPForm):
 @validate(json=DisableTOTPForm)
 @security.sanic_protected(allow_bots=False)
 async def v1_mfa_disable_totp(request, body: DisableTOTPForm):
-    verification_ticket = tickets.get_ticket_details(body.ticket)
-    if (verification_ticket is None) or (verification_ticket["t"] != "verification") or (verification_ticket["u"] != request.ctx.user.id):
-        raise status.notAuthenticated
-
     account = accounts.get_account(request.ctx.user.id)
-    if account is None:
-        raise status.internal
 
     account.disable_totp()
     
@@ -124,13 +89,7 @@ async def v1_mfa_disable_totp(request, body: DisableTOTPForm):
 @validate(json=MFARecoveryCodesForm)
 @security.sanic_protected(allow_bots=False)
 async def v1_mfa_recovery_codes(request, body: MFARecoveryCodesForm):
-    verification_ticket = tickets.get_ticket_details(body.ticket)
-    if (verification_ticket is None) or (verification_ticket["t"] != "verification") or (verification_ticket["u"] != request.ctx.user.id):
-        raise status.notAuthenticated
-
     account = accounts.get_account(request.ctx.user.id)
-    if account is None:
-        raise status.internal
 
     if body.regenerate:
         account.regenerate_recovery_codes()

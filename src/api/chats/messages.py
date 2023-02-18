@@ -38,7 +38,7 @@ async def v1_get_chat_messages(request, chat_id: str):
     fetched_messages = messages.get_latest_messages(chat, before=request.args.get("before"),
                                                     after=request.args.get("after"),
                                                     limit=int(request.args.get("limit", 25)))
-    return json({"messages": [message.public for message in fetched_messages]})
+    return json([message.public for message in fetched_messages])
 
 
 @v1.post("/")
@@ -59,7 +59,7 @@ async def v1_get_chat_message(request, chat_id: str, message_id: str):
     # Get message
     message = messages.get_message(message_id)
     if message.chat_id != chat.id:
-        raise status.notFound
+        raise status.resourceNotFound
 
     return json(message.public)
 
@@ -73,7 +73,7 @@ async def v1_edit_chat_message(request, chat_id: str, message_id: str, body: Edi
     # Get message
     message = messages.get_message(message_id)
     if message.chat_id != chat.id:
-        raise status.notFound
+        raise status.resourceNotFound
 
     # Edit message
     if message.author.id != request.ctx.user.id:
@@ -91,7 +91,7 @@ async def v1_delete_chat_message(request, chat_id: str, message_id: str):
     # Get message
     message = messages.get_message(message_id)
     if message.chat_id != chat.id:
-        raise status.notFound
+        raise status.resourceNotFound
 
     # Delete message
     if (message.author.id != request.ctx.user.id) and (chat.permissions.get(request.ctx.user.id, 0) < 1):
@@ -107,4 +107,4 @@ async def v1_get_chat_message_context(request, chat_id: str, message_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
     fetched_messages = messages.get_message_context(chat, message_id)
-    return json({"messages": [message.public for message in fetched_messages]})
+    return json([message.public for message in fetched_messages])

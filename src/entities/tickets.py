@@ -5,7 +5,6 @@ from src.util import uid, security
 from src.database import redis
 
 TICKET_EXPIRATIONS = {
-    "verification": 60,
     "mfa": 300,
     "email_verification": 3600,
     "email_revert": 86400,

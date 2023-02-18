@@ -35,12 +35,12 @@ async def v1_get_chat(request, chat_id: str):
 async def v1_update_chat(request, chat_id: str, body: EditChatForm):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
-    if body.name is not None:
+    if body.name:
         if chat.permissions.get(request.ctx.user.id, 0) < 1:
             raise status.missingPermissions
 
         chat.update_name(body.name)
-    if body.owner_id is not None:
+    if body.owner_id:
         if chat.permissions.get(request.ctx.user.id, 0) < 2:
             raise status.missingPermissions
 
@@ -93,4 +93,4 @@ async def v1_search_chat_messages(request, chat_id: str):
     fetched_messages = messages.search_messages(chat, request.args.get("q", ""), before=request.args.get("before"),
                                                 after=request.args.get("after"),
                                                 limit=int(request.args.get("limit", 25)))
-    return json({"messages": [message.public for message in fetched_messages]})
+    return json([message.public for message in fetched_messages])

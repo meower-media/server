@@ -2,8 +2,28 @@ from datetime import datetime
 from base64 import b64encode, b64decode
 
 from src.util import status, uid, events, security, email
-from src.entities import users, accounts, networks
+from src.entities import users, accounts, networks, applications
 from src.database import db, redis
+
+SESSION_SCOPES = [
+    "profile.read",
+    "profile.write",
+    "account.read",
+    "inbox.read",
+    "inbox.mark",
+    "sync.read",
+    "sync.write",
+    "applications.read",
+    "applications.write",
+    "posts.read",
+    "posts.write",
+    "comments.read",
+    "comments.write",
+    "chats.read",
+    "chats.write",
+    "messages.read",
+    "messages.write"
+]
 
 class UserSession:
     def __init__(
@@ -70,6 +90,73 @@ class UserSession:
             "id": self.id
         })
 
+class OAuthSession:
+    def __init__(
+        self,
+        _id: str,
+        version: int = 0,
+        user_id: str = None,
+        application_id: str = None,
+        scopes: int = 0,
+        ip_address: str = None,
+        last_refreshed: datetime = None,
+        created: datetime = None
+    ):
+        self.id = _id
+        self.version = version
+        self.user = users.get_user(user_id)
+        self.application = applications.get_application(application_id)
+        self.scopes = scopes
+        self.ip_address = ip_address
+        self.last_refreshed = last_refreshed
+        self.created = created
+
+    @property
+    def signed_token(self):
+        encoded_data = b64encode(f"1:{self.id}:{str(self.version)}".encode())
+        signature = security.sign_data(encoded_data)
+        return f"{encoded_data.decode()}.{signature.decode()}"
+
+    def refresh(self, device: dict, network: networks.Network):
+        self.version += 1
+        self.device = device
+        self.ip_address = network.ip_address
+        self.last_refreshed = uid.timestamp()
+        redis.set(f"ses:{self.id}:{str(self.version)}", self.user.id, ex=3600)
+        redis.expire(f"ses:{self.id}:{str(self.version-1)}", 5)
+        db.sessions.update_one({"_id": self.id}, {"$set": {
+            "version": self.version,
+            "device": self.device,
+            "ip_address": self.ip_address,
+            "last_refreshed": self.last_refreshed
+        }})
+        events.emit_event("session_updated", self.user.id, {
+            "id": self.id,
+            "version": self.version,
+            "device": self.device,
+            "ip_address": self.ip_address,
+            "last_refreshed": int(self.last_refreshed.timestamp())
+        })
+
+    def revoke(self):
+        db.sessions.delete_one({"_id": self.id})
+        for key in redis.keys(f"ses:{self.id}:*"):
+            redis.delete(key.decode())
+        events.emit_event("session_deleted", self.user.id, {
+            "id": self.id
+        })
+
+class BotSession:
+    def __init__(
+        self,
+        _id: str,
+        version: int = None,
+        user_id: str = None
+    ):
+        self.id = _id
+        self.version = version
+        self.user = users.get_user(user_id)
+
 def create_user_session(account: accounts.Account, device: dict, network: networks.Network):
     session = {
         "_id": uid.snowflake(),
@@ -97,7 +184,7 @@ def create_user_session(account: accounts.Account, device: dict, network: networ
 def get_user_session(session_id: str):
     session = db.sessions.find_one({"_id": session_id})
     if session is None:
-        raise status.notFound
+        raise status.resourceNotFound
     
     return UserSession(**session)
 

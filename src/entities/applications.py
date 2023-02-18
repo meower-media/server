@@ -40,10 +40,7 @@ class Application:
 
     @property
     def bot(self):
-        try:
-            return users.get_user(self.id, return_deleted=False)
-        except:
-            raise status.missingPermissions # placeholder
+        return users.get_user(self.id, return_deleted=False)
 
     def edit(self, name: str = None, description: str = None):
         if name is not None:
@@ -61,7 +58,7 @@ class Application:
     def add_maintainer(self, user: users.User):
         # Check whether user is already a maintainer
         if self.has_maintainer(user):
-            raise status.missingPermissions # placeholder
+            raise status.applicationMaintainerAlreadyExists
 
         # Add maintainer
         self.maintainers.append(user)
@@ -70,11 +67,11 @@ class Application:
     def remove_maintainer(self, user: users.User):
         # Check whether user is a maintainer
         if not self.has_maintainer(user):
-            raise status.missingPermissions # placeholder
+            raise status.resourceNotFound
 
         # Check whether user is owner
         if user.id == self.owner_id:
-            raise status.missingPermissions # placeholder
+            raise status.missingPermissions
 
         # Remove maintainer
         self.maintainers.remove(user)
@@ -83,11 +80,11 @@ class Application:
     def transfer_ownership(self, user: users.User):
         # Check whether user is a maintainer
         if user.id not in self.maintainers:
-            raise status.missingPermissions # placeholder
+            raise status.resourceNotFound
 
         # Check whether user is owner
         if user.id == self.owner_id:
-            raise status.missingPermissions # placeholder
+            raise status.missingPermissions
 
         # Set new owner
         self.owner_id = user.id
@@ -96,7 +93,7 @@ class Application:
     def create_bot(self, username: str):
         # Check if application already has a bot
         if bitfield.has(self.flags, flags.applications.hasBot):
-            raise status.missingPermissions # placeholder
+            raise status.botAlreadyExists
 
         # Create new user for bot
         bot = users.create_user(username, user_id=self.id, flags=bitfield.create([flags.users.bot]))
@@ -130,7 +127,7 @@ def get_application(application_id: str):
     application = db.applications.find_one({"_id": application_id})
 
     if application is None:
-        raise status.notFound
+        raise status.resourceNotFound
     else:
         return Application(**application)
 
@@ -141,15 +138,15 @@ def migrate_user_to_bot(user: users.User, owner: users.User):
     # Check migration eligibility
     try:
         account = accounts.get_account(user.id)
-    except status.notFound:
-        raise status.missingPermissions  # placeholder
+    except:
+        raise status.missingPermissions
     else:
         if account.email or account.mfa_enabled:
-            raise status.missingPermissions  # placeholder
+            raise status.missingPermissions
         
         moderation_status = infractions.user_status(user)
         if moderation_status["suspended"] or moderation_status["banned"]:
-            raise status.missingPermissions  # placeholder
+            raise status.missingPermissions
 
     # Create application
     application = {

@@ -36,21 +36,21 @@ async def v0_get_home(request):
 async def v1_get_feed(request):
     fetched_posts = posts.get_feed(request.ctx.user, before=request.args.get("before"), after=request.args.get("after"),
                                    limit=int(request.args.get("limit", 25)))
-    return json({"posts": [post.public for post in fetched_posts]})
+    return json([post.public for post in fetched_posts])
 
 
 @v1.get("/latest")
 async def v1_get_latest_posts(request):
     fetched_posts = posts.get_latest_posts(before=request.args.get("before"), after=request.args.get("after"),
                                            limit=int(request.args.get("limit", 25)))
-    return json({"posts": [post.public for post in fetched_posts]})
+    return json([post.public for post in fetched_posts])
 
 
 @v1.get("/trending")
 async def v1_get_trending_posts(request):
     fetched_posts = posts.get_top_posts(before=request.args.get("before"), after=request.args.get("after"),
                                         limit=int(request.args.get("limit", 25)))
-    return json({"posts": [post.public for post in fetched_posts]})
+    return json([post.public for post in fetched_posts])
 
 
 @v1.post("/")

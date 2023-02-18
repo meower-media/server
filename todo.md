@@ -1,12 +1,12 @@
 # CURRENT ISSUES
 - Implement a sane version system (startup version text)
 - Fix cyclic import error for src/entities/notifications.py when importing from src/entities/users.py
+- Session scopes
 
 # BEFORE RELEASE
-- Background worker thing to manage and cleanup stuff
 - Account exports and deletions
-- Fix up ratelimits and placeholder status codes
-- Fix follow notifications
+- Background worker thing to manage and cleanup stuff
+- Fix ratelimits
 
 # DURING RELEASE
 - OAuth2

@@ -14,12 +14,12 @@ async def v1_get_upload(request, upload_id: str, token: str):
 
     # Check token
     if token != upload.token:
-        raise status.notFound
+        raise status.resourceNotFound
 
     # Get file and check status
     file = upload.file
     if file.status != 0:
-        raise status.notFound
+        raise status.resourceNotFound
 
     return raw(file.data, content_type=file.mime_type, headers={
         "Content-Disposition": f'inline; filename="{upload.filename}"'
@@ -32,7 +32,7 @@ async def v1_create_upload(request):
     # Get file
     file = request.files.get("file")
     if not file:
-        raise status.missingPermissions  # placeholder
+        raise status.invalidSyntax
 
     # Store file
     upload = uploads.create_upload(request.ctx.user, file.name, file.type, file.body)

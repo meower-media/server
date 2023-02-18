@@ -14,7 +14,7 @@ async def v0_get_user(request, username: str):
     try:
         user_id = users.get_id_from_username(username)
         user = users.get_user(user_id)
-    except status.notFound:
+    except status.resourceNotFound:
         return json({"error": True, "type": "notFound"}, status=404)
     except:
         return json({"error": True, "type": "internal"}, status=500)

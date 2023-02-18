@@ -202,14 +202,10 @@ class User:
         return (db.blocked_users.find_one({"to": self.id, "from": user.id}) is not None)
 
     def follow_user(self, user):
-        if self.id == user.id:
-            raise status.missingPermissions  # placeholder
-        if self.is_blocked(user):
-            raise status.missingPermissions  # placeholder
-        if self.is_blocking(user):
-            raise status.missingPermissions  # placeholder
         if self.is_following(user):
-            raise status.missingPermissions  # placeholder
+            return
+        elif self.is_blocking(user) or self.is_blocked(user):
+            raise status.missingPermissions
         
         db.followed_users.insert_one({
             "_id": uid.snowflake(),
@@ -229,7 +225,7 @@ class User:
 
     def unfollow_user(self, user):
         if not self.is_following(user):
-            raise status.missingPermissions  # placeholder
+            return
 
         db.followed_users.delete_one({"to": user.id, "from": self.id})
 
@@ -238,7 +234,7 @@ class User:
 
     def remove_follower(self, user):
         if not self.is_followed(user):
-            raise status.missingPermissions  # placeholder
+            return
 
         db.followed_users.delete_one({"to": self.id, "from": user.id})
 
@@ -247,18 +243,9 @@ class User:
 
     def block_user(self, user):
         if self.id == user.id:
-            raise status.missingPermissions  # placeholder
-        if self.is_blocking(user):
-            raise status.missingPermissions  # placeholder
-        
-        try:
-            self.unfollow_user(user)
-        except:
-            pass
-        try:
-            self.remove_follower(user)
-        except:
-            pass
+            raise status.missingPermissions
+        elif self.is_blocking(user):
+            return
 
         db.blocked_users.insert_one({
             "_id": uid.snowflake(),
@@ -267,9 +254,15 @@ class User:
             "time": uid.timestamp()
         })
 
+        db.followed_users.delete_one({"to": user.id, "from": self.id})
+        db.followed_users.delete_one({"to": self.id, "from": user.id})    
+
+        self.update_stats()
+        user.update_stats()    
+
     def unblock_user(self, user):
         if not self.is_blocking(user):
-            raise status.missingPermissions  # placeholder
+            return
 
         db.blocked_users.delete_one({"to": user.id, "from": self.id})
 
@@ -289,7 +282,7 @@ class User:
             elif current_user.get("redirect_to") == self.id:
                 db.users.delete_one({"_id": current_user["_id"]})
             else:
-                raise status.alreadyExists
+                raise status.usernameAlreadyTaken
 
         # Add old username to profile history
         old_username = copy(self.username)
@@ -374,7 +367,7 @@ class User:
     def rotate_bot_session(self):
         # Check whether user is bot
         if not bitfield.has(self.flags, flags.users.bot):
-            raise status.missingPermissions # placeholder
+            raise status.invalidUserType
         
         # Set new session version
         self.bot_session += 1
@@ -386,7 +379,7 @@ class User:
         })
 
         # Return signed token
-        encoded_data = b64encode(f"2:{self.id}:{self.bot_session}".encode())
+        encoded_data = b64encode(f"3:{self.id}:{self.bot_session}".encode())
         signature = security.sign_data(encoded_data)
         return f"{encoded_data.decode()}.{signature.decode()}"
 
@@ -421,7 +414,7 @@ def get_user(user_id: str, return_deleted: bool = True):
             user = DELETED
 
     if user is None:
-        raise status.notFound
+        raise status.resourceNotFound
     else:
         return User(**user)
 
@@ -435,7 +428,7 @@ def get_id_from_username(username: str):
     user = db.users.find_one({"lower_username": username.lower()}, projection={"_id": 1})
 
     if user is None:
-        raise status.notFound
+        raise status.resourceNotFound
     else:
         return user["_id"]
 

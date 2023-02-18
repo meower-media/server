@@ -12,7 +12,7 @@ async def v1_get_notifications(request):
     fetched_notifications = notifications.get_user_notifications(request.ctx.user, before=request.args.get("before"),
                                                                  after=request.args.get("after"),
                                                                  limit=int(request.args.get("limit", 25)))
-    return json({"notifications": [notification.client for notification in fetched_notifications]})
+    return json([notification.client for notification in fetched_notifications])
 
 
 @v1.get("/<notification_id:str>")
@@ -20,7 +20,7 @@ async def v1_get_notifications(request):
 async def v1_get_notification(request, notification_id: str):
     notification = notifications.get_notification(notification_id)
     if notification.recipient.id != request.ctx.user.id:
-        raise status.notFound
+        raise status.resourceNotFound
 
     return json(notification.client)
 
@@ -30,7 +30,7 @@ async def v1_get_notification(request, notification_id: str):
 async def v1_mark_notification_as_read(request, notification_id: str):
     notification = notifications.get_notification(notification_id)
     if notification.recipient.id != request.ctx.user.id:
-        raise status.notFound
+        raise status.resourceNotFound
 
     notification.edit(read=True)
 
@@ -42,7 +42,7 @@ async def v1_mark_notification_as_read(request, notification_id: str):
 async def v1_mark_notification_as_read(request, notification_id: str):
     notification = notifications.get_notification(notification_id)
     if notification.recipient.id != request.ctx.user.id:
-        raise status.notFound
+        raise status.resourceNotFound
 
     notification.edit(read=False)
 

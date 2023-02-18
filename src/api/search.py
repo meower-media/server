@@ -36,7 +36,7 @@ async def v0_search_home(request):
 async def v1_search_users(request):
     fetched_users = users.search_users(request.args.get("q", ""), before=request.args.get("before"),
                                        after=request.args.get("after"), limit=int(request.args.get("limit", 25)))
-    return json({"users": [user.partial for user in fetched_users]})
+    return json([user.partial for user in fetched_users])
 
 
 @v1.get("/posts")
@@ -44,4 +44,4 @@ async def v1_search_users(request):
 async def v1_search_posts(request):
     fetched_posts = posts.search_posts(request.args.get("q", ""), before=request.args.get("before"),
                                        after=request.args.get("after"), limit=int(request.args.get("limit", 25)))
-    return json({"posts": [post.public for post in fetched_posts]})
+    return json([post.public for post in fetched_posts])

@@ -47,19 +47,6 @@ class LoginTOTPForm(BaseModel):
     )
 
 
-class PasswordVerificationForm(BaseModel):
-    password: str = Field(
-        max_length=255
-    )
-
-
-class TOTPVerificationForm(BaseModel):
-    totp_code: str = Field(
-        min_length=1,
-        max_length=8
-    )
-
-
 class PasswordRecoveryForm(BaseModel):
     email: str = Field(
         max_length=255
@@ -102,8 +89,8 @@ async def v1_login_password(request, body: LoginPasswordForm):
             user_id = accounts.get_id_from_email(body.username)
         else:
             user_id = users.get_id_from_username(body.username)
-    except status.notFound:
-        raise status.invalidCredentials  # placeholder
+    except status.resourceNotFound:
+        raise status.invalidCredentials
 
     # Get account and check password
     account = accounts.get_account(user_id)
@@ -141,17 +128,17 @@ async def v1_mfa_totp(request, body: LoginTOTPForm):
     # Get ticket details
     ticket = tickets.get_ticket_details(body.ticket)
     if (ticket is None) or (ticket["t"] != "mfa"):
-        raise status.invalidTicket
+        raise status.notAuthenticated
 
     # Get account
     try:
         account = accounts.get_account(ticket["u"])
-    except status.notFound:
-        raise status.invalidTicket
+    except status.resourceNotFound:
+        raise status.notAuthenticated
 
     # Check TOTP code and complete authentication
     if not account.check_totp(body.code):
-        raise status.invalidTOTP
+        raise status.invalidCredentials
     else:
         tickets.revoke_ticket(ticket["id"])
         session = sessions.create_user_session(account, request.ctx.device, networks.get_network(request.ip))
@@ -159,50 +146,6 @@ async def v1_mfa_totp(request, body: LoginTOTPForm):
             "user_id": account.id,
             "access_token": session.signed_token
         })
-
-
-@v1.post("/verify/password")
-@validate(json=PasswordVerificationForm)
-@security.sanic_protected(ratelimit="verify", allow_bots=False)
-async def v1_verify_password(request, body: PasswordVerificationForm):
-    # Get account
-    account = accounts.get_account(request.ctx.user.id)
-    if account is None:
-        raise status.internal
-
-    # Check whether verifying via password is allowed
-    if account.mfa_enabled:
-        raise status.missingPermissions  # placeholder
-
-    # Verify account password
-    if not account.check_password(body.password):
-        raise status.invalidCredentials
-
-    # Create and return verification ticket
-    ticket = tickets.create_ticket(request.ctx.user, "verification")
-    return json({"verification_ticket": ticket})
-
-
-@v1.post("/verify/totp")
-@validate(json=TOTPVerificationForm)
-@security.sanic_protected(ratelimit="verify", allow_bots=False)
-async def v1_verify_totp(request, body: TOTPVerificationForm):
-    # Get account
-    account = accounts.get_account(request.ctx.user.id)
-    if account is None:
-        raise status.internal
-
-    # Check whether verifying via TOTP is allowed
-    if "mfa" not in account.mfa_methods:
-        raise status.totpNotEnabled
-
-    # Verify TOTP code
-    if not account.check_totp(body.totp_code):
-        raise status.invalidTOTP
-
-    # Create and return verification ticket
-    ticket = tickets.create_ticket(request.ctx.user, "verification")
-    return json({"verification_ticket": ticket})
 
 
 @v1.post("/recovery/password")

@@ -110,6 +110,7 @@ def validate_signature(signature: bytes, data: bytes):
 
 def sanic_protected(
         ratelimit: str = None,
+        scope: str = None,
         require_auth: bool = True,
         allow_bots: bool = True,
         ignore_guardian: bool = False,
@@ -143,28 +144,28 @@ def sanic_protected(
                     redis.set(f"rtl:{ratelimit}:{request.ip}", str(remaining), ex=expires)
 
                 # Get user from access token
-                if not request.token:
-                    request.ctx.user = None
-                else:
+                if request.token:
                     request.ctx.user = sessions.get_user_by_token(request.token)
-                if require_auth and (not request.ctx.user):
+                else:
+                    request.ctx.user = None
+                if scope and (not request.ctx.user):
                     raise status.notAuthenticated
 
                 if request.ctx.user:
                     # Check whether user is a bot
                     if (not allow_bots) and bitfield.has(request.ctx.user.flags, flags.users.bot):
-                        raise status.missingPermissions # placeholder
+                        raise status.missingPermissions
 
                     # Check whether user is being restricted by guardian
                     if (not ignore_guardian) and (False):
-                        raise status.missingPermissions # placeholder
+                        raise status.missingPermissions
 
                     # Check whether the user is banned/suspended
                     user_moderation_status = infractions.user_status(request.ctx.user)
                     if ((not ignore_ban) and user_moderation_status["banned"]):
-                        raise status.userBanned
+                        raise status.userRestricted
                     elif ((not ignore_suspension) and user_moderation_status["suspended"]):
-                        raise status.userSuspended
+                        raise status.userRestricted
 
                 return func(request, *args, **kwargs)
             return wrapper

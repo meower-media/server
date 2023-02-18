@@ -29,17 +29,14 @@ class MigrationForm(BaseModel):
 async def v1_migrate_user_to_bot(request, body: MigrationForm):
     # Check whether migrations can still be completed
     if time.time() > 1688169599:
-        raise status.missingPermissions  # placeholder
+        raise status.featureDiscontinued
 
     # Get user ID by username
-    try:
-        user_id = users.get_id_from_username(body.username)
-    except status.notFound:
-        raise status.notFound  # placeholder
+    user_id = users.get_id_from_username(body.username)
 
     # Make sure migrating account isn't the same as the currently authorized user
     if request.ctx.user.id == user_id:
-        raise status.missingPermissions  # placeholder
+        raise status.missingPermissions
 
     # Get account and check password
     account = accounts.get_account(user_id)

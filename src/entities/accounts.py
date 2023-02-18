@@ -137,13 +137,11 @@ class Account:
             })
 
     def check_totp(self, code: str):
-        if self.totp_secret is None:
-            raise status.totpNotEnabled
-
-        if redis.exists(f"totp:{self.id}:{code}") == 1:
+        if not self.totp_secret:
             return False
-
-        if code in self.recovery_codes:
+        elif redis.exists(f"totp:{self.id}:{code}") == 1:
+            return False
+        elif code in self.recovery_codes:
             self.recovery_codes.remove(code)
             db.accounts.update_one({"_id": self.id}, {"$pull": {"recovery_codes": code}})
             return True
@@ -154,13 +152,9 @@ class Account:
             return False
 
     def enable_totp(self, secret: str, code: str, send_email_alert: bool = False):
-        # Check whether TOTP is enabled
-        if self.totp_secret is not None:
-            raise status.totpAlreadyEnabled
-
         # Check TOTP code
         if not TOTP(secret).verify(code):
-            raise status.invalidTOTP
+            raise status.invalidCredentials
 
         # Set TOTP secret
         if not self.mfa_enabled:
@@ -180,7 +174,7 @@ class Account:
     def disable_totp(self, send_email_alert: bool = False):
         # Check whether TOTP is enabled
         if self.totp_secret is None:
-            raise status.totpNotEnabled
+            return
 
         # Remove TOTP secret
         self.totp_secret = None
@@ -206,7 +200,7 @@ class Account:
 
 def create_account(username: str, password: str, child: bool, require_email: bool = False, send_welcome_notification: bool = True):
     if not users.username_available(username):
-        raise status.alreadyExists
+        raise status.usernameAlreadyTaken
 
     user_flags = 0
     if child:
@@ -235,7 +229,7 @@ def get_account(user_id: str):
     account = db.accounts.find_one({"_id": user_id})
 
     if account is None:
-        raise status.notFound
+        raise status.resourceNotFound
     else:
         return Account(**account)
 
@@ -243,6 +237,6 @@ def get_id_from_email(email: str):
     user = db.accounts.find_one({"email": email.lower()}, projection={"_id": 1})
 
     if user is None:
-        raise status.notFound
+        raise status.resourceNotFound
     else:
         return user["_id"]

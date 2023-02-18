@@ -1,11 +1,10 @@
-from sanic import Blueprint, HTTPResponse, json
+from sanic import Blueprint, json
 from sanic_ext import validate
 from pydantic import BaseModel, Field
-from typing import Optional
 
-from . import get_application_or_abort_if_not_maintainer, get_application_or_abort_if_not_owner
-from src.util import status, security, bitfield, flags
-from src.entities import users, tickets
+from . import get_application_or_abort_if_not_maintainer
+from ..global_models import RequestVerification
+from src.util import security
 
 v1 = Blueprint("v1_applications_bot", url_prefix="/<application_id:str>/bot")
 
@@ -18,9 +17,7 @@ class CreateBotForm(BaseModel):
 
 
 class GetBotTokenForm(BaseModel):
-    ticket: str = Field(
-        max_length=255
-    )
+    auth: RequestVerification = None
 
 
 @v1.get("/")
@@ -43,11 +40,6 @@ async def v1_create_application_bot(request, application_id: str, body: CreateBo
 @validate(json=GetBotTokenForm)
 @security.sanic_protected(allow_bots=False, ignore_suspension=False)
 async def v1_get_application_bot_token(request, application_id: str, body: GetBotTokenForm):
-    verification_ticket = tickets.get_ticket_details(body.ticket)
-    if (verification_ticket is None) or (verification_ticket["t"] != "verification") or (
-            verification_ticket["u"] != request.ctx.user.id):
-        raise status.notAuthenticated
-
     # Get application
     application = get_application_or_abort_if_not_maintainer(application_id, request.ctx.user)
 

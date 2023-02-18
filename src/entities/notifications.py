@@ -98,7 +98,7 @@ def get_notification(notification_id: str):
     # Get notification from database
     notification = db.notifications.find_one({"_id": notification_id})
     if notification is None:
-        raise status.notFound # placeholder
+        raise status.resourceNotFound
 
     # Return notification object
     return Notification(**notification)

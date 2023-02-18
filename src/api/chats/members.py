@@ -23,7 +23,7 @@ async def v1_remove_chat_member(request, chat_id: str, user_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
     if (request.ctx.user.id == user_id) or (
-            (chat.permissions.get(request.ctx.user.id, 0) > 0) and (chat.permissions.get(user_id, 0) < 1)):
+            (chat.permissions.get(request.ctx.user.id, 0) > 0) and (chat.permissions.get(user_id, 0) < 2)):
         chat.remove_member(users.get_user(user_id))
 
         return json(chat.public)

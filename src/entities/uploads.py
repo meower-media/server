@@ -44,9 +44,9 @@ class File:
         db.files.update_one({"_id": self.hash}, {"$set": {"status": self.status}})
 
     def unblock(self):
-        # Check whether data can be recovered
+        # Destroy file if data cannot be recovered
         if not self.data:
-            raise status.missingPermissions  # placeholder
+            db.files.delete_one({"_id": self.hash})
 
         # Set block status
         self.status = 0
@@ -97,14 +97,14 @@ def get_or_create_file(mime_type: str, data: bytes):
 
     # Check file size (before compression)
     if file_size > int(os.getenv("UPLOAD_LIMIT", 10000000)):
-        raise status.missingPermissions  # placeholder
+        raise status.fileTooLarge
 
     # Compress data
     compressed_data = zlib.compress(data)
 
     # Check file size
     if getsizeof(compressed_data) > int(os.getenv("UPLOAD_LIMIT", 5000000)):
-        raise status.missingPermissions  # placeholder
+        raise status.fileTooLarge
 
     # Create file
     file = {
@@ -137,7 +137,7 @@ def create_upload(uploader: users.User, filename: str, mime_type: str, data: byt
                 "Attempting to upload files that are against the Terms of Service.",
                 flags=bitfield.create([flags.infractions.automatic])
             )
-        raise status.missingPermissions  # placeholder
+        raise status.missingPermissions
 
     # Create upload
     upload = {
@@ -154,13 +154,13 @@ def create_upload(uploader: users.User, filename: str, mime_type: str, data: byt
 def get_file(file_hash: str):
     file = db.files.find_one({"_id": file_hash})
     if not file:
-        raise status.notFound
+        raise status.resourceNotFound
 
     return File(**file)
 
 def get_upload(upload_id: str):
     upload = db.uploads.find_one({"_id": upload_id})
     if not upload:
-        raise status.notFound
+        raise status.resourceNotFound
 
     return Upload(**upload)

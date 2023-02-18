@@ -53,7 +53,7 @@ class Message:
 
     def like(self, user: users.User):
         if self.liked(user):
-            raise status.alreadyLiked
+            return
         
         self.likes.append(user.id)
         db.chat_messages.update_one({"_id": self.id}, {"$addToSet": {"likes": user.id}})
@@ -65,7 +65,7 @@ class Message:
 
     def unlike(self, user: users.User):
         if not self.liked(user):
-            raise status.notLiked
+            return
         
         self.likes.remove(user.id)
         db.chat_messages.update_one({"_id": self.id}, {"$pull": {"likes": user.id}})
@@ -139,7 +139,7 @@ def get_message(message_id: str, error_on_deleted: bool = True):
     # Get message from database and check whether it's not found or deleted
     message = db.chat_messages.find_one({"_id": message_id})
     if message is None or (error_on_deleted and message.get("deleted_at")):
-        raise status.notFound
+        raise status.resourceNotFound
 
     # Return message object
     return Message(**message)

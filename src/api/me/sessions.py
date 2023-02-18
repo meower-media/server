@@ -15,16 +15,12 @@ class RevokeSessionForm(BaseModel):
 @v1.get("/")
 @security.sanic_protected(allow_bots=False)
 async def v1_get_all_sessions(request):
-    return json({"sessions": [session.client for session in sessions.get_all_user_sessions(request.ctx.user)]})
+    return json([session.client for session in sessions.get_all_user_sessions(request.ctx.user)])
 
 @v1.post("/revoke-all")
 @validate(json=RevokeSessionForm)
 @security.sanic_protected(allow_bots=False)
 async def v1_revoke_all_sessions(request, body: RevokeSessionForm):
-    verification_ticket = tickets.get_ticket_details(body.ticket)
-    if (verification_ticket is None) or (verification_ticket["t"] != "verification") or (verification_ticket["u"] != request.ctx.user.id):
-        raise status.notAuthenticated
-
     sessions.revoke_all_user_sessions(request.ctx.user)
 
     return HTTPResponse(status=204)
@@ -37,7 +33,7 @@ async def v1_get_session(request, session_id: str):
 
     # Check whether session is owned by authenticated user
     if session.user.id != request.ctx.user.id:
-        raise status.notFound
+        raise status.resourceNotFound
     
     # Return session details
     return json(session.client)
@@ -50,7 +46,7 @@ async def v1_revoke_session(request, session_id: str):
 
     # Check whether session is owned by authenticated user
     if session.user.id != request.ctx.user.id:
-        raise status.notFound
+        raise status.resourceNotFound
     
     # Revoke session
     session.revoke()

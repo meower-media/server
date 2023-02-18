@@ -151,7 +151,7 @@ def get_infraction(infraction_id: str):
     # Get infraction from database
     infraction = db.infractions.find_one({"_id": infraction_id})
     if infraction is None:
-        raise status.notFound
+        raise status.resourceNotFound
 
     # Return infraction object
     return Infraction(**infraction)

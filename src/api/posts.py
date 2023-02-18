@@ -44,7 +44,7 @@ async def v0_get_post(request):
     # Get and return post
     try:
         post = posts.get_post(post_id)
-    except status.notFound:
+    except status.resourceNotFound:
         return json({"error": True, "type": "notFound"}, status=404)
     except:
         return json({"error": True, "type": "internal"}, status=500)
@@ -131,7 +131,7 @@ async def v1_get_comments(request, post_id: str):
     fetched_comments = comments.get_post_comments(post, before=request.args.get("before"),
                                                   after=request.args.get("after"),
                                                   limit=int(request.args.get("limit", 25)))
-    return json({"comments": [comment.public for comment in fetched_comments]})
+    return json([comment.public for comment in fetched_comments])
 
 
 @v1.post("/comments")
@@ -213,7 +213,7 @@ async def v1_get_comment_replies(request, post_id: str, comment_id: str):
     fetched_replies = comments.get_comment_replies(comment, before=request.args.get("before"),
                                                    after=request.args.get("after"),
                                                    limit=int(request.args.get("limit", 25)))
-    return json({"replies": [reply.public for reply in fetched_replies]})
+    return json([reply.public for reply in fetched_replies])
 
 
 @v1.post("/comments/<comment_id:str>/replies")

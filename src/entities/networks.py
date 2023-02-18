@@ -131,7 +131,7 @@ def get_network(ip_address: str):
 def get_netlog(user: users.User, network: Network):
     netlog = db.netlog.find_one({"user_id": user.id, "ip_address": network.ip_address})
     if netlog is None:
-        raise status.notFound
+        raise status.resourceNotFound
     
     return Netlog(**netlog)
 
@@ -141,7 +141,7 @@ def get_all_netlogs(user: users.User):
 def update_netlog(user: users.User, network: Network):
     try:
         netlog = get_netlog(user, network)
-    except status.notFound:
+    except status.resourceNotFound:
         netlog = {
             "_id": uid.snowflake(),
             "user_id": user.id,

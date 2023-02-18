@@ -1,6 +1,15 @@
 from pydantic import BaseModel, Field
 from typing import Union, Optional
 
+class RequestVerification(BaseModel):
+    password: Optional[str] = Field(
+        max_length=255
+    )
+    totp_code: Optional[str] = Field(
+        min_length=1,
+        max_length=8
+    )
+
 class UserIcon(BaseModel):
     type: int = Field(
         ge=0,

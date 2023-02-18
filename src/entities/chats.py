@@ -68,9 +68,8 @@ class Chat:
     def add_member(self, user: users.User):
         if self.direct:
             raise status.missingPermissions
-        
-        if self.has_member(user):
-            raise status.memberAlreadyExists
+        elif self.has_member(user):
+            raise status.chatMemberAlreadyExists
 
         self.members.append(user)
         db.chats.update_one({"_id": self.id}, {"$addToSet": {"members": user.id}})
@@ -86,9 +85,8 @@ class Chat:
     def remove_member(self, user: users.User):
         if self.direct:
             raise status.missingPermissions
-
-        if not self.has_member(user):
-            raise status.memberNotFound
+        elif not self.has_member(user):
+            raise status.resourceNotFound
 
         for member in self.members:
             if member.id == user.id:
@@ -116,9 +114,8 @@ class Chat:
     def promote_member(self, user: users.User):
         if self.direct:
             raise status.missingPermissions
-
-        if not self.has_member(user):
-            raise status.memberNotFound
+        elif not self.has_member(user):
+            raise status.resourceNotFound
 
         if self.permissions.get(user.id, 0) < 1:
             self.permissions[user.id] = 1
@@ -131,9 +128,8 @@ class Chat:
     def demote_member(self, user: users.User):
         if self.direct:
             raise status.missingPermissions
-
-        if not self.has_member(user):
-            raise status.memberNotFound
+        elif not self.has_member(user):
+            raise status.resourceNotFound
 
         if self.permissions.get(user.id, 0) == 1:
             self.permissions[user.id] = 0
@@ -146,24 +142,24 @@ class Chat:
     def transfer_ownership(self, user: users.User):
         if self.direct:
             raise status.missingPermissions
+        elif not self.has_member(user):
+            raise status.resourceNotFound
+        elif self.permissions.get(user.id, 0) >= 2:
+            raise status.missingPermissions
+        
+        # Demote old owner
+        for user_id, level in self.permissions.items():
+            if level == 2:
+                self.permissions[user_id] = 0
 
-        if not self.has_member(user):
-            raise status.memberNotFound
+        # Promote new owner
+        self.permissions[user.id] = 2
 
-        if self.permissions.get(user.id, 0) < 2:
-            # Demote old owner
-            for user_id, level in self.permissions.items():
-                if level == 2:
-                    self.permissions[user_id] = 0
-
-            # Promote new owner
-            self.permissions[user.id] = 2
-
-            db.chats.update_one({"_id": self.id}, {"$set": {"permissions": self.permissions}})
-            events.emit_event("chat_updated", self.id, {
-                "id": self.id,
-                "permissions": self.permissions
-            })
+        db.chats.update_one({"_id": self.id}, {"$set": {"permissions": self.permissions}})
+        events.emit_event("chat_updated", self.id, {
+            "id": self.id,
+            "permissions": self.permissions
+        })
 
     def emit_typing(self, user: users.User):
         events.emit_event("typing_start", self.id, {
@@ -174,9 +170,8 @@ class Chat:
     def refresh_invite_code(self):
         if self.direct:
             raise status.missingPermissions
-
-        if bitfield.has(self.flags, flags.chats.vanityInviteCode):
-            raise status.chatHasVanityInviteCode
+        elif bitfield.has(self.flags, flags.chats.vanityInviteCode):
+            raise status.missingPermissions
 
         self.invite_code = token_urlsafe(6)
         db.chats.update_one({"_id": self.id}, {"$set": {"invite_code": self.invite_code}})
@@ -187,7 +182,7 @@ class Chat:
 
     def delete(self):
         if self.direct:
-            raise status.missingPermissions  # placeholder
+            raise status.missingPermissions
         
         self.deleted_at = uid.timestamp()
         db.chats.update_one({"_id": self.id}, {"$set": {"deleted_at": self.deleted_at}})
@@ -214,13 +209,13 @@ def create_chat(name: str, owner: users.User):
 def get_chat(chat_id: str):
     chat = db.chats.find_one({"_id": chat_id})
     if chat is None:
-        raise status.notFound
+        raise status.resourceNotFound
     
     return Chat(**chat)
 
 def get_dm_chat(user1: users.User, user2: users.User):
     if user1.id == user2.id:
-        raise status.missingPermissions  # placeholder
+        raise status.missingPermissions
 
     chat = db.chats.find_one({"members": {"$all": [user1.id, user2.id]}, "direct": True, "deleted_at": None})
     if chat is not None:

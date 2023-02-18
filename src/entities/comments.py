@@ -116,7 +116,7 @@ class Comment:
 
     def like(self, user: users.User):
         if self.liked(user):
-            raise status.alreadyLiked
+            return
         
         db.comment_likes.insert_one({
             "_id": uid.snowflake(),
@@ -132,7 +132,7 @@ class Comment:
 
     def unlike(self, user: users.User):
         if not self.liked(user):
-            raise status.notLiked
+            return
 
         db.comment_likes.delete_one({
             "comment_id": self.id,
@@ -146,9 +146,8 @@ class Comment:
 
     def edit(self, editor: users.User, content: str):
         if bitfield.has(self.flags, flags.posts.protected):
-            raise status.postProtected
-
-        if content == self.content:
+            raise status.missingPermissions
+        elif content == self.content:
             return
         
         db.comment_revisions.insert_one({
@@ -244,7 +243,7 @@ def get_comment(comment_id: str, error_on_deleted: bool = True):
     # Get comment from database and check whether it's not found or deleted
     comment = db.post_comments.find_one({"_id": comment_id})
     if comment is None or (error_on_deleted and comment.get("deleted_at")):
-        raise status.notFound
+        raise status.resourceNotFound
 
     # Return post object
     return Comment(**comment)

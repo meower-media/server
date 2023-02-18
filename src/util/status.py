@@ -1,193 +1,122 @@
 from sanic.exceptions import SanicException
 
+
+### 10000-10999 -- General ###
 class ok(SanicException):
-    error = False
-    code = 1000
+    code = 10000
     http_status = 200
     message = "OK"
 
-class invalidSyntax(SanicException):
-    error = True
-    code = 1001
-    http_status = 400
-    message = "Invalid syntax"
-
-class invalidDatatype(SanicException):
-    error = True
-    code = 1002
-    http_status = 400
-    message = "Invalid datatype"
-
-class notFound(SanicException):
-    error = True
-    code = 1003
-    http_status = 404
-    message = "Resource not found"
-
-class alreadyExists(SanicException):
-    error = True
-    code = 1004
-    http_status = 409
-    message = "Resource already exists"
-
-class repairMode(SanicException):
-    error = True
-    code = 1005
-    http_status = 503
-    message = "Server is currently in repair mode"
-
-class internal(SanicException):
-    error = True
-    code = 1006
+class internalServerError(SanicException):
+    code = 10001
     http_status = 500
     message = "Internal server error"
 
+class repairModeEnabled(SanicException):
+    code = 10002
+    http_status = 503
+    message = "Repair mode enabled"
+
+class ratelimited(SanicException):
+    code = 10003
+    http_status = 429
+    message = "Too many requests"
+
 class notAuthenticated(SanicException):
-    error = True
-    code = 1007
+    code = 10004
     http_status = 401
     message = "Not authenticated"
 
-class invalidCredentials(SanicException):
-    error = True
-    code = 1008
-    http_status = 401
-    message = "Invalid credentials"
-
-class invalidTOTP(SanicException):
-    error = True
-    code = 1009
-    http_status = 401
-    message = "Invalid TOTP/recovery code"
-
-class totpNotEnabled(SanicException):
-    error = True
-    code = 1010
+class missingScope(SanicException):
+    code = 10005
     http_status = 403
-    message = "TOTP not enabled"
-
-class totpAlreadyEnabled(SanicException):
-    error = True
-    code = 1011
-    http_status = 403
-    message = "TOTP already enabled"
-
-class alreadyLiked(SanicException):
-    error = True
-    code = 1012
-    http_status = 403
-    message = "Post already liked"
-
-class notLiked(SanicException):
-    error = True
-    code = 1013
-    http_status = 403
-    message = "Post not liked"
-
-class alreadyMeowed(SanicException):
-    error = True
-    code = 1014
-    http_status = 403
-    message = "Post already meowed"
-
-class notMeowed(SanicException):
-    error = True
-    code = 1015
-    http_status = 403
-    message = "Post not meowed"
-
-class alreadyDeleted(SanicException):
-    error = True
-    code = 1016
-    http_status = 403
-    message = "Resource already deleted"
-
-class notDeleted(SanicException):
-    error = True
-    code = 1017
-    http_status = 403
-    message = "Resource not deleted"
-
-class parentNotLinked(SanicException):
-    error = True
-    code = 1018
-    http_status = 403
-    message = "Parent not linked"
-
-class childNotLinked(SanicException):
-    error = True
-    code = 1019
-    http_status = 403
-    message = "Child not linked"
-
-class permissionLevelOutOfRange(SanicException):
-    error = True
-    code = 1020
-    http_status = 400
-    message = "Permission level out of range"
-
-class chatHasVanityInviteCode(SanicException):
-    error = True
-    code = 1021
-    http_status = 403
-    message = "Chat has vanity invite code"
-
-class invalidCaptcha(SanicException):
-    error = True
-    code = 1022
-    http_status = 403
-    message = "Invalid captcha"
-
-class accountLocked(SanicException):
-    error = True
-    code = 1023
-    http_status = 403
-    message = "Account locked"
-
-class networkBlocked(SanicException):
-    error = True
-    code = 1024
-    http_status = 403
-    message = "Your IP address is blocked"
-
-class invalidTicket(SanicException):
-    error = True
-    code = 1025
-    http_status = 401
-    message = "Invalid ticket"
+    message = "Missing session scope"
 
 class missingPermissions(SanicException):
-    error = True
-    code = 1026
+    code = 10006
     http_status = 403
     message = "Missing permissions"
 
-class memberNotFound(SanicException):
-    error = True
-    code = 1027
+class networkBlocked(SanicException):
+    code = 10007
+    http_status = 403
+    message = "Network is currently blocked"
+
+class userRestricted(SanicException):
+    code = 10008
+    http_status = 403
+    message = "User is currently restricted"
+
+class accountLocked(SanicException):
+    code = 10009
+    http_status = 403
+    message = "Account is currently locked"
+
+class featureDiscontinued(SanicException):
+    code = 10010
+    http_status = 503
+    message = "Feature is discontinued"
+
+class endpointNotFound(SanicException):
+    code = 10011
     http_status = 404
-    message = "Member not found"
+    message = "Endpoint not found"
 
-class memberAlreadyExists(SanicException):
-    error = True
-    code = 1028
+class resourceNotFound(SanicException):
+    code = 10012
+    http_status = 404
+    message = "Resource not found"
+
+class fileTooLarge(SanicException):
+    code = 10013
+    http_status = 413
+    message = "File too large"
+
+
+### 11000-11999 -- Invalid ###
+class invalidSyntax(SanicException):
+    code = 11000
+    http_status = 400
+    message = "Invalid syntax"
+
+class invalidCredentials(SanicException):
+    code = 11001
+    http_status = 401
+    message = "Invalid credentials"
+
+class invalidCaptcha(SanicException):
+    code = 11002
+    http_status = 403
+    message = "Invalid captcha"
+
+class invalidUserType(SanicException):
+    code = 11003
+    http_status = 403
+    message = "Invalid user type"
+
+
+### 12000-12999 -- Resource conflict ###
+class usernameAlreadyTaken(SanicException):
+    code = 12000
     http_status = 409
-    message = "Member already exists"
+    message = "Username already taken"
 
-class userSuspended(SanicException):
-    error = True
-    code = 1029
-    http_status = 403
-    message = "User is currently in read-only mode"
+class emailAlreadyTaken(SanicException):
+    code = 12001
+    http_status = 409
+    message = "Email already taken"
 
-class userBanned(SanicException):
-    error = True
-    code = 1030
-    http_status = 403
-    message = "User is currently banned"
+class chatMemberAlreadyExists(SanicException):
+    code = 12002
+    http_status = 409
+    message = "Chat member already exists"
 
-class ratelimited(SanicException):
-    error = True
-    code = 1031
-    http_status = 429
-    message = "You are being ratelimited"
+class applicationMaintainerAlreadyExists(SanicException):
+    code = 12003
+    http_status = 409
+    message = "Application maintainer already exists"
+
+class botAlreadyExists(SanicException):
+    code = 12004
+    http_status = 409
+    message = "Bot already exists"

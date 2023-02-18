@@ -31,7 +31,7 @@ class EditApplicationForm(BaseModel):
 @security.sanic_protected(allow_bots=False)
 async def v1_get_applications(request):
     fetched_applications = applications.get_user_applications(request.ctx.user)
-    return json({"applications": [application.client for application in fetched_applications]})
+    return json([application.client for application in fetched_applications])
 
 
 @v1.post("/")
