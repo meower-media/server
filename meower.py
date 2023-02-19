@@ -225,9 +225,9 @@ class Meower:
                                     if FileCheck and FileRead:
                                         if ValidAuth:
                                             try:
-                                                self.supporter.kickUser(self.cl._get_obj_of_username(username), status="IDConflict") # Kick bad clients missusing the username
+                                                self.supporter.kickUser(username, status="IDConflict") # Kick bad clients missusing the username
                                             except:
-                                                self.cl._closed_connection_server(self.cl._get_obj_of_username(username), self.cl)
+                                                self.cl._closed_connection_server(self.cl._get_obj_of_username(val), self.cl)
 
 
                                             self.filesystem.create_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]), {"users": [], "last_user": username})
@@ -853,7 +853,7 @@ class Meower:
                                             try:
                                                 self.supporter.kickUser(user, "Blocked")
                                             except:
-                                                self.cl._closed_connection_server(client, self.cl)
+                                                self.cl._closed_connection_server(self.cl._get_obj_of_username(user), self.cl)
                                 
                             result = self.filesystem.write_item("config", "IPBanlist", payload)
                             if result:
