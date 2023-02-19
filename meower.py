@@ -229,6 +229,7 @@ class Meower:
                                             except:
                                                 self.cl._closed_connection_server(self.cl._get_obj_of_username(username), self.cl)
 
+
                                             self.filesystem.create_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]), {"users": [], "last_user": username})
                                             status, netlog = self.filesystem.load_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]))
                                             if status:
@@ -934,7 +935,7 @@ class Meower:
                                 try:
                                     self.supporter.kickUser(val)
                                 except:
-                                    self.cl._closed_connection_server(client, self.cl)
+                                    self.cl._closed_connection_server(self.cl._get_obj_of_username(val), self.cl)
                                 
                                 # Tell client it kicked the user
                                 self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
@@ -1387,7 +1388,11 @@ class Meower:
     def get_chat_list(self, client, val, listener_detected, listener_id):
         # Check if the client is already authenticated
         if self.supporter.isAuthenticated(client):
-            chat_index = self.getIndex(location="chats", query={"members": {"$all": [client]}}, truncate=True, sort="nickname")
+            if (type(val) == dict) and ("page" in val) and self.checkForInt(val["page"]):
+                page = int(val["page"])
+            else:
+                page = 1
+            chat_index = self.getIndex(location="chats", query={"members": {"$all": [client]}}, truncate=True, page=page, sort="nickname")
             chat_index["all_chats"] = []
             for i in range(len(chat_index["index"])):
                 chat_index["all_chats"].append(chat_index["index"][i])
