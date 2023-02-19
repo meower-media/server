@@ -367,7 +367,7 @@ class User:
     def rotate_bot_session(self):
         # Check whether user is bot
         if not bitfield.has(self.flags, flags.users.bot):
-            raise status.invalidUserType
+            raise status.invalidType
         
         # Set new session version
         self.bot_session += 1

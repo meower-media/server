@@ -12,65 +12,20 @@ class internalServerError(SanicException):
     http_status = 500
     message = "Internal server error"
 
-class repairModeEnabled(SanicException):
-    code = 10002
-    http_status = 503
-    message = "Repair mode enabled"
-
-class ratelimited(SanicException):
-    code = 10003
-    http_status = 429
-    message = "Too many requests"
-
-class notAuthenticated(SanicException):
-    code = 10004
-    http_status = 401
-    message = "Not authenticated"
-
-class missingScope(SanicException):
-    code = 10005
-    http_status = 403
-    message = "Missing session scope"
-
-class missingPermissions(SanicException):
-    code = 10006
-    http_status = 403
-    message = "Missing permissions"
-
-class networkBlocked(SanicException):
-    code = 10007
-    http_status = 403
-    message = "Network is currently blocked"
-
-class userRestricted(SanicException):
-    code = 10008
-    http_status = 403
-    message = "User is currently restricted"
-
-class accountLocked(SanicException):
-    code = 10009
-    http_status = 403
-    message = "Account is currently locked"
-
-class featureDiscontinued(SanicException):
-    code = 10010
-    http_status = 503
-    message = "Feature is discontinued"
-
 class endpointNotFound(SanicException):
-    code = 10011
+    code = 10002
     http_status = 404
     message = "Endpoint not found"
 
 class resourceNotFound(SanicException):
-    code = 10012
+    code = 10003
     http_status = 404
     message = "Resource not found"
 
-class fileTooLarge(SanicException):
-    code = 10013
-    http_status = 413
-    message = "File too large"
+class featureDiscontinued(SanicException):
+    code = 10004
+    http_status = 503
+    message = "Feature is discontinued"
 
 
 ### 11000-11999 -- Invalid ###
@@ -79,20 +34,20 @@ class invalidSyntax(SanicException):
     http_status = 400
     message = "Invalid syntax"
 
-class invalidCredentials(SanicException):
+class invalidType(SanicException):
     code = 11001
+    http_status = 403
+    message = "Invalid type"
+
+class invalidCredentials(SanicException):
+    code = 11002
     http_status = 401
     message = "Invalid credentials"
 
 class invalidCaptcha(SanicException):
-    code = 11002
-    http_status = 403
-    message = "Invalid captcha"
-
-class invalidUserType(SanicException):
     code = 11003
     http_status = 403
-    message = "Invalid user type"
+    message = "Invalid captcha"
 
 
 ### 12000-12999 -- Resource conflict ###
@@ -120,3 +75,50 @@ class botAlreadyExists(SanicException):
     code = 12004
     http_status = 409
     message = "Bot already exists"
+
+
+### 13000-13999 -- Permissions error ###
+class repairModeEnabled:
+    code = 13000
+    http_status = 503
+    message = "Repair mode is currently enabled"
+
+class ratelimited:
+    code = 13001
+    http_status = 429
+    message = "Too many requests"
+
+class notAuthenticated:
+    code = 13002
+    http_status = 401
+    message = "Not authenticated"
+
+class missingScope:
+    code = 13003
+    http_status = 403
+    message = "Missing scope"
+
+class missingPermissions:
+    code = 13003
+    http_status = 403
+    message = "Missing permissions"
+
+class networkBlocked:
+    code = 13004
+    http_status = 403
+    message = "Network is currently blocked"
+
+class userRestricted:
+    code = 13005
+    http_status = 403
+    message = "User is currently restricted"
+
+class accountLocked:
+    code = 13006
+    http_status = 403
+    message = "Account is currently locked"
+
+class fileTooLarge:
+    code = 13007
+    http_status = 413
+    message = "File too large"

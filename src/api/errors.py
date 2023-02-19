@@ -8,7 +8,7 @@ from src.util import status
 class MeowerErrorHandler(ErrorHandler):
     def default(self, request, exception):
         # Try to convert default Sanic errors to Meower errors
-        if not (hasattr(exception, "code") and hasattr(exception, "message") and hasattr(exception, "http_status")):
+        if not (hasattr(exception, "code") and hasattr(exception, "http_status") and hasattr(exception, "message")):
             if os.getenv("DEVELOPMENT", "false") != "true":
                 match getattr(exception, "status_code", 500):
                     case 400:
