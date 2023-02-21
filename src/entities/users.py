@@ -5,6 +5,7 @@ from threading import Thread
 import string
 import time
 
+from src.entities import notifications, sessions
 from src.util import status, uid, events, security, bitfield, flags
 from src.database import db
 
@@ -202,7 +203,9 @@ class User:
         return (db.blocked_users.find_one({"to": self.id, "from": user.id}) is not None)
 
     def follow_user(self, user):
-        if self.is_following(user):
+        if self.id == user.id:
+            raise status.missingPermissions
+        elif self.is_following(user):
             return
         elif self.is_blocking(user) or self.is_blocked(user):
             raise status.missingPermissions
@@ -215,10 +218,9 @@ class User:
         })
 
         if bitfield.has(user.config.get("notifications", 127), flags.configNotifications.follows):
-            pass
-            #notifications.create_notification(self.author, 1, {
-            #    "user_id": self.id
-            #})
+            notifications.create_notification(user, 1, {
+                "user_id": self.id
+            })
 
         self.update_stats()
         user.update_stats()
@@ -388,11 +390,11 @@ class User:
         db.users.update_one({"_id": self.id}, {"$set": {"delete_after": uid.timestamp(epoch=int(time.time()+1209600))}})
 
         # Revoke all sessions
-        # uhh, circular import issue again
+        sessions.revoke_all_user_sessions(self)
 
 def create_user(username: str, user_id: str = None, flags: int = 0):
     userdata = {
-        "_id": (uid.snowflake() if (user_id is None) else user_id),
+        "_id": (user_id if user_id else uid.snowflake()),
         "username": username,
         "lower_username": username.lower(),
         "flags": flags,
@@ -402,6 +404,7 @@ def create_user(username: str, user_id: str = None, flags: int = 0):
     return User(**userdata)
 
 def get_user(user_id: str, return_deleted: bool = True):
+    # Get user from default users or database
     if user_id == "0":
         user = SERVER
     elif user_id == "1":
@@ -410,27 +413,32 @@ def get_user(user_id: str, return_deleted: bool = True):
         user = MEOWER
     else:
         user = db.users.find_one({"_id": user_id})
-        if (user is None) and return_deleted:
+        if (not user) and return_deleted:
             user = DELETED
 
-    if user is None:
-        raise status.resourceNotFound
-    else:
+    # Return user object
+    if user:
         return User(**user)
+    else:
+        raise status.resourceNotFound
 
 def username_available(username: str):
+    # Check whether username belongs to a default user
     if username.lower() in ["server", "deleted", "meower"]:
         return False
 
+    # Check whether username is taken by another user
     return (db.users.find_one({"lower_username": username.lower()}, projection={"_id": 1}) is None)
 
 def get_id_from_username(username: str):
+    # Get user ID from database
     user = db.users.find_one({"lower_username": username.lower()}, projection={"_id": 1})
 
-    if user is None:
-        raise status.resourceNotFound
-    else:
+    # Return user ID
+    if user:
         return user["_id"]
+    else:
+        raise status.resourceNotFound
 
 def search_users(query: str, before: str = None, after: str = None, limit: int = 25):
     # Create ID range

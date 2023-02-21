@@ -49,13 +49,13 @@ class Application:
             self.description = description
         db.applications.update_one({"_id": self.id}, {"$set": {"name": self.name, "description": self.description}})
 
-    def has_maintainer(self, user: users.User):
+    def has_maintainer(self, user: any):
         for maintainer in self.maintainers:
             if maintainer.id == user.id:
                 return True
         return False
 
-    def add_maintainer(self, user: users.User):
+    def add_maintainer(self, user: any):
         # Check whether user is already a maintainer
         if self.has_maintainer(user):
             raise status.applicationMaintainerAlreadyExists
@@ -64,7 +64,7 @@ class Application:
         self.maintainers.append(user)
         db.applications.update_one({"_id": self.id}, {"$addToSet": {"maintainers": user.id}})
 
-    def remove_maintainer(self, user: users.User):
+    def remove_maintainer(self, user: any):
         # Check whether user is a maintainer
         if not self.has_maintainer(user):
             raise status.resourceNotFound
@@ -77,7 +77,7 @@ class Application:
         self.maintainers.remove(user)
         db.applications.update_one({"_id": self.id}, {"$pull": {"maintainers": user.id}})
 
-    def transfer_ownership(self, user: users.User):
+    def transfer_ownership(self, user: any):
         # Check whether user is a maintainer
         if user.id not in self.maintainers:
             raise status.resourceNotFound
@@ -112,7 +112,7 @@ class Application:
     def delete(self):
         db.applications.delete_one({"_id": self.id})
 
-def create_application(name: str, owner: users.User):    
+def create_application(name: str, owner: any):    
     application = {
         "_id": uid.snowflake(),
         "name": name,
@@ -124,17 +124,19 @@ def create_application(name: str, owner: users.User):
     return Application(**application)
 
 def get_application(application_id: str):
+    # Get application from database
     application = db.applications.find_one({"_id": application_id})
 
-    if application is None:
-        raise status.resourceNotFound
-    else:
+    # Return application object
+    if application:
         return Application(**application)
+    else:
+        raise status.resourceNotFound
 
-def get_user_applications(user: users.User):
+def get_user_applications(user: any):
     return [Application(**application) for application in db.applications.find({"maintainers": {"$all": [user.id]}})]
 
-def migrate_user_to_bot(user: users.User, owner: users.User):    
+def migrate_user_to_bot(user: any, owner: any):    
     # Check migration eligibility
     try:
         account = accounts.get_account(user.id)

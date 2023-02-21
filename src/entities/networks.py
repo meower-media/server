@@ -104,7 +104,7 @@ class Netlog:
 def get_network(ip_address: str):
     network = db.networks.find_one({"ip_address": ip_address})
     if network is None:
-        if IPHUB_KEY is not None:
+        if IPHUB_KEY:
             iphub_info = requests.get(f"https://v2.api.iphub.info/ip/{ip_address}", headers={"X-Key": IPHUB_KEY}).json()
             network = {
                 "_id": uid.snowflake(),
@@ -128,17 +128,20 @@ def get_network(ip_address: str):
         db.networks.insert_one(network)
     return Network(**network)
 
-def get_netlog(user: users.User, network: Network):
+def get_netlog(user: any, network: Network):
+    # Get netlog from database
     netlog = db.netlog.find_one({"user_id": user.id, "ip_address": network.ip_address})
-    if netlog is None:
-        raise status.resourceNotFound
     
-    return Netlog(**netlog)
+    # Return netlog object
+    if netlog:
+        return Netlog(**netlog)
+    else:
+        raise status.resourceNotFound
 
-def get_all_netlogs(user: users.User):
+def get_all_netlogs(user: any):
     return [Netlog(**netlog) for netlog in db.netlog.find({"user_id": user.id})]
 
-def update_netlog(user: users.User, network: Network):
+def update_netlog(user: any, network: Network):
     try:
         netlog = get_netlog(user, network)
     except status.resourceNotFound:

@@ -92,8 +92,8 @@ RATELIMIT_LIMITS = {  # these are not good at all right now
 }
 
 def check_captcha(captcha_response: str, ip_address: str):
-    if CAPTCHA_URI is None:
-        logging.warn("No captcha provider set!")
+    if not CAPTCHA_URI:
+        logging.warn("No captcha provider set! Skipping captcha check...")
         return True
 
     return requests.get(CAPTCHA_URI, data={

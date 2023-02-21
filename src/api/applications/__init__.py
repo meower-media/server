@@ -4,18 +4,20 @@ from src.util import status
 from src.entities import users, applications
 
 
-def get_application_or_abort_if_not_maintainer(application_id: str, user: users.User):
+def get_application_or_abort_if_not_maintainer(application_id: str, user: any):
     application = applications.get_application(application_id)
-    if (application is None) or (not application.has_maintainer(user)):
+    if application and application.has_maintainer(user):
+        return application
+    else:
         raise status.resourceNotFound
-    return application
 
 
-def get_application_or_abort_if_not_owner(application_id: str, user: users.User):
+def get_application_or_abort_if_not_owner(application_id: str, user: any):
     application = applications.get_application(application_id)
-    if (application is None) or (application.owner_id != user.id):
+    if application and (application.owner_id == user.id):
+        return application
+    else:
         raise status.resourceNotFound
-    return application
 
 
 # v1

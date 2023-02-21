@@ -120,7 +120,7 @@ def get_or_create_file(mime_type: str, data: bytes):
     # Return file
     return File(**file)
 
-def create_upload(uploader: users.User, filename: str, mime_type: str, data: bytes):
+def create_upload(uploader: any, filename: str, mime_type: str, data: bytes):
     # Create token
     token = token_urlsafe(32)
 

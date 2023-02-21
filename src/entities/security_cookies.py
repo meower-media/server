@@ -29,7 +29,7 @@ class SecurityCookie:
         signature = security.sign("security_cookies", encoded_data)
         return f"{encoded_data}.{signature}"
 
-    def add_user(self, user: users.User):
+    def add_user(self, user: any):
         self.users.append(user)
         self.users = list(set(self.users))
         self.last_used[user.id] = int(time.time())

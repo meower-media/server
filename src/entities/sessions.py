@@ -182,16 +182,19 @@ def create_user_session(account: accounts.Account, device: dict, network: networ
     return session
 
 def get_user_session(session_id: str):
+    # Get session from database
     session = db.sessions.find_one({"_id": session_id})
-    if session is None:
-        raise status.resourceNotFound
-    
-    return UserSession(**session)
 
-def get_all_user_sessions(user: users.User):
+    # Return session object
+    if session:
+        return UserSession(**session)
+    else:
+        raise status.resourceNotFound
+
+def get_all_user_sessions(user: any):
     return [UserSession(**session) for session in db.sessions.find({"user_id": user.id})]
 
-def revoke_all_user_sessions(user: users.User):
+def revoke_all_user_sessions(user: any):
     for session in get_all_user_sessions(user):
         session.revoke()
 
@@ -210,10 +213,10 @@ def get_user_by_token(token: str):
         # Return user
         if ttype == "1":  # regular user
             user_id = redis.get(f"ses:{session_id}:{version}")
-            if user_id is None:
-                return None
-            else:
+            if user_id:
                 return users.get_user(user_id.decode())
+            else:
+                return None
         elif ttype == "2":  # bot user
             user = users.get_user(session_id)
             if str(user.bot_session) != str(version):

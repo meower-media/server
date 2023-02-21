@@ -1,6 +1,5 @@
 from datetime import datetime
 from threading import Thread
-from copy import copy
 
 from src.util import status, uid, events
 from src.entities import users, posts, comments
@@ -38,10 +37,8 @@ class Notification:
         if self.type == 1:
             try:
                 data["user"] = users.get_user(self.data["user_id"]).partial
-                data["milestone"] = self.data["milestone"]
             except:
                 data["user"] = None
-                data["milestone"] = None
         elif (self.type == 2) or (self.type == 3):
             try:
                 data["post"] = posts.get_post(self.data["post_id"]).public
@@ -73,7 +70,7 @@ class Notification:
         db.notifications.delete_one({"_id": self.id})
         Thread(target=emit_user_notification_unread_count, args=(self.recipient)).start()
 
-def create_notification(recipient: users.User, type: int, data: dict):
+def create_notification(recipient: any, type: int, data: dict):
     # Create notification data
     notification = {
         "_id": uid.snowflake(),
@@ -97,13 +94,14 @@ def create_notification(recipient: users.User, type: int, data: dict):
 def get_notification(notification_id: str):
     # Get notification from database
     notification = db.notifications.find_one({"_id": notification_id})
-    if notification is None:
-        raise status.resourceNotFound
 
     # Return notification object
-    return Notification(**notification)
+    if notification:
+        return Notification(**notification)
+    else:
+        raise status.resourceNotFound
 
-def get_user_notifications(user: users.User, before: str = None, after: str = None, limit: int = 25):
+def get_user_notifications(user: any, before: str = None, after: str = None, limit: int = 25):
     # Create ID range
     if before is not None:
         id_range = {"$lt": before}
@@ -115,15 +113,15 @@ def get_user_notifications(user: users.User, before: str = None, after: str = No
     # Fetch and return all notifications
     return [Notification(**notification) for notification in db.notifications.find({"recipient_id": user.id, "_id": id_range}, sort=[("_id", -1)], limit=limit)]
 
-def get_user_notification_unread_count(user: users.User):
+def get_user_notification_unread_count(user: any):
     return db.notifications.count_documents({"recipient_id": user.id, "read": False})
 
-def emit_user_notification_unread_count(user: users.User):
+def emit_user_notification_unread_count(user: any):
     unread_notifications = get_user_notification_unread_count(user)
     events.emit_event("notification_count_updated", user.id, {
         "unread": unread_notifications
     })
 
-def clear_unread_user_notifications(user: users.User):
+def clear_unread_user_notifications(user: any):
     db.notifications.update_many({"recipient_id": user.id, "read": False}, {"$set": {"read": True}})
     Thread(target=emit_user_notification_unread_count, args=(user,)).start()

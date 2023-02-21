@@ -6,10 +6,10 @@ from .snowflake import generate_snowflake
 MEOWER_EPOCH = 1577836800  # NEVER CHANGE THIS
 
 def timestamp(epoch: int = None, jsonify: bool = False) -> dict|datetime:
-    if epoch is None:
-        dt = datetime.now(tz=timezone.utc)
-    else:
+    if epoch:
         dt = datetime.fromtimestamp(epoch, tz=timezone.utc)
+    else:
+        dt = datetime.now(tz=timezone.utc)
 
     if jsonify:
         return {

@@ -157,13 +157,13 @@ class Post:
             })
         Thread(target=run).start()
 
-    def liked(self, user: users.User):
+    def liked(self, user: any):
         return (db.post_likes.count_documents({"post_id": self.id, "user_id": user.id}) > 0)
     
-    def meowed(self, user: users.User):
+    def meowed(self, user: any):
         return (db.post_meows.count_documents({"post_id": self.id, "user_id": user.id}) > 0)
 
-    def like(self, user: users.User):
+    def like(self, user: any):
         if self.liked(user):
             return
         
@@ -179,7 +179,7 @@ class Post:
         })
         self.update_stats()
 
-    def meow(self, user: users.User):
+    def meow(self, user: any):
         if self.meowed(user):
             return
         
@@ -195,7 +195,7 @@ class Post:
         })
         self.update_stats()
 
-    def unlike(self, user: users.User):
+    def unlike(self, user: any):
         if not self.liked(user):
             return
 
@@ -209,7 +209,7 @@ class Post:
         })
         self.update_stats()
     
-    def unmeow(self, user: users.User):
+    def unmeow(self, user: any):
         if not self.meowed(user):
             return
 
@@ -223,7 +223,7 @@ class Post:
         })
         self.update_stats()
 
-    def edit(self, editor: users.User, content: str, public: bool = True):
+    def edit(self, editor: any, content: str, public: bool = True):
         if bitfield.has(self.flags, flags.posts.protected):
             raise status.missingPermissions
         elif content == self.content:
@@ -278,7 +278,7 @@ class Post:
         })
         self.author.update_stats()
 
-def create_post(author: users.User, content: str, masquerade: dict = None, bridged: bool = False):
+def create_post(author: any, content: str, masquerade: dict = None, bridged: bool = False):
     # Create post data
     post = {
         "_id": uid.snowflake(),
@@ -313,15 +313,16 @@ def create_post(author: users.User, content: str, masquerade: dict = None, bridg
     return post
 
 def get_post(post_id: str, error_on_deleted: bool = True):
-    # Get post from database and check whether it's not found or deleted
+    # Get post from database
     post = db.posts.find_one({"_id": post_id})
-    if post is None or (error_on_deleted and post.get("deleted_at")):
-        raise status.resourceNotFound
 
     # Return post object
-    return Post(**post)
+    if post and ((not error_on_deleted) or (not post.get("deleted_at"))):
+        return Post(**post)
+    else:
+        raise status.resourceNotFound
 
-def get_feed(user: users.User, before: str = None, after: str = None, limit: int = 25):
+def get_feed(user: any, before: str = None, after: str = None, limit: int = 25):
     # Create ID range
     if before is not None:
         id_range = {"$lt": before}
@@ -395,7 +396,7 @@ def get_top_posts(before: str = None, after: str = None, limit: int = 25):
     # Fetch and return all posts
     return [Post(**post) for post in db.posts.find({"deleted_at": None, "_id": id_range}, sort=[("reputation", -1)], limit=limit)]
 
-def get_user_posts(user: users.User, before: str = None, after: str = None, limit: int = 25):
+def get_user_posts(user: any, before: str = None, after: str = None, limit: int = 25):
     # Create ID range
     if before is not None:
         id_range = {"$lt": before}

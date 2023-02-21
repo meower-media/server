@@ -64,13 +64,13 @@ class Infraction:
     def active(self):
         if self.status == 4:
             return False
-        elif (self.expires is None) or (self.expires.timestamp() > uid.timestamp().timestamp()):
+        elif (not self.expires) or (self.expires.timestamp() > uid.timestamp().timestamp()):
             return True
         else:
             return False
 
     def edit(self,
-        user: users.User = None,
+        user: any = None,
         action: str = None,
         reason: str = None,
         offending_content: list = None,
@@ -112,7 +112,7 @@ class Infraction:
         })
         del self
 
-def create_infraction(user: users.User, moderator: users.User, action: int, reason: str, offending_content: list = [], flags: int = 0, expires: datetime = None, send_email_alert: bool = True):
+def create_infraction(user: any, moderator: any, action: int, reason: str, offending_content: list = [], flags: int = 0, expires: datetime = None, send_email_alert: bool = True):
     # Create infraction data
     infraction = {
         "_id": uid.snowflake(),
@@ -150,11 +150,12 @@ def create_infraction(user: users.User, moderator: users.User, action: int, reas
 def get_infraction(infraction_id: str):
     # Get infraction from database
     infraction = db.infractions.find_one({"_id": infraction_id})
-    if infraction is None:
-        raise status.resourceNotFound
 
     # Return infraction object
-    return Infraction(**infraction)
+    if infraction:
+        return Infraction(**infraction)
+    else:
+        raise status.resourceNotFound
 
 def get_latest_infractions(before: str = None, after: str = None, limit: int = 25):
     # Create ID range
@@ -168,14 +169,14 @@ def get_latest_infractions(before: str = None, after: str = None, limit: int = 2
     # Fetch and return all infractions
     return [Infraction(**infraction) for infraction in db.infractions.find({"_id": id_range}, sort=[("_id", -1)], limit=limit)]
 
-def get_user_infractions(user: users.User, only_active: bool = False):
+def get_user_infractions(user: any, only_active: bool = False):
     query = {"user_id": user.id}
     if only_active:
         query["status"] = {"$ne": 4}
         query["$or"] = [{"expires": None}, {"expires": {"$gt": uid.timestamp()}}]
     return [Infraction(**infraction) for infraction in db.infractions.find(query)]
 
-def user_status(user: users.User):
+def user_status(user: any):
     status = {
         "suspended": False,
         "banned": False
@@ -191,7 +192,7 @@ def user_status(user: users.User):
     
     return status
 
-def detect_ban_evasion(user: users.User, security_cookie: security_cookies.SecurityCookie, network: networks.Network):
+def detect_ban_evasion(user: any, security_cookie: security_cookies.SecurityCookie, network: networks.Network):
     possible_alts = list(set([user] + security_cookie.users + network.users))
     for possible_alt in possible_alts:
         for infraction in get_user_infractions(possible_alt, only_active=True):

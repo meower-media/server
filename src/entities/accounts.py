@@ -173,7 +173,7 @@ class Account:
 
     def disable_totp(self, send_email_alert: bool = False):
         # Check whether TOTP is enabled
-        if self.totp_secret is None:
+        if not self.totp_secret:
             return
 
         # Remove TOTP secret
@@ -228,15 +228,15 @@ def create_account(username: str, password: str, child: bool, require_email: boo
 def get_account(user_id: str):
     account = db.accounts.find_one({"_id": user_id})
 
-    if account is None:
-        raise status.resourceNotFound
-    else:
+    if account:
         return Account(**account)
+    else:
+        raise status.resourceNotFound
 
 def get_id_from_email(email: str):
     user = db.accounts.find_one({"email": email.lower()}, projection={"_id": 1})
 
-    if user is None:
-        raise status.resourceNotFound
-    else:
+    if user:
         return user["_id"]
+    else:
+        raise status.resourceNotFound

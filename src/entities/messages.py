@@ -48,10 +48,10 @@ class Message:
             "delete_after": (int(self.delete_after.timestamp()) if self.delete_after else None)
         }
 
-    def liked(self, user: users.User):
+    def liked(self, user: any):
         return (user.id in self.likes)
 
-    def like(self, user: users.User):
+    def like(self, user: any):
         if self.liked(user):
             return
         
@@ -63,7 +63,7 @@ class Message:
             "likes": self.likes
         })
 
-    def unlike(self, user: users.User):
+    def unlike(self, user: any):
         if not self.liked(user):
             return
         
@@ -105,7 +105,7 @@ class Message:
             "chat_id": self.chat_id
         })
 
-def create_message(chat: chats.Chat, author: users.User, content: str, reply_to: str = None, masquerade: dict = None, bridged: bool = False):
+def create_message(chat: chats.Chat, author: any, content: str, reply_to: str = None, masquerade: dict = None, bridged: bool = False):
     # Check whether a DM can be sent
     if chat.direct:
         for member in chat.members:
@@ -136,13 +136,14 @@ def create_message(chat: chats.Chat, author: users.User, content: str, reply_to:
     return message
 
 def get_message(message_id: str, error_on_deleted: bool = True):
-    # Get message from database and check whether it's not found or deleted
+    # Get message from database
     message = db.chat_messages.find_one({"_id": message_id})
-    if message is None or (error_on_deleted and message.get("deleted_at")):
-        raise status.resourceNotFound
 
     # Return message object
-    return Message(**message)
+    if message and ((not error_on_deleted) or (not message.get("deleted_at"))):
+        return Message(**message)
+    else:
+        raise status.resourceNotFound
 
 def get_latest_messages(chat: chats.Chat, before: str = None, after: str = None, limit: int = 50):
     # Create ID range

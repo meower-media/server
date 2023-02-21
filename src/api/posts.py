@@ -38,7 +38,7 @@ class CommentEditForm(BaseModel):
 async def v0_get_post(request):
     # Get post ID
     post_id = request.args.get("id")
-    if post_id is None:
+    if not post_id:
         return json({"error": True, "type": "noQueryString"}, status=400)
 
     # Get and return post

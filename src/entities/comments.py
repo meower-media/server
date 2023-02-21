@@ -111,10 +111,10 @@ class Comment:
             })
         Thread(target=run).start()
 
-    def liked(self, user: users.User):
+    def liked(self, user: any):
         return (db.comment_likes.count_documents({"comment_id": self.id, "user_id": user.id}) > 0)
 
-    def like(self, user: users.User):
+    def like(self, user: any):
         if self.liked(user):
             return
         
@@ -130,7 +130,7 @@ class Comment:
         })
         self.update_stats()
 
-    def unlike(self, user: users.User):
+    def unlike(self, user: any):
         if not self.liked(user):
             return
 
@@ -144,7 +144,7 @@ class Comment:
         })
         self.update_stats()
 
-    def edit(self, editor: users.User, content: str):
+    def edit(self, editor: any, content: str):
         if bitfield.has(self.flags, flags.posts.protected):
             raise status.missingPermissions
         elif content == self.content:
@@ -197,7 +197,7 @@ class Comment:
             "id": self.id
         })
 
-def create_comment(post: posts.Post, author: users.User, content: str, parent: Comment = None, masquerade: dict = None, bridged: bool = False):
+def create_comment(post: posts.Post, author: any, content: str, parent: Comment = None, masquerade: dict = None, bridged: bool = False):
     # Create comment data
     comment = {
         "_id": uid.snowflake(),
@@ -240,13 +240,14 @@ def create_comment(post: posts.Post, author: users.User, content: str, parent: C
     return comment
 
 def get_comment(comment_id: str, error_on_deleted: bool = True):
-    # Get comment from database and check whether it's not found or deleted
+    # Get comment from database
     comment = db.post_comments.find_one({"_id": comment_id})
-    if comment is None or (error_on_deleted and comment.get("deleted_at")):
-        raise status.resourceNotFound
 
-    # Return post object
-    return Comment(**comment)
+    # Return comment object
+    if comment and ((not error_on_deleted) or (not comment.get("deleted_at"))):
+        return Comment(**comment)
+    else:
+        raise status.resourceNotFound
 
 def get_post_comments(post: posts.Post, before: str = None, after: str = None, limit: int = 25):
     # Create ID range

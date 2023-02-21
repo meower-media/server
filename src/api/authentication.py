@@ -111,7 +111,6 @@ async def v1_login_password(request, body: LoginPasswordForm):
         })
     else:
         session = sessions.create_user_session(account, request.ctx.device, network)
-        print(session)
         return json({
             "user_id": account.id,
             "access_token": session.signed_token,
@@ -127,7 +126,7 @@ async def v1_login_password(request, body: LoginPasswordForm):
 async def v1_mfa_totp(request, body: LoginTOTPForm):
     # Get ticket details
     ticket = tickets.get_ticket_details(body.ticket)
-    if (ticket is None) or (ticket["t"] != "mfa"):
+    if (not ticket) or (ticket["t"] != "mfa"):
         raise status.notAuthenticated
 
     # Get account

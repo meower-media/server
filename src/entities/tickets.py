@@ -42,10 +42,10 @@ def get_ticket_details(signed_ticket: str):
 
         # Get ticket details
         ticket_details = redis.get(f"tic:{ticket_id}")
-        if ticket_details is None:
-            return None
-        else:
+        if ticket_details:
             return json.loads(ticket_details.decode())
+        else:
+            return None    
     except:
         return None
 

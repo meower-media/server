@@ -38,7 +38,7 @@ class CL4Commands:
 
         # Validate token and get user info
         user = sessions.get_user_by_token(payload["val"])
-        if user is None:
+        if not user:
             return await self.cl.send_code(client, "InvalidToken", listener=listener)
 
         # Get session info
@@ -50,7 +50,7 @@ class CL4Commands:
             )
         else:
             session = sessions.get_session_by_token(payload["val"])
-            if session is None:
+            if not session:
                 return await self.cl.send_code(client, "InvalidToken", listener=listener)
 
         # Set session info

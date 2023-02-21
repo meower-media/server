@@ -78,47 +78,47 @@ class botAlreadyExists(SanicException):
 
 
 ### 13000-13999 -- Permissions error ###
-class repairModeEnabled:
+class repairModeEnabled(SanicException):
     code = 13000
     http_status = 503
     message = "Repair mode is currently enabled"
 
-class ratelimited:
+class ratelimited(SanicException):
     code = 13001
     http_status = 429
     message = "Too many requests"
 
-class notAuthenticated:
+class notAuthenticated(SanicException):
     code = 13002
     http_status = 401
     message = "Not authenticated"
 
-class missingScope:
+class missingScope(SanicException):
     code = 13003
     http_status = 403
     message = "Missing scope"
 
-class missingPermissions:
+class missingPermissions(SanicException):
     code = 13003
     http_status = 403
     message = "Missing permissions"
 
-class networkBlocked:
+class networkBlocked(SanicException):
     code = 13004
     http_status = 403
     message = "Network is currently blocked"
 
-class userRestricted:
+class userRestricted(SanicException):
     code = 13005
     http_status = 403
     message = "User is currently restricted"
 
-class accountLocked:
+class accountLocked(SanicException):
     code = 13006
     http_status = 403
     message = "Account is currently locked"
 
-class fileTooLarge:
+class fileTooLarge(SanicException):
     code = 13007
     http_status = 413
     message = "File too large"

@@ -54,7 +54,7 @@ def til_next_millis(last: int) -> int:
 def generate_snowflake(worker_id: int = 0, datacenter_id: int = 0, epoch: int = None) -> int:
     global LAST_TIMESTAMP, SEQUENCE
 
-    if epoch is None:
+    if not epoch:
         epoch = globals()["EPOCH"]
 
     proc = multiprocessing.current_process()

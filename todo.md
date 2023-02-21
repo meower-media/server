@@ -1,6 +1,5 @@
 # CURRENT ISSUES
 - Implement a sane version system (startup version text)
-- Fix cyclic import error for src/entities/notifications.py when importing from src/entities/users.py
 - Session scopes
 
 # BEFORE RELEASE

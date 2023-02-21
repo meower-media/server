@@ -1,6 +1,5 @@
 from datetime import datetime
 from secrets import token_urlsafe
-import time
 
 from src.util import status, uid, events, bitfield, flags
 from src.entities import users
@@ -59,13 +58,13 @@ class Chat:
             "name": self.name
         })
 
-    def has_member(self, user: users.User):
+    def has_member(self, user: any):
         for member in self.members:
             if member.id == user.id:
                 return True
         return False
 
-    def add_member(self, user: users.User):
+    def add_member(self, user: any):
         if self.direct:
             raise status.missingPermissions
         elif self.has_member(user):
@@ -82,7 +81,7 @@ class Chat:
         if len(self.members) == 1:
             self.transfer_ownership(user)
 
-    def remove_member(self, user: users.User):
+    def remove_member(self, user: any):
         if self.direct:
             raise status.missingPermissions
         elif not self.has_member(user):
@@ -111,7 +110,7 @@ class Chat:
             })
             self.transfer_ownership(self.members[0])
 
-    def promote_member(self, user: users.User):
+    def promote_member(self, user: any):
         if self.direct:
             raise status.missingPermissions
         elif not self.has_member(user):
@@ -125,7 +124,7 @@ class Chat:
                 "permissions": self.permissions
             })
     
-    def demote_member(self, user: users.User):
+    def demote_member(self, user: any):
         if self.direct:
             raise status.missingPermissions
         elif not self.has_member(user):
@@ -139,7 +138,7 @@ class Chat:
                 "permissions": self.permissions
             })
 
-    def transfer_ownership(self, user: users.User):
+    def transfer_ownership(self, user: any):
         if self.direct:
             raise status.missingPermissions
         elif not self.has_member(user):
@@ -161,7 +160,7 @@ class Chat:
             "permissions": self.permissions
         })
 
-    def emit_typing(self, user: users.User):
+    def emit_typing(self, user: any):
         events.emit_event("typing_start", self.id, {
             "chat_id": self.id,
             "user_id": user.id
@@ -191,7 +190,7 @@ class Chat:
                 "id": self.id
             })
 
-def create_chat(name: str, owner: users.User):
+def create_chat(name: str, owner: any):
     chat = {
         "_id": uid.snowflake(),
         "name": name,
@@ -207,13 +206,16 @@ def create_chat(name: str, owner: users.User):
     return Chat(**chat)
 
 def get_chat(chat_id: str):
+    # Get chat from database
     chat = db.chats.find_one({"_id": chat_id})
-    if chat is None:
-        raise status.resourceNotFound
-    
-    return Chat(**chat)
 
-def get_dm_chat(user1: users.User, user2: users.User):
+    # Return chat object
+    if chat:
+        return Chat(**chat)
+    else:
+        raise status.resourceNotFound
+
+def get_dm_chat(user1: any, user2: any):
     if user1.id == user2.id:
         raise status.missingPermissions
 
@@ -234,5 +236,5 @@ def get_dm_chat(user1: users.User, user2: users.User):
 
         return chat
 
-def get_active_chats(user: users.User):
+def get_active_chats(user: any):
     return [Chat(**chat) for chat in db.chats.find({"members": {"$all": [user.id]}, "active": {"$all": [user.id]}, "deleted_at": None})]
