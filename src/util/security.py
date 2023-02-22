@@ -26,7 +26,7 @@ SIGNING_KEY = redis.get("signing_key")
 
 RATELIMIT_LIMITS = {  # these are not good at all right now
     "register": {
-        "hits": 1,
+        "hits": 2,
         "seconds": 60
     },
     "login": {

@@ -1,12 +1,12 @@
 from dotenv import load_dotenv
 import os
 
+load_dotenv()
+
 from src.api.server import app
 from src.util.startup import display_version
 
 if __name__ == "__main__":
-    load_dotenv()
-
     DEVELOPMENT = (os.getenv("DEVELOPMENT", "false") == "true")
     HOST = os.getenv("HOST", "127.0.0.1")
     REST_PORT = int(os.getenv("REST_PORT", 3000))

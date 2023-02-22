@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from src.util import status, security, email
-from src.entities import users, accounts, networks, sessions, tickets
+from src.entities import users, accounts, networks, sessions, tickets, security_cookies
 
 v1 = Blueprint("v1_authentication", url_prefix="/auth")
 
@@ -70,8 +70,12 @@ async def v1_register(request, body: RegistrationForm):
     account = accounts.create_account(body.username, body.password, body.child, require_email=(len(network.users) >= 3))
 
     # Complete authentication
+    security_cookie = security_cookies.decode_security_cookie(cookie=request.cookies.get("security_cookie"))
+    security_cookie.add_user(account)
     session = sessions.create_user_session(account, request.ctx.device, network)
-    return json({"user_id": account.id, "access_token": session.signed_token})
+    resp = json({"user_id": account.id, "access_token": session.signed_token})
+    resp.cookies["security_cookie"] = security_cookie.signed_cookie
+    return resp
 
 
 @v1.post("/password")
@@ -110,14 +114,18 @@ async def v1_login_password(request, body: LoginPasswordForm):
             "mfa_methods": account.mfa_methods
         })
     else:
+        security_cookie = security_cookies.decode_security_cookie(cookie=request.cookies.get("security_cookie"))
+        security_cookie.add_user(account)
         session = sessions.create_user_session(account, request.ctx.device, network)
-        return json({
+        resp = json({
             "user_id": account.id,
             "access_token": session.signed_token,
             "mfa_required": False,
             "mfa_ticket": None,
             "mfa_methods": None
         })
+        resp.cookies["security_cookie"] = security_cookie.signed_cookie
+        return resp
 
 
 @v1.post("/mfa/totp")
@@ -140,11 +148,15 @@ async def v1_mfa_totp(request, body: LoginTOTPForm):
         raise status.invalidCredentials
     else:
         tickets.revoke_ticket(ticket["id"])
+        security_cookie = security_cookies.decode_security_cookie(cookie=request.cookies.get("security_cookie"))
+        security_cookie.add_user(account)
         session = sessions.create_user_session(account, request.ctx.device, networks.get_network(request.ip))
-        return json({
+        resp = json({
             "user_id": account.id,
             "access_token": session.signed_token
         })
+        resp.cookies["security_cookie"] = security_cookie.signed_cookie
+        return resp
 
 
 @v1.post("/recovery/password")
@@ -158,7 +170,9 @@ async def v1_password_recovery(request, body: PasswordRecoveryForm):
     user = users.get_user(user_id)
 
     # Create password reset ticket
-    ticket = tickets.create_ticket(user, "password_reset")
+    ticket = tickets.create_ticket(user, "password_reset", {
+        "email": body.email
+    })
 
     # Send password reset email
     email.send_email(body.email, user.username, "password_reset", {

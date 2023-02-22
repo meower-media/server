@@ -33,7 +33,12 @@ async def v1_get_application_bot(request, application_id: str):
 async def v1_create_application_bot(request, application_id: str, body: CreateBotForm):
     application = get_application_or_abort_if_not_maintainer(application_id, request.ctx.user)
     bot = application.create_bot(body.username)
-    return json(bot.client)
+    token = bot.rotate_bot_session()
+    
+    return json({
+        "bot": bot.client,
+        "token": token
+    })
 
 
 @v1.post("/token")

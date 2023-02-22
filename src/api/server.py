@@ -32,6 +32,7 @@ if not time.time() > 1688169599:  # Check whether v0 has been discontinued
 # Initialize v1 API Blueprints
 from .general import v1 as v1_general
 from .authentication import v1 as v1_authentication
+from .email import v1 as v1_email
 from .me import v1 as v1_me
 from .home import v1 as v1_home
 from .posts import v1 as v1_posts
@@ -42,6 +43,7 @@ from .search import v1 as v1_search
 app.blueprint(Blueprint.group(
     v1_general,
     v1_authentication,
+    v1_email,
     v1_me,
     v1_home,
     v1_posts,

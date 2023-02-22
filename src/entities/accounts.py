@@ -74,7 +74,9 @@ class Account:
             redis.set(f"pem:{self.id}", new_email, ex=3600)
 
             # Generate ticket
-            ticket = tickets.create_ticket(user, "email_verification", data={"email": new_email})
+            ticket = tickets.create_ticket(user, "email_verification", data={
+                "email": new_email
+            })
 
             # Send verification email
             email.send_email(new_email, user.username, "email_verification", {

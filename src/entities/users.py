@@ -413,12 +413,12 @@ def get_user(user_id: str, return_deleted: bool = True):
         user = MEOWER
     else:
         user = db.users.find_one({"_id": user_id})
-        if (not user) and return_deleted:
-            user = DELETED
 
     # Return user object
     if user:
         return User(**user)
+    elif return_deleted:
+        return User(**DELETED)
     else:
         raise status.resourceNotFound
 
