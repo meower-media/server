@@ -219,7 +219,6 @@ def get_user_by_token(token: str):
                 return None
         elif ttype == "3":  # bot user
             user = users.get_user(session_id)
-            print(user)
             if str(user.bot_session) != str(version):
                 return None
             else:
