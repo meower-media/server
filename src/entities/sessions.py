@@ -217,8 +217,9 @@ def get_user_by_token(token: str):
                 return users.get_user(user_id.decode())
             else:
                 return None
-        elif ttype == "2":  # bot user
+        elif ttype == "3":  # bot user
             user = users.get_user(session_id)
+            print(user)
             if str(user.bot_session) != str(version):
                 return None
             else:
