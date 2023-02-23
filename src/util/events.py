@@ -7,6 +7,7 @@ from src.database import redis
 EVENT_NAMES = set([
     "user_updated",
     "sync_updated",
+    "relationship_updated",
     "session_created",
     "session_updated",
     "session_deleted",

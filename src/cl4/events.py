@@ -35,6 +35,11 @@ async def sync_updated(user_id: str, payload: dict):
     await send_to_user(user_id, "sync_updated", payload)
 
 
+@events.on("relationship_updated")
+async def relationship_updated(user_id: str, payload: dict):
+    await send_to_user(user_id, "relationship_updated", payload)
+
+
 @events.on("session_created")
 async def session_created(user_id: str, payload: dict):
     await send_to_user(user_id, "session_created", payload)

@@ -160,6 +160,19 @@ class User:
             })
         Thread(target=run).start()
 
+    def emit_relationship_status(self, user):
+        if self.is_following(user):
+            state = 1
+        elif self.is_blocking(user):
+            state = 2
+        else:
+            state = 0
+        
+        events.emit_event("relationship_updated", self.id, {
+            "user_id": user.id,
+            "state": state
+        })
+
     def get_following_ids(self):
         return [relationship["to"] for relationship in db.followed_users.find({"from": self.id})]
 
@@ -205,11 +218,11 @@ class User:
     def follow_user(self, user):
         if self.id == user.id:
             raise status.missingPermissions
-        elif self.is_following(user):
-            return
+        elif self.is_following(user) or self.is_followed(user):
+            raise status.missingPermissions
         elif self.is_blocking(user) or self.is_blocked(user):
             raise status.missingPermissions
-        
+
         db.followed_users.insert_one({
             "_id": uid.snowflake(),
             "to": user.id,
@@ -222,23 +235,32 @@ class User:
                 "user_id": self.id
             })
 
+        self.emit_relationship_status(user)
+        user.emit_relationship_status(self)
+
         self.update_stats()
         user.update_stats()
 
     def unfollow_user(self, user):
         if not self.is_following(user):
-            return
+            raise status.missingPermissions
 
         db.followed_users.delete_one({"to": user.id, "from": self.id})
+
+        self.emit_relationship_status(user)
+        user.emit_relationship_status(self)
 
         self.update_stats()
         user.update_stats()
 
     def remove_follower(self, user):
         if not self.is_followed(user):
-            return
+            raise status.missingPermissions
 
         db.followed_users.delete_one({"to": self.id, "from": user.id})
+
+        self.emit_relationship_status(user)
+        user.emit_relationship_status(self)
 
         self.update_stats()
         user.update_stats()
@@ -247,7 +269,7 @@ class User:
         if self.id == user.id:
             raise status.missingPermissions
         elif self.is_blocking(user):
-            return
+            raise status.missingPermissions
 
         db.blocked_users.insert_one({
             "_id": uid.snowflake(),
@@ -259,14 +281,20 @@ class User:
         db.followed_users.delete_one({"to": user.id, "from": self.id})
         db.followed_users.delete_one({"to": self.id, "from": user.id})    
 
+        self.emit_relationship_status(user)
+        user.emit_relationship_status(self)
+
         self.update_stats()
-        user.update_stats()    
+        user.update_stats()
 
     def unblock_user(self, user):
         if not self.is_blocking(user):
-            return
+            raise status.missingPermissions
 
         db.blocked_users.delete_one({"to": user.id, "from": self.id})
+
+        self.emit_relationship_status(user)
+        user.emit_relationship_status(self)
 
     @property
     def profile_history(self):

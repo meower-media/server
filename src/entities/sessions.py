@@ -243,6 +243,12 @@ def get_session_by_token(token: str):
         # Return session
         if ttype == "1":
             return get_user_session(session_id)
+        elif ttype == "3":
+            user = users.get_user(session_id)
+            if str(user.bot_session) != str(version):
+                return None
+            else:
+                return BotSession(_id=session_id, version=version, user_id=user.id)
         else:
             return None
     except:

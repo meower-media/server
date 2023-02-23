@@ -1,7 +1,7 @@
 import time
 
 from src.cl4.cloudlink import cloudlink
-from src.util import events, bitfield, flags
+from src.util import events
 from src.entities import sessions, accounts, applications, chats, infractions
 
 
@@ -36,25 +36,11 @@ class CL4Commands:
         # Start session start timer
         timer_start = time.time()
 
-        # Validate token and get user info
-        user = sessions.get_user_by_token(payload["val"])
-        if not user:
-            return await self.cl.send_code(client, "InvalidToken", listener=listener)
-
         # Get session info
-        if bitfield.has(user.flags, flags.users.bot):
-            session = sessions.UserSession(
-                _id=user.id,
-                version=user.bot_session,
-                user_id=user.id
-            )
-        else:
-            session = sessions.get_session_by_token(payload["val"])
-            if not session:
-                return await self.cl.send_code(client, "InvalidToken", listener=listener)
+        session = sessions.get_session_by_token(payload["val"])
 
         # Set session info
-        client.user_id = user.id
+        client.user_id = session.user.id
         client.session_id = session.id
         if client.user_id in self.cl._users:
             self.cl._users[client.user_id].add(client)
@@ -68,12 +54,10 @@ class CL4Commands:
             "ready",
             {
                 "session_id": client.session_id,
-                "bot_session": bitfield.has(user.flags, flags.users.bot),
-                "user": user.client,
-                "account": (accounts.get_account(session.user.id).client if (
-                    not bitfield.has(session.user.flags, flags.users.bot)) else None),
-                "application": (applications.get_application(session.user.id).client if bitfield.has(session.user.flags,
-                                                                                                     flags.users.bot) else None),
+                "bot_session": isinstance(session, sessions.BotSession),
+                "user": session.user.client,
+                "account": (accounts.get_account(session.user.id).client if isinstance(session, sessions.UserSession) else None),
+                "application": (applications.get_application(session.user.id).client if isinstance(session, sessions.BotSession) else None),
                 "chats": [chat.public for chat in chats.get_active_chats(session.user)],
                 "following": session.user.get_following_ids(),
                 "blocked": session.user.get_blocking_ids(),
