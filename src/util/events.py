@@ -4,7 +4,7 @@ import asyncio
 
 from src.database import redis
 
-EVENT_NAMES = set([
+EVENT_NAMES = {
     "user_updated",
     "sync_updated",
     "relationship_updated",
@@ -31,7 +31,7 @@ EVENT_NAMES = set([
     "message_updated",
     "message_deleted",
     "cl_direct"
-])
+}
 
 def emit_event(name: str, identifier: str, message: any):
     if name not in EVENT_NAMES:

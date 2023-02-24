@@ -101,7 +101,7 @@ class CL4Commands:
             if payload["id"] in self.cl._subscriptions[payload["type"]]:
                 self.cl._subscriptions[payload["type"]][payload["id"]].add(client)
             else:
-                self.cl._subscriptions[payload["type"]][payload["id"]] = set([client])
+                self.cl._subscriptions[payload["type"]][payload["id"]] = {client}
         else:
             return await self.cl.send_code(client, "InvalidSubscriptionType", listener=listener)
 

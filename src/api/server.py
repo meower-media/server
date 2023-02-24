@@ -1,10 +1,11 @@
 from sanic import Sanic, Blueprint
+from sanic_cors import CORS
 import time
 import os
 
 # General imports
 from .errors import MeowerErrorHandler
-from .middleware import parse_ua, ratelimit_header
+from .middleware import parse_ua, cors_headers, ratelimit_headers
 
 # Initialize API server
 app = Sanic("MeowerAPI")
@@ -12,7 +13,8 @@ app.config.REAL_IP_HEADER = os.getenv("IP_HEADER")
 app.config.REQUEST_MAX_SIZE = 10000000
 app.error_handler = MeowerErrorHandler()
 app.register_middleware(parse_ua, "request")
-app.register_middleware(ratelimit_header, "response")
+app.register_middleware(cors_headers, "response")
+app.register_middleware(ratelimit_headers, "response")
 
 # Initialize v0 API Blueprints
 if not time.time() > 1688169599:  # Check whether v0 has been discontinued

@@ -11,8 +11,13 @@ async def parse_ua(request):
         "client_type": client_type
     }
 
+async def cors_headers(request, response):
+    response.headers.extend({
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Credentials": "true"
+    })
 
-async def ratelimit_header(request, response):
+async def ratelimit_headers(request, response):
     if hasattr(request.ctx, "ratelimit_bucket"):
         response.headers["X-Ratelimit-Bucket"] = request.ctx.ratelimit_bucket
         response.headers["X-Ratelimit-Remaining"] = request.ctx.ratelimit_remaining

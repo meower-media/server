@@ -114,6 +114,23 @@ class User:
             "lvl": 0,
             "banned": False
         }
+    
+    @property
+    def legacy_client(self):
+        legacy_profile = self.legacy
+        config = self.config
+        legacy_profile.update({
+            "email": "",
+            "unread_inbox": False,
+            "theme": config.get("theme", "orange"),
+            "mode": config.get("mode", True),
+            "layout": config.get("layout", "new"),
+            "sfx": config.get("sfx", True),
+            "bgm": config.get("bgm", True),
+            "bgm_song": config.get("bgm_song", 2),
+            "debug": False
+        })
+        return legacy_profile
 
     @property
     def partial(self):
@@ -218,7 +235,7 @@ class User:
     def follow_user(self, user):
         if self.id == user.id:
             raise status.missingPermissions
-        elif self.is_following(user) or self.is_followed(user):
+        elif self.is_following(user):
             raise status.missingPermissions
         elif self.is_blocking(user) or self.is_blocked(user):
             raise status.missingPermissions
@@ -236,7 +253,6 @@ class User:
             })
 
         self.emit_relationship_status(user)
-        user.emit_relationship_status(self)
 
         self.update_stats()
         user.update_stats()
@@ -248,7 +264,6 @@ class User:
         db.followed_users.delete_one({"to": user.id, "from": self.id})
 
         self.emit_relationship_status(user)
-        user.emit_relationship_status(self)
 
         self.update_stats()
         user.update_stats()
@@ -259,7 +274,6 @@ class User:
 
         db.followed_users.delete_one({"to": self.id, "from": user.id})
 
-        self.emit_relationship_status(user)
         user.emit_relationship_status(self)
 
         self.update_stats()
@@ -294,7 +308,6 @@ class User:
         db.blocked_users.delete_one({"to": user.id, "from": self.id})
 
         self.emit_relationship_status(user)
-        user.emit_relationship_status(self)
 
     @property
     def profile_history(self):

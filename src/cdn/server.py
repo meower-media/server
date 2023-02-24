@@ -3,14 +3,14 @@ import os
 
 # General imports
 from .errors import MeowerErrorHandler
-from .middleware import ratelimit_header
+from .middleware import ratelimit_headers
 
 # Initialize CDN server
 app = Sanic("MeowerCDN")
 app.config.REAL_IP_HEADER = os.getenv("IP_HEADER")
 app.config.REQUEST_MAX_SIZE = 20000000
 app.error_handler = MeowerErrorHandler()
-app.register_middleware(ratelimit_header, "response")
+app.register_middleware(ratelimit_headers, "response")
 app.static("/assets", "./assets")
 
 # Initialize v1 CDN Blueprints

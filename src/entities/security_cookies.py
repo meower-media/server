@@ -30,7 +30,7 @@ class SecurityCookie:
         encoded_data = b64encode(zlib.compress(json.dumps({
             "i": self.id,
             "v": self.version,
-            "u": list(set([user.id for user in self.users])),
+            "u": list({user.id for user in self.users}),
             "t": self.last_used
         }).encode()))
         signature = security.sign_data(encoded_data)

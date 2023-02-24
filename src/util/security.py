@@ -110,7 +110,7 @@ def validate_signature(signature: bytes, data: bytes):
 
 def sanic_protected(
         ratelimit: str = None,
-        scope: str = None,
+        oauth_scope: str = None,
         require_auth: bool = True,
         allow_bots: bool = True,
         ignore_guardian: bool = False,
@@ -146,9 +146,11 @@ def sanic_protected(
                 # Get user from access token
                 if request.token:
                     request.ctx.user = sessions.get_user_by_token(request.token)
+                elif require_auth:
+                    raise status.notAuthenticated
                 else:
                     request.ctx.user = None
-                if scope and (not request.ctx.user):
+                if oauth_scope and (not request.ctx.user):
                     raise status.notAuthenticated
 
                 if request.ctx.user:

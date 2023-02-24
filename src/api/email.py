@@ -9,7 +9,7 @@ from src.database import redis
 v1 = Blueprint("v1_email", url_prefix="/email")
 
 
-EMAIL_TICKET_TYPES = set(["password_reset", "email_verification", "email_revert"])
+EMAIL_TICKET_TYPES = {"password_reset", "email_verification", "email_revert"}
 
 
 class ResetPasswordForm(BaseModel):

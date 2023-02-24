@@ -193,7 +193,7 @@ def user_status(user: any):
     return status
 
 def detect_ban_evasion(user: any, security_cookie, network):
-    possible_alts = list(set([user] + security_cookie.users + network.users))
+    possible_alts = ([user] + security_cookie.users + network.users)
     for possible_alt in possible_alts:
         for infraction in get_user_infractions(possible_alt, only_active=True):
             if bitfield.has(infraction.flags, flags.infractions.detectAlts):
