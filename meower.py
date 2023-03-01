@@ -1583,32 +1583,39 @@ class Meower:
                     username = val["username"]
                     chatid = val["chatid"]
                     
-                    # Read chat UUID's nickname
-                    FileRead, chatdata = self.filesystem.load_item("chats", chatid)
-                    print(chatid)
-                    if FileRead:
-                        if client in chatdata["members"]:
-                            # Add user to group chat
-                            if (username not in chatdata["members"]) and (username != "Server"):
-                                chatdata["members"].append(username)
-                                FileWrite = self.filesystem.write_item("chats", chatid, chatdata)
+                    if not self.supporter.check_for_spam("update_chat", client, burst=5, seconds=3):
+                        # Read chat UUID's nickname
+                        FileRead, chatdata = self.filesystem.load_item("chats", chatid)
+                        if FileRead:
+                            if client in chatdata["members"]:
+                                # Check if the group chat is full
+                                if len(chatdata["members"]) < 100:
+                                    # Add user to group chat
+                                    if (username not in chatdata["members"]) and (username != "Server"):
+                                        chatdata["members"].append(username)
+                                        FileWrite = self.filesystem.write_item("chats", chatid, chatdata)
 
-                                if FileWrite:
-                                    # Inbox message to say the user was added to the group chat
-                                    self.createPost("inbox", username, "You have been added to the group chat '{0}' by @{1}!".format(chatdata["nickname"], client))
+                                        if FileWrite:
+                                            # Inbox message to say the user was added to the group chat
+                                            self.createPost("inbox", username, "You have been added to the group chat '{0}' by @{1}!".format(chatdata["nickname"], client))
 
-                                    # Tell client user was added
-                                    self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                                            # Tell client user was added
+                                            self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                                        else:
+                                            # Some other error, raise an internal error.
+                                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                                    else:
+                                        self.returnCode(client = client, code = "IDExists", listener_detected = listener_detected, listener_id = listener_id)
                                 else:
-                                    # Some other error, raise an internal error.
-                                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                                    self.returnCode(client = client, code = "ChatFull", listener_detected = listener_detected, listener_id = listener_id)
                             else:
-                                self.returnCode(client = client, code = "IDExists", listener_detected = listener_detected, listener_id = listener_id)
+                                self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
                         else:
-                            self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
+                            # Some other error, raise an internal error.
+                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                     else:
-                        # Some other error, raise an internal error.
-                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                        # Rate limiter
+                        self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
                 else:
                     # Bad syntax
                     self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
@@ -1627,31 +1634,35 @@ class Meower:
                     username = val["username"]
                     chatid = val["chatid"]
                     
-                    # Read chat UUID's nickname
-                    result, chatdata = self.filesystem.load_item("chats", chatid)
-                    if result:
-                        if client == chatdata["owner"]:
-                            if (client != username) and (username != "Server"):
-                                # Remove user from group chat
-                                chatdata["members"].remove(username)
-                                result = self.filesystem.write_item("chats", chatid, chatdata)
+                    if not self.supporter.check_for_spam("update_chat", client, burst=5, seconds=3):
+                        # Read chat UUID's nickname
+                        result, chatdata = self.filesystem.load_item("chats", chatid)
+                        if result:
+                            if client == chatdata["owner"]:
+                                if (client != username) and (username != "Server"):
+                                    # Remove user from group chat
+                                    chatdata["members"].remove(username)
+                                    result = self.filesystem.write_item("chats", chatid, chatdata)
 
-                                if result:
-                                    # Inbox message to say the user was removed from the group chat
-                                    self.createPost("inbox", username, "You have been removed from the group chat '{0}' by @{1}!".format(chatdata["nickname"], client))
+                                    if result:
+                                        # Inbox message to say the user was removed from the group chat
+                                        self.createPost("inbox", username, "You have been removed from the group chat '{0}' by @{1}!".format(chatdata["nickname"], client))
 
-                                    # Tell client user was added
-                                    self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                                        # Tell client user was added
+                                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                                    else:
+                                        # Some other error, raise an internal error.
+                                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                                 else:
-                                    # Some other error, raise an internal error.
-                                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                                    self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
                             else:
-                                self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
+                                self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
                         else:
-                            self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
+                            # Some other error, raise an internal error.
+                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                     else:
-                        # Some other error, raise an internal error.
-                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                        # Rate limiter
+                        self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
                 else:
                     # Bad syntax
                     self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
