@@ -1589,7 +1589,7 @@ class Meower:
                         if FileRead:
                             if client in chatdata["members"]:
                                 # Check if the group chat is full
-                                if len(chatdata["members"]) < 100:
+                                if len(chatdata["members"]) < 256:
                                     # Add user to group chat
                                     if (username not in chatdata["members"]) and (username != "Server"):
                                         chatdata["members"].append(username)
