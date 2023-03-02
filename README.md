@@ -12,9 +12,9 @@ APIv0 will be upgraded automatically to APIv1 when Beta 6 is released. The API c
 ## Running the server
 
 ```py
-Git clone https://github.com/meower-media-co/Meower-Server.git
-Git submodule init
-Git submodule update
+git clone https://github.com/meower-media-co/Meower-Server.git
+git submodule init
+git submodule update
 python3 main.py
 ```
 
