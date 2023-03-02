@@ -109,7 +109,6 @@ class Main:
                 "ban",
                 "pardon",
                 "terminate",
-                "impersonate",
                 "repair_mode",
                 "delete_post",
                 "post_chat",

@@ -1324,15 +1324,12 @@ class Meower:
             if type(val) == str:
                 if not len(val) > 20:
                     val = self.supporter.wordfilter(val)
-                    if not self.filesystem.does_item_exist("chats", val):
-                        result = self.filesystem.create_item("chats", str(uuid.uuid4()), {"nickname": val, "owner": client, "members": [client]})
-                        if result:
-                            self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                        else:
-                            # Some other error, raise an internal error.
-                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                    result = self.filesystem.create_item("chats", str(uuid.uuid4()), {"nickname": val, "owner": client, "members": [client]})
+                    if result:
+                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                     else:
-                        self.returnCode(client = client, code = "ChatExists", listener_detected = listener_detected, listener_id = listener_id)
+                        # Some other error, raise an internal error.
+                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                 else:
                     # Bad syntax
                     self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
@@ -1590,22 +1587,26 @@ class Meower:
                             if client in chatdata["members"]:
                                 # Check if the group chat is full
                                 if len(chatdata["members"]) < 256:
-                                    # Add user to group chat
-                                    if (username not in chatdata["members"]) and (username != "Server"):
-                                        chatdata["members"].append(username)
-                                        FileWrite = self.filesystem.write_item("chats", chatid, chatdata)
+                                    # Check if the user exists
+                                    if self.filesystem.does_item_exist("usersv0", username):
+                                        # Add user to group chat
+                                        if (username not in chatdata["members"]) and (username != "Server"):
+                                            chatdata["members"].append(username)
+                                            FileWrite = self.filesystem.write_item("chats", chatid, chatdata)
 
-                                        if FileWrite:
-                                            # Inbox message to say the user was added to the group chat
-                                            self.createPost("inbox", username, "You have been added to the group chat '{0}' by @{1}!".format(chatdata["nickname"], client))
+                                            if FileWrite:
+                                                # Inbox message to say the user was added to the group chat
+                                                self.createPost("inbox", username, "You have been added to the group chat '{0}' by @{1}!".format(chatdata["nickname"], client))
 
-                                            # Tell client user was added
-                                            self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                                                # Tell client user was added
+                                                self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                                            else:
+                                                # Some other error, raise an internal error.
+                                                self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                                         else:
-                                            # Some other error, raise an internal error.
-                                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                                            self.returnCode(client = client, code = "IDExists", listener_detected = listener_detected, listener_id = listener_id)
                                     else:
-                                        self.returnCode(client = client, code = "IDExists", listener_detected = listener_detected, listener_id = listener_id)
+                                        self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
                                 else:
                                     self.returnCode(client = client, code = "ChatFull", listener_detected = listener_detected, listener_id = listener_id)
                             else:
