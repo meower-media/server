@@ -258,7 +258,7 @@ class Meower:
                                                 # Log peak users
                                                 self.supporter.log_peak_users()
                                             else:
-                                                self.returnCode(client = client, code = "Internal", listener_detected = listener_detected, listener_id = listener_id)
+                                                self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                                         else:
                                             if Banned:
                                                 # Account banned
@@ -367,7 +367,7 @@ class Meower:
                                             # Send welcome message
                                             self.createPost(post_origin="inbox", user=username, content="Welcome to Meower! We welcome you with open arms! You can get started by making friends in the global chat or home, or by searching for people and adding them to a group chat. We hope you have fun!")
                                         else:
-                                            self.returnCode(client = client, code = "Internal", listener_detected = listener_detected, listener_id = listener_id)
+                                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                                     else:
                                         if ((not FileCheck) and FileWrite):
                                             # Account already exists
@@ -1699,7 +1699,7 @@ class Meower:
                         if not self.supporter.check_for_spam("password-change", client, burst=2, seconds=120):         
                             if (len(old_password) <= 255) and (len(new_password) <= 255):
                                 # Check old password
-                                FileCheck, FileRead, ValidAuth, Banned = self.accounts.authenticate(username, old_password)
+                                FileCheck, FileRead, ValidAuth, Banned = self.accounts.authenticate(client, old_password)
                                 if FileCheck and FileRead:
                                     if ValidAuth:
                                         # Change password
@@ -1707,18 +1707,21 @@ class Meower:
                                         if FileCheck and FileRead and FileWrite:
                                             self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                                         else:
-                                            self.returnCode(client = client, code = "Internal", listener_detected = listener_detected, listener_id = listener_id)
+                                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                                     else:
                                         self.returnCode(client = client, code = "PasswordInvalid", listener_detected = listener_detected, listener_id = listener_id)
                                 else:
-                                    self.returnCode(client = client, code = "Internal", listener_detected = listener_detected, listener_id = listener_id)
+                                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                             else:
                                 self.returnCode(client = client, code = "TooLarge", listener_detected = listener_detected, listener_id = listener_id)
                         else:
+                            # Ratelimited
                             self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
                     else:
+                        # Bad datatype
                         self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
                 else:
+                    # Bad syntax
                     self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
             else:
                 # Bad datatype
@@ -1744,48 +1747,71 @@ class Meower:
     def del_account(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
         if self.supporter.isAuthenticated(client):
-            FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
-            if FileCheck and FileRead:
-                if accountData["lvl"] == 0:
-                    all_posts = self.getIndex(location="posts", query={"u": client}, truncate=False)["index"]
-                    for post in all_posts:
-                        self.filesystem.delete_item("posts", post["_id"])
-                        self.completeReport(post["_id"], None)
-                        if post["post_origin"] != "inbox":
-                            self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": post["_id"]}})
-                    chat_index = self.getIndex(location="chats", query={"members": {"$all": [client]}}, truncate=False)["index"]
-                    for chat in chat_index:
-                        if chat["owner"] == client:
-                            self.filesystem.delete_item("chats", chat["_id"])
-                            for member in chat["members"]:
-                                if member in self.cl.getUsernames():
-                                    self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": chat["_id"]}, "id": member})
+            if type(val) == str:
+                if len(val) <= 255:
+                    if not self.supporter.check_for_spam("login", client, burst=5, seconds=60):
+                        # Check old password
+                        FileCheck, FileRead, ValidAuth, Banned = self.accounts.authenticate(client, val)
+                        if FileCheck and FileRead:
+                            if ValidAuth:
+                                # Delete account
+                                FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
+                                if FileCheck and FileRead:
+                                    if accountData["lvl"] == 0:
+                                        all_posts = self.getIndex(location="posts", query={"u": client}, truncate=False)["index"]
+                                        for post in all_posts:
+                                            self.filesystem.delete_item("posts", post["_id"])
+                                            self.completeReport(post["_id"], None)
+                                            if post["post_origin"] != "inbox":
+                                                self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": post["_id"]}})
+                                        chat_index = self.getIndex(location="chats", query={"members": {"$all": [client]}}, truncate=False)["index"]
+                                        for chat in chat_index:
+                                            if chat["owner"] == client:
+                                                self.filesystem.delete_item("chats", chat["_id"])
+                                                for member in chat["members"]:
+                                                    if member in self.cl.getUsernames():
+                                                        self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": chat["_id"]}, "id": member})
+                                            else:
+                                                chat["members"].remove(client)
+                                                self.filesystem.write_item("chats", chat["_id"], chat)
+                                        netlog_index = self.getIndex(location="netlog", query={"users": {"$all": [client]}}, truncate=False)["index"]
+                                        for ip in netlog_index:
+                                            ip["users"].remove(client)
+                                            if len(ip["users"]) == 0:
+                                                self.filesystem.delete_item("netlog", ip["_id"])
+                                            else:
+                                                if ip["last_user"] == client:
+                                                    ip["last_user"] = ip["users"][(len(ip["users"])-1)]
+                                                self.filesystem.write_item("netlog", ip["_id"], ip)
+                                        self.filesystem.delete_item("usersv0", client)
+                                        self.completeReport(client, None)
+                                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                                        time.sleep(1)
+                                        self.cl.kickClient(client)
+                                    else:
+                                        # User cannot delete account as an admin
+                                        self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
+                                else:
+                                    # Some other error, raise an internal error.
+                                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                            else:
+                                # Password invalid
+                                self.returnCode(client = client, code = "PasswordInvalid", listener_detected = listener_detected, listener_id = listener_id)
                         else:
-                            chat["members"].remove(client)
-                            self.filesystem.write_item("chats", chat["_id"], chat)
-                    netlog_index = self.getIndex(location="netlog", query={"users": {"$all": [client]}}, truncate=False)["index"]
-                    for ip in netlog_index:
-                        ip["users"].remove(client)
-                        if len(ip["users"]) == 0:
-                            self.filesystem.delete_item("netlog", ip["_id"])
-                        else:
-                            if ip["last_user"] == client:
-                                ip["last_user"] = ip["users"][(len(ip["users"])-1)]
-                            self.filesystem.write_item("netlog", ip["_id"], ip)
-                    self.filesystem.delete_item("usersv0", client)
-                    self.completeReport(client, None)
-                    self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                    time.sleep(1)
-                    self.cl.kickClient(client)
+                            if ((not FileCheck) and FileRead):
+                                # Account not found
+                                self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
+                            else:
+                                # Some other error, raise an internal error.
+                                self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                    else:
+                        # Ratelimited
+                        self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
                 else:
-                    self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
+                    self.returnCode(client = client, code = "TooLarge", listener_detected = listener_detected, listener_id = listener_id)
             else:
-                if ((not FileCheck) and FileRead):
-                    # Account not found
-                    self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    # Some other error, raise an internal error.
-                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                # Bad datatype
+                self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
         else:
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
