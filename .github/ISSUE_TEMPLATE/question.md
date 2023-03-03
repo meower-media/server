@@ -1,7 +1,7 @@
 ---
 name: Question
 about: Ask a question and get support
-title: ''
+title: '[branch | version] Question summary'
 labels: ''
 assignees: ''
 
