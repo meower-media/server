@@ -307,7 +307,7 @@ class Meower:
                     ip = str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"])
                     
                     if ((type(username) == str) and (type(password) == str)):
-                        if not (len(username) > 20) or (password > 74):
+                        if not (len(username) > 20) or (password > 255):
                             if not self.supporter.checkForBadCharsUsername(username):
                                 # Check if the IP is a VPN/proxy
                                 if ip in self.supporter.known_vpns:
@@ -1691,20 +1691,35 @@ class Meower:
     def change_pswd(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
         if self.supporter.isAuthenticated(client):
-            if type(val) == str:
-                if not self.supporter.check_for_spam("password-change", client, burst=2, seconds=120):         
-                    if len(val) > 64:
-                        val = val[:64]
-                    
-                    # Change password
-                    FileCheck, FileRead, FileWrite = self.accounts.change_password(client, val)
-
-                    if FileCheck and FileRead and FileWrite:
-                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+            if type(val) == dict:
+                if ("old" in val) and ("new" in val):
+                    if (type(val["old"]) == str) and (type(val["new"]) == str):
+                        old_password = val["old"]
+                        new_password = val["new"]
+                        if not self.supporter.check_for_spam("password-change", client, burst=2, seconds=120):         
+                            if (len(old_password) <= 255) and (len(new_password) <= 255):
+                                # Check old password
+                                FileCheck, FileRead, ValidAuth, Banned = self.accounts.authenticate(username, old_password)
+                                if FileCheck and FileRead:
+                                    if ValidAuth:
+                                        # Change password
+                                        FileCheck, FileRead, FileWrite = self.accounts.change_password(client, new_password)
+                                        if FileCheck and FileRead and FileWrite:
+                                            self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                                        else:
+                                            self.returnCode(client = client, code = "Internal", listener_detected = listener_detected, listener_id = listener_id)
+                                    else:
+                                        self.returnCode(client = client, code = "PasswordInvalid", listener_detected = listener_detected, listener_id = listener_id)
+                                else:
+                                    self.returnCode(client = client, code = "Internal", listener_detected = listener_detected, listener_id = listener_id)
+                            else:
+                                self.returnCode(client = client, code = "TooLarge", listener_detected = listener_detected, listener_id = listener_id)
+                        else:
+                            self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
                     else:
-                        self.returnCode(client = client, code = "Internal", listener_detected = listener_detected, listener_id = listener_id)
+                        self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
                 else:
-                    self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
+                    self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
             else:
                 # Bad datatype
                 self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
