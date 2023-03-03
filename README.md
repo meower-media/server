@@ -10,7 +10,13 @@ APIv0 will be upgraded automatically to APIv1 when Beta 6 is released. The API c
 * Run `pip3 install -r requirements.txt` in the downloaded and unzipped directory
 
 ## Running the server
-Simply download and run main.py to start the server. Files and directories will be created to store posts, logs, and userdata.
+
+```py
+git clone https://github.com/meower-media-co/Meower-Server.git
+git submodule init
+git submodule update
+python3 main.py
+```
 
 To connect to the server, change the IP settings of your client to connect to ws://127.0.0.1:3000/.
 
