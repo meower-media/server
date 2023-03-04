@@ -28,7 +28,7 @@ async def v1_get_email_ticket_details(request):
 
     # Return ticket details
     return json({
-        "id": ticket["id"],
+        "id": ticket["i"],
         "type": ticket["t"],
         "user": users.get_user(ticket["u"])
     })
@@ -45,7 +45,7 @@ async def v1_reset_password(request, body: ResetPasswordForm):
         raise status.notAuthenticated
 
     # Revoke ticket
-    tickets.revoke_ticket(ticket["id"])
+    tickets.revoke_ticket(ticket["i"])
 
     # Set new password
     account.change_password(body.password)
@@ -65,7 +65,7 @@ async def v1_verify_email(request):
         raise status.notAuthenticated
 
     # Revoke ticket
-    tickets.revoke_ticket(ticket["id"])
+    tickets.revoke_ticket(ticket["i"])
 
     # Set new email
     account.change_email(ticket["email"], require_verification=False)
@@ -82,7 +82,7 @@ async def v1_revert_email(request):
         raise status.notAuthenticated
 
     # Revoke ticket
-    tickets.revoke_ticket(ticket["id"])
+    tickets.revoke_ticket(ticket["i"])
 
     # Set new email
     account.change_email(ticket["email"], require_verification=False, send_email_alert=False)

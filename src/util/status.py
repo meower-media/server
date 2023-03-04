@@ -34,18 +34,23 @@ class invalidSyntax(SanicException):
     http_status = 400
     message = "Invalid syntax"
 
-class invalidType(SanicException):
+class invalidDatatype(SanicException):
     code = 11001
+    http_status = 400
+    message = "Invalid datatype"
+
+class invalidType(SanicException):
+    code = 11002
     http_status = 403
     message = "Invalid type"
 
 class invalidCredentials(SanicException):
-    code = 11002
+    code = 11003
     http_status = 401
     message = "Invalid credentials"
 
 class invalidCaptcha(SanicException):
-    code = 11003
+    code = 11004
     http_status = 403
     message = "Invalid captcha"
 

@@ -10,6 +10,9 @@ class RequestVerification(BaseModel):
         max_length=8
     )
 
+    def __init__():
+        super()
+
 class UserIcon(BaseModel):
     type: int = Field(
         ge=0,

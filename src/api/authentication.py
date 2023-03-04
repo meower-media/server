@@ -55,7 +55,7 @@ class PasswordRecoveryForm(BaseModel):
 
 @v1.post("/register")
 @validate(json=RegistrationForm)
-@security.sanic_protected(ratelimit="register", require_auth=False)
+@security.sanic_protected(require_auth=False, ratelimit_key="register", ratelimit_scope="ip")
 async def v1_register(request, body: RegistrationForm):
     # Get network and check whether it's blocked
     network = networks.get_network(request.ip)
@@ -72,7 +72,7 @@ async def v1_register(request, body: RegistrationForm):
     # Complete authentication
     security_cookie = security_cookies.decode_security_cookie(cookie=request.cookies.get("security_cookie"))
     security_cookie.add_user(account)
-    session = sessions.create_user_session(account, request.ctx.device, network)
+    session = sessions.create_user_session(account, request.ctx.device, network.ip_address)
     resp = json({"user_id": account.id, "access_token": session.signed_token})
     resp.cookies["security_cookie"] = security_cookie.signed_cookie
     return resp
@@ -80,7 +80,7 @@ async def v1_register(request, body: RegistrationForm):
 
 @v1.post("/password")
 @validate(json=LoginPasswordForm)
-@security.sanic_protected(ratelimit="login", require_auth=False)
+@security.sanic_protected(require_auth=False, ratelimit_key="login", ratelimit_scope="ip")
 async def v1_login_password(request, body: LoginPasswordForm):
     # Get network and check whether it's blocked
     network = networks.get_network(request.ip)
@@ -116,7 +116,7 @@ async def v1_login_password(request, body: LoginPasswordForm):
     else:
         security_cookie = security_cookies.decode_security_cookie(cookie=request.cookies.get("security_cookie"))
         security_cookie.add_user(account)
-        session = sessions.create_user_session(account, request.ctx.device, network)
+        session = sessions.create_user_session(account, request.ctx.device, network.ip_address)
         resp = json({
             "user_id": account.id,
             "access_token": session.signed_token,
@@ -130,7 +130,7 @@ async def v1_login_password(request, body: LoginPasswordForm):
 
 @v1.post("/mfa/totp")
 @validate(json=LoginTOTPForm)
-@security.sanic_protected(ratelimit="mfa", require_auth=False)
+@security.sanic_protected(require_auth=False, ratelimit_key="mfa", ratelimit_scope="ip")
 async def v1_mfa_totp(request, body: LoginTOTPForm):
     # Get ticket details
     ticket = tickets.get_ticket_details(body.ticket)
@@ -147,10 +147,10 @@ async def v1_mfa_totp(request, body: LoginTOTPForm):
     if not account.check_totp(body.code):
         raise status.invalidCredentials
     else:
-        tickets.revoke_ticket(ticket["id"])
+        tickets.revoke_ticket(ticket["i"])
         security_cookie = security_cookies.decode_security_cookie(cookie=request.cookies.get("security_cookie"))
         security_cookie.add_user(account)
-        session = sessions.create_user_session(account, request.ctx.device, networks.get_network(request.ip))
+        session = sessions.create_user_session(account, request.ctx.device, request.ip)
         resp = json({
             "user_id": account.id,
             "access_token": session.signed_token
@@ -161,7 +161,7 @@ async def v1_mfa_totp(request, body: LoginTOTPForm):
 
 @v1.post("/recovery/password")
 @validate(json=PasswordRecoveryForm)
-@security.sanic_protected(ratelimit="verify", require_auth=False)  # placeholder ratelimit bucket
+@security.sanic_protected(require_auth=False, ratelimit_key="verify", ratelimit_scope="ip")  # placeholder ratelimit bucket
 async def v1_password_recovery(request, body: PasswordRecoveryForm):
     # Get user ID
     user_id = accounts.get_id_from_email(body.email)

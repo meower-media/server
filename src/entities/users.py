@@ -9,6 +9,8 @@ from src.entities import notifications, sessions
 from src.util import status, uid, events, security, bitfield, flags
 from src.database import db
 
+PERMITTED_CHARS_USERNAME = set(string.ascii_letters + string.digits + "_-")
+
 SERVER = {
     "_id": "0",
     "username": "Server",
@@ -35,7 +37,28 @@ MEOWER = {
     "badges": ["MEOWY"]
 }
 
-PERMITTED_CHARS_USERNAME = set(string.ascii_letters + string.digits + "_-")
+DEFAULT_USER_CONFIG = {
+    "client_settings": {
+        "theme": "orange-light",
+        "custom_colors": "{}",
+        "old_layout": False,
+        "filter": False,
+        "debug": False
+    },
+    "notification_settings": {
+        "follows": True,
+        "mentions": True,
+        "post_likes": True,
+        "post_meows": True,
+        "comments": True,
+        "comment_likes": True,
+        "comment_replies": True
+    },
+    "privacy_settings": {
+        "private": False,
+        "direct_messages": 0
+    }
+}
 
 class User:
     def __init__(
@@ -47,10 +70,10 @@ class User:
         flags: int = 0,
         admin: int = 0,
         created: datetime = None,
-        icon: dict = {"type": 0, "data": 2},
+        icon: str = None,
         quote: str = "",
         badges: list = [],
-        stats: dict = {"followers": 0, "following": 0},
+        stats: dict = {"followers": 0, "following": 0, "posts": 0},
         bot_session: int = 0,
         redirect_to: str = None,
         delete_after: datetime = None
@@ -78,7 +101,7 @@ class User:
         return {
             "id": self.id,
             "username": self.username,
-            "flags": self.public_flags,
+            "public_flags": self.public_flags,
             "created": int(self.created.timestamp()),
             "theme": self.theme,
             "icon": self.icon,
@@ -93,6 +116,7 @@ class User:
             "id": self.id,
             "username": self.username,
             "flags": self.flags,
+            "public_flags": self.public_flags,
             "admin": self.admin,
             "created": int(self.created.timestamp()),
             "theme": self.theme,
@@ -103,13 +127,13 @@ class User:
         }
 
     @property
-    def legacy(self):
+    def legacy_public(self):
         return {
             "_id": self.username,
             "lower_username": self.lower_username,
             "created": int(self.created.timestamp()),
             "uuid": self.id,
-            "pfp_data": (self.icon["data"] if (self.icon["type"] == 0) else 2),
+            "pfp_data": (self.icon["data"] if (self.icon["type"] == 0) else 1),
             "quote": self.quote,
             "lvl": 0,
             "banned": False
@@ -117,9 +141,9 @@ class User:
     
     @property
     def legacy_client(self):
-        legacy_profile = self.legacy
+        legacy_public = self.legacy_public
         config = self.config
-        legacy_profile.update({
+        legacy_public.update({
             "email": "",
             "unread_inbox": False,
             "theme": config.get("theme", "orange"),
@@ -127,18 +151,18 @@ class User:
             "layout": config.get("layout", "new"),
             "sfx": config.get("sfx", True),
             "bgm": config.get("bgm", True),
-            "bgm_song": config.get("bgm_song", 2),
+            "bgm_song": config.get("bgm_song", 1),
             "debug": False
         })
-        return legacy_profile
+        return legacy_public
 
     @property
     def partial(self):
         return {
             "id": self.id,
             "username": self.username,
-            "flags": self.public_flags,
-            "icon": self.icon
+            "public_flags": self.public_flags,
+            #"icon": self.icon
         }
 
     @property
@@ -155,19 +179,44 @@ class User:
 
     @property
     def config(self):
-        return db.user_config.find_one({"_id": self.id}, projection={"_id": 0})
+        _config = copy(DEFAULT_USER_CONFIG)
 
-    def update_config(self, config: dict):
-        _config = copy(self.config)
-        _config.update(config)
-        db.user_sync.update_one({"_id": self.id}, {"$set": config})
-        events.emit_event("sync_updated", self.id, {"type": "config", "val": _config})
+        saved_config = db.user_config.find_one({"_id": self.id})
+        if not saved_config:
+            saved_config = {"_id": self.id}
+            db.user_config.insert_one(saved_config)
+        
+        del saved_config["_id"]
+        for key in saved_config.keys():
+            for sub_key, sub_val in saved_config[key].items():
+                _config[key][sub_key] = sub_val
+
+        return _config
+
+    def update_config(self, new_data: dict):
+        _config = self.config
+
+        for key in new_data.keys():
+            if key not in _config:
+                raise status.invalidSyntax
+            for sub_key, sub_val in new_data[key].items():
+                if sub_key not in _config[key].keys():
+                    raise status.invalidSyntax
+                elif not isinstance(sub_val, type(_config[key][sub_key])):
+                    raise status.invalidDatatype
+                else:
+                    _config[key][sub_key] = sub_val
+        
+        db.user_config.update_one({"_id": self.id}, {"$set": _config})
+        events.emit_event("user_config_updated", self.id, _config)
+
+        return _config
 
     def update_stats(self):
         def run():
             self.stats = {
-                "followers": db.followed_users.count_documents({"to": self.id}),
-                "following": db.followed_users.count_documents({"from": self.id}),
+                "followers": db.followed_users.count_documents({"_id.to": self.id}),
+                "following": db.followed_users.count_documents({"_id.from": self.id}),
                 "posts": db.posts.count_documents({"author_id": self.id, "deleted_at": None})
             }
             db.users.update_one({"_id": self.id}, {"$set": {"stats": self.stats}})
@@ -191,10 +240,10 @@ class User:
         })
 
     def get_following_ids(self):
-        return [relationship["to"] for relationship in db.followed_users.find({"from": self.id})]
+        return [relationship["to"] for relationship in db.followed_users.find({"_id.from": self.id})]
 
     def get_blocking_ids(self):
-        return [relationship["to"] for relationship in db.blocked_users.find({"from": self.id})]
+        return [relationship["to"] for relationship in db.blocked_users.find({"_id.from": self.id})]
 
     def get_following(self, before: str = None, after: str = None, limit: int = 50):
         # Create ID range
@@ -206,7 +255,7 @@ class User:
             id_range = {"$gt": "0"}
 
         # Fetch and return all users
-        return [get_user(relationship["to"]) for relationship in db.followed_users.find({"from": self.id, "_id": id_range}, sort=[("to", -1)], limit=limit)]
+        return [get_user(relationship["to"]) for relationship in db.followed_users.find({"_id.from": self.id, "_id.to": id_range}, sort=[("_id.to", -1)], limit=limit)]
 
     def get_followed(self, before: str = None, after: str = None, limit: int = 50):
         # Create ID range
@@ -218,36 +267,32 @@ class User:
             id_range = {"$gt": "0"}
 
         # Fetch and return all users
-        return [get_user(relationship["from"]) for relationship in db.followed_users.find({"to": self.id, "_id": id_range}, sort=[("from", -1)], limit=limit)]
+        return [get_user(relationship["from"]) for relationship in db.followed_users.find({"_id.to": self.id, "_id.from": id_range}, sort=[("_id.from", -1)], limit=limit)]
 
     def is_following(self, user):
-        return (db.followed_users.find_one({"to": user.id, "from": self.id}, projection={"_id": 1}) is not None)
+        return (db.followed_users.find_one({"_id": {"to": user.id, "from": self.id}}, projection={"_id": 1}) is not None)
     
     def is_followed(self, user):
-        return (db.followed_users.find_one({"to": self.id, "from": user.id}, projection={"_id": 1}) is not None)
+        return (db.followed_users.find_one({"_id": {"to": self.id, "from": user.id}}, projection={"_id": 1}) is not None)
 
     def is_blocking(self, user):
-        return (db.blocked_users.find_one({"to": user.id, "from": self.id}) is not None)
+        return (db.blocked_users.find_one({"_id": {"to": user.id, "from": self.id}}) is not None)
 
     def is_blocked(self, user):
-        return (db.blocked_users.find_one({"to": self.id, "from": user.id}) is not None)
+        return (db.blocked_users.find_one({"_id": {"to": self.id, "from": user.id}}) is not None)
 
     def follow_user(self, user):
         if self.id == user.id:
-            raise status.missingPermissions
+            pass
+            #raise status.missingPermissions
         elif self.is_following(user):
             raise status.missingPermissions
         elif self.is_blocking(user) or self.is_blocked(user):
             raise status.missingPermissions
 
-        db.followed_users.insert_one({
-            "_id": uid.snowflake(),
-            "to": user.id,
-            "from": self.id,
-            "time": uid.timestamp()
-        })
+        db.followed_users.insert_one({"_id": {"to": user.id, "from": self.id}, "time": uid.timestamp()})
 
-        if bitfield.has(user.config.get("notifications", 127), flags.configNotifications.follows):
+        if user.config["notification_settings"]["follows"]:
             notifications.create_notification(user, 1, {
                 "user_id": self.id
             })
@@ -261,7 +306,7 @@ class User:
         if not self.is_following(user):
             raise status.missingPermissions
 
-        db.followed_users.delete_one({"to": user.id, "from": self.id})
+        db.followed_users.delete_one({"_id": {"to": user.id, "from": self.id}})
 
         self.emit_relationship_status(user)
 
@@ -272,7 +317,7 @@ class User:
         if not self.is_followed(user):
             raise status.missingPermissions
 
-        db.followed_users.delete_one({"to": self.id, "from": user.id})
+        db.followed_users.delete_one({"_id": {"to": self.id, "from": user.id}})
 
         user.emit_relationship_status(self)
 
@@ -292,8 +337,8 @@ class User:
             "time": uid.timestamp()
         })
 
-        db.followed_users.delete_one({"to": user.id, "from": self.id})
-        db.followed_users.delete_one({"to": self.id, "from": user.id})    
+        db.followed_users.delete_one({"_id": {"to": user.id, "from": self.id}})
+        db.followed_users.delete_one({"_id": {"to": self.id, "from": user.id}})    
 
         self.emit_relationship_status(user)
         user.emit_relationship_status(self)
@@ -305,13 +350,13 @@ class User:
         if not self.is_blocking(user):
             raise status.missingPermissions
 
-        db.blocked_users.delete_one({"to": user.id, "from": self.id})
+        db.blocked_users.delete_one({"_id": {"to": user.id, "from": self.id}})
 
         self.emit_relationship_status(user)
 
     @property
     def profile_history(self):
-        return list(db.profile_history.find({"user_id": self._id}, projection={"_id": 0, "user_id": 0}, sort=[("_id", -1)]))
+        return list(db.profile_history.find({"user_id": self.id}, projection={"_id": 0, "user_id": 0}, sort=[("_id", -1)]))
 
     def update_username(self, username: str, by_admin: bool = False, store_history: bool = True, reserve_old_username: bool = True):
         if username == self.username:

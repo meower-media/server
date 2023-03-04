@@ -4,6 +4,7 @@ import secrets
 import pymongo
 import os
 import requests
+import asyncio
 
 from src.util import status
 from src.entities import users, accounts, networks, sessions, infractions, posts
@@ -51,8 +52,6 @@ class CL3Commands:
             account = accounts.get_account(user_id)
         except status.resourceNotFound:
             return await self.cl.send_code(client, "IDNotFound", listener)
-        except:
-            return await self.cl.send_code(client, "Internal", listener)
         
         # Check whether account can MFA enabled
         if account.mfa_enabled:
@@ -71,7 +70,7 @@ class CL3Commands:
 
         # Authenticate client
         if user.id in self.cl._user_ids:
-            self.cl.kick_client(self.cl._user_ids[user.id], "a")
+            await self.cl.kick_client(self.cl._user_ids[user.id], "IDConflict")
         client.user_id = user.id
         client.username = username
         self.cl._user_ids[user.id] = client
@@ -113,14 +112,22 @@ class CL3Commands:
             "cmd": "direct",
             "val": {
                 "mode": "profile",
-                "payload": (user.legacy_client if (client.user_id == user.id) else user.legacy),
+                "payload": (user.legacy_client if (client.user_id == user.id) else user.legacy_public),
                 "user_id": user.id
             }
         }
         await self.cl.send_to_client(client, payload, listener)
         return await self.cl.send_code(client, "OK", listener)
     
-    def update_config(self, client, val, listener_detected, listener_id):
+    async def update_config(self, client, val, listener):
+        # Check if the client is authenticated
+        if not client.user_id:
+            return await self.cl.send_code(client, "Refused", listener)
+        
+        # Check datatype
+        if not isinstance(val, dict):
+            return await self.cl.send_code(client, "Datatype", listener)
+
         # Check if the client is authenticated
         if self.supporter.isAuthenticated(client):
             if type(val) == dict:
@@ -175,33 +182,30 @@ class CL3Commands:
         await self.cl.send_code(client, "OK", listener)
         return await self.cl.send_to_client(client, payload, listener)
     
-    def post_home(self, client, val, listener_detected, listener_id):
+    async def post_home(self, client, val, listener):
         # Check if the client is authenticated
-        if self.supporter.isAuthenticated(client):
-            if type(val) == str:
-                if not len(val) > 360:
-                    if not self.supporter.check_for_spam("posts", client, burst=6, seconds=5):
-                        # Create post
-                        result = self.createPost(post_origin="home", user=client, content=val)
-                        if result:
-                            self.log("{0} posting home message".format(client))
-                            # Tell client message was sent
-                            self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                            self.supporter.ratelimit(client)
-                        else:
-                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                    else:
-                        # Rate limiter
-                        self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    # Message too large
-                    self.returnCode(client = client, code = "TooLarge", listener_detected = listener_detected, listener_id = listener_id)
-            else:
-                # Bad datatype
-                self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        else:
-            # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
+        if not client.user_id:
+            return await self.cl.send_code(client, "Refused", listener)
+        
+        # Check syntax
+        if not isinstance(val, str):
+            return await self.cl.send_code(client, "Datatype", listener)
+        elif len(val) > 360:
+            return await self.cl.send_code(client, "TooLarge", listener)
+        
+        # Get user
+        user = users.get_user(client.user_id, return_deleted=False)
+
+        # Check whether the user is suspended
+        moderation_status = infractions.user_status(user)
+        if moderation_status["suspended"] or moderation_status["banned"]:
+            return await self.cl.send_code(client, "Banned", listener)
+
+        # Create post
+        posts.create_post(user, val)
+
+        # Tell the client the post was created
+        return await self.cl.send_code(client, "OK", listener)
     
     async def get_post(self, client, val, listener):
         # Check if the client is authenticated
@@ -217,15 +221,13 @@ class CL3Commands:
             post = posts.get_post(val, error_on_deleted=True)
         except status.resourceNotFound:
             return await self.cl.send_code(client, "IDNotFound", listener)
-        except:
-            return await self.cl.send_code(client, "Internal", listener)
         
         # Return post
         payload = {
             "cmd": "direct",
             "val": {
                 "mode": "post",
-                "payload": post.legacy
+                "payload": post.legacy_public
             }
         }
         await self.cl.send_to_client(client, payload, listener)
@@ -332,72 +334,30 @@ class CL3Commands:
 
     # Chat-related
     
-    def delete_post(self, client, val, listener_detected, listener_id):
+    async def delete_post(self, client, val, listener):
         # Check if the client is authenticated
-        if self.supporter.isAuthenticated(client):
-            if self.filesystem.does_item_exist("posts", val):
-                result, payload = self.filesystem.load_item("posts", val)
-                if result:
-                    if (payload["post_origin"] != "inbox") and ((payload["u"] == client) or ((payload["u"] == "Discord") and payload["p"].startswith("{0}:".format(client)))):
-                        payload["isDeleted"] = True
-                        result = self.filesystem.write_item("posts", val, payload)
-                        if result:
-                            self.log("{0} deleting post {1}".format(client, val))
+        if not client.user_id:
+            return await self.cl.send_code(client, "Refused", listener)
+        
+        # Check datatype
+        if not isinstance(val, str):
+            return await self.cl.send_code(client, "Datatype", listener)
 
-                            # Relay post deletion to clients
-                            self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": val}})
-                            
-                            # Return to the client the post was deleted
-                            self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                        else:
-                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                    else:
-                        FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
-                        if FileCheck and FileRead:
-                            if accountData["lvl"] >= 1:
-                                if type(val) == str:
-                                    payload["isDeleted"] = True
-                                    result = self.filesystem.write_item("posts", val, payload)
-                                    if result:
-                                        self.log("{0} deleting post {1}".format(client, val))
+        # Get post
+        try:
+            post = posts.get_post(val, error_on_deleted=True)
+        except status.resourceNotFound:
+            return await self.cl.send_code(client, "IDNotFound", listener)
+        
+        # Check whether the client owns the post
+        if client.user_id != post.author.id:
+            return await self.cl.send_code(client, "Refused", listener)
 
-                                        # Relay post deletion to clients
-                                        self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": val}})
+        # Delete the post
+        post.delete()
 
-                                        # Create moderator alert
-                                        if payload["post_origin"] != "inbox":
-                                            self.createPost(post_origin="inbox", user=payload["u"], content="One of your posts were removed by a moderator because it violated the Meower terms of service! If you think this is a mistake, please report this message and we will look further into it. Post: '{0}'".format(payload["p"]))
-
-                                            # Give report feedback
-                                            self.completeReport(payload["_id"], True)
-
-                                        # Return to the client the post was deleted
-                                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                                    else:
-                                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                                else:
-                                    # Bad datatype
-                                    self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-                            else:
-                                self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
-                        else:
-                            if ((not FileCheck) and FileRead):
-                                # Account not found
-                                self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-                            else:
-                                # Some other error, raise an internal error.
-                                self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-            else:
-                # Post not found
-                self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-        else:
-
-
-
-            # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
+        # Tell the client the post was deleted
+        return await self.cl.send_code(client, "OK", listener)
     
     def create_chat(self, client, val, listener_detected, listener_id):
         # Check if the client is already authenticated

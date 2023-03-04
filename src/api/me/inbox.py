@@ -1,6 +1,6 @@
 from sanic import Blueprint, HTTPResponse, json
 
-from src.util import status, security
+from src.util import status, security, flags
 from src.entities import notifications
 
 v1 = Blueprint("v1_me_inbox", url_prefix="/inbox")
@@ -32,9 +32,9 @@ async def v1_mark_notification_as_read(request, notification_id: str):
     if notification.recipient.id != request.ctx.user.id:
         raise status.resourceNotFound
 
-    notification.edit(read=True)
+    notification.mark(True)
 
-    return HTTPResponse(status=204)
+    return json(notification.client)
 
 
 @v1.post("/<notification_id:str>/unread")
@@ -44,20 +44,20 @@ async def v1_mark_notification_as_read(request, notification_id: str):
     if notification.recipient.id != request.ctx.user.id:
         raise status.resourceNotFound
 
-    notification.edit(read=False)
+    notification.mark(False)
 
-    return HTTPResponse(status=204)
+    return json(notification.client)
 
 
-@v1.get("/unread-count")
+@v1.get("/unread")
 @security.sanic_protected(allow_bots=False, ignore_ban=True)
-async def v1_get_notification_unread_count(request):
-    unread_notifications = notifications.get_user_notification_unread_count(request.ctx.user)
-    return json(unread_notifications)
+async def v1_get_unread_notifications(request):
+    notification_unread_count = notifications.get_user_notification_unread_count(request.ctx.user)
+    return json({"count": notification_unread_count})
 
 
-@v1.post("/unread-count/clear")
+@v1.delete("/unread")
 @security.sanic_protected(allow_bots=False, ignore_ban=True)
-async def v1_clear_notification_unread_count(request):
+async def v1_clear_unread_notifications(request):
     notifications.clear_unread_user_notifications(request.ctx.user)
     return HTTPResponse(status=204)

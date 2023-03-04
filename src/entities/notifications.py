@@ -64,11 +64,11 @@ class Notification:
     def mark(self, read_status: bool):
         self.read = read_status
         db.notifications.update_one({"_id": self.id}, {"$set": {"read": self.read}})
-        Thread(target=emit_user_notification_unread_count, args=(self.recipient)).start()
+        Thread(target=emit_user_notification_unread_count, args=(self.recipient,)).start()
 
     def delete(self):
         db.notifications.delete_one({"_id": self.id})
-        Thread(target=emit_user_notification_unread_count, args=(self.recipient)).start()
+        Thread(target=emit_user_notification_unread_count, args=(self.recipient,)).start()
 
 def create_notification(recipient: any, type: int, data: dict):
     # Create notification data

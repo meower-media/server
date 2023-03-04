@@ -78,7 +78,7 @@ class Post:
         }
 
     @property
-    def legacy(self):
+    def legacy_public(self):
         return {
             "_id": self.id,
             "type": 1,
@@ -131,13 +131,13 @@ class Post:
                     for milestone in [5, 10, 25, 50, 100, 1000]:
                         if (val >= milestone) and (self.top_stats.get(key, 0) < milestone):
                             if key == "likes":
-                                if bitfield.has(self.author.config.get("notifications", 127), flags.configNotifications.postLikes):
+                                if self.author.config["notification_settings"]["post_likes"]:
                                     notifications.create_notification(self.author, 2, {
                                         "post_id": self.id,
                                         "milestone": milestone
                                     })
                             elif key == "meows":
-                                if bitfield.has(self.author.config.get("notifications", 127), flags.configNotifications.postMeows):
+                                if self.author.config["notification_settings"]["post_meows"]:
                                     notifications.create_notification(self.author, 3, {
                                         "post_id": self.id,
                                         "milestone": milestone

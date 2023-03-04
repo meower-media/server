@@ -27,6 +27,16 @@ class Application:
         self.created = created
 
     @property
+    def public(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "flags": self.flags,
+            "created": int(self.created.timestamp())
+        }
+
+    @property
     def client(self):
         return {
             "id": self.id,
@@ -110,6 +120,8 @@ class Application:
         db.applications.update_one({"_id": self.id}, {"$set": {"oauth_secret": self.oauth_secret}})
 
     def delete(self):
+        for session in [sessions.OAuthSession(**session) for session in db.oauth_sessions.find({"application_id": self.id})]:
+            session.revoke()
         db.applications.delete_one({"_id": self.id})
 
 def create_application(name: str, owner: any):    

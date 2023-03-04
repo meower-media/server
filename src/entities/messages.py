@@ -110,8 +110,19 @@ def create_message(chat: chats.Chat, author: any, content: str, reply_to: str = 
     if chat.direct:
         for member in chat.members:
             if member.id != author.id:
-                if member.is_blocked(author):
-                    raise status.missingPermissions
+                recipient = member
+        
+        author_dm_config = author.config["privacy_settings"]["direct_messages"]
+        recipient_dm_config = recipient.config["privacy_settings"]["direct_messages"]
+
+        if (author_dm_config == 2) or (recipient_dm_config == 2):
+            raise status.missingPermissions
+        elif author.is_blocking(recipient) or author.is_blocked(recipient):
+            raise status.missingPermissions
+        elif (author_dm_config == 1) and (not author.is_following(recipient)):
+            raise status.missingPermissions
+        elif (recipient_dm_config == 1) and (not recipient.is_following(author)):
+            raise status.missingPermissions
 
     # Create message data
     message = {

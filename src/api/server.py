@@ -1,5 +1,4 @@
 from sanic import Sanic, Blueprint
-from sanic_cors import CORS
 import time
 import os
 

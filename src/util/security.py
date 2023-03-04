@@ -108,65 +108,89 @@ def sign_data(data: bytes):
 def validate_signature(signature: bytes, data: bytes):
     return hmac.compare_digest(b64decode(signature), hmac.new(key=SIGNING_KEY, msg=data, digestmod=sha512).digest())
 
+def auto_ratelimit(key: str, identifier: str):
+    # Get remaining limit
+    remaining = redis.get(f"rtl:{key}:{identifier}")
+    expires = redis.ttl(f"rtl:{key}:{identifier}")
+    if remaining:
+        remaining = int(remaining.decode())
+        expires = int(expires)
+    else:
+        remaining = RATELIMIT_LIMITS[key]["hits"]
+        expires = RATELIMIT_LIMITS[key]["seconds"]
+
+    # Check whether ratelimit has been exceeded
+    if remaining <= 0:
+        raise status.ratelimited
+
+    # Set new remaining count
+    remaining -= 1
+    redis.set(f"rtl:{key}:{identifier}", str(remaining), ex=expires)
+
+    return (key, remaining, expires)
+
 def sanic_protected(
-        ratelimit: str = None,
-        oauth_scope: str = None,
         require_auth: bool = True,
+        ratelimit_key: str = None,
+        ratelimit_scope: str = None,
         allow_bots: bool = True,
+        oauth_scope: str = None,
+        admin_scope: int = None,
         ignore_guardian: bool = False,
-        ignore_ban: bool = False,
-        ignore_suspension: bool = True
+        ignore_suspension: bool = True,
+        ignore_ban: bool = False
     ):
         def decorator(func: callable) -> callable:
             def wrapper(request, *args, **kwargs) -> HTTPResponse:
-                # Check ratelimit
-                if ratelimit:
-                    # Get remaining limit
-                    remaining = redis.get(f"rtl:{ratelimit}:{request.ip}")
-                    expires = redis.ttl(f"rtl:{ratelimit}:{request.ip}")
-                    if remaining:
-                        remaining = int(remaining.decode())
-                        expires = int(expires)
-                    else:
-                        remaining = RATELIMIT_LIMITS[ratelimit]["hits"]
-                        expires = RATELIMIT_LIMITS[ratelimit]["seconds"]
-                    request.ctx.ratelimit_bucket = ratelimit
-                    request.ctx.ratelimit_remaining = remaining
-                    request.ctx.ratelimit_reset = expires
-
-                    # Check whether ratelimit has been exceeded
-                    if remaining <= 0:
-                        raise status.ratelimited
-
-                    # Set new remaining count
-                    remaining -= 1
-                    request.ctx.ratelimit_remaining = remaining
-                    redis.set(f"rtl:{ratelimit}:{request.ip}", str(remaining), ex=expires)
-
                 # Get user from access token
                 if request.token:
-                    request.ctx.user = sessions.get_user_by_token(request.token)
-                elif require_auth:
+                    request.ctx.session = sessions.get_partial_session_by_token(request.token)
+                    if request.ctx.session:
+                        request.ctx.user = request.ctx.session.user
+                    else:
+                        raise status.notAuthenticated
+                elif require_auth or oauth_scope or admin_scope:
                     raise status.notAuthenticated
                 else:
                     request.ctx.user = None
-                if oauth_scope and (not request.ctx.user):
-                    raise status.notAuthenticated
+
+                # Check ratelimit
+                if ratelimit_key and ratelimit_scope:
+                    if ratelimit_scope == "global":
+                        identifier = "global"
+                    elif ratelimit_scope == "ip":
+                        identifier = request.ip
+                    elif ratelimit_scope == "user":
+                        identifier = request.ctx.user.id
+                    else:
+                        identifier = ratelimit_scope
+                    
+                    (key, remaining, expires) = auto_ratelimit(ratelimit_key, identifier)
+                    request.ctx.ratelimit_key = key
+                    request.ctx.ratelimit_scope = ratelimit_scope
+                    request.ctx.ratelimit_remaining = remaining
+                    request.ctx.ratelimit_expires = expires
 
                 if request.ctx.user:
                     # Check whether user is a bot
-                    if (not allow_bots) and bitfield.has(request.ctx.user.flags, flags.users.bot):
+                    if (not allow_bots) and isinstance(request.ctx.session, sessions.BotSession):
                         raise status.missingPermissions
+
+                    # Check whether session has required OAuth scope
+                    if isinstance(request.ctx.session, sessions.OAuthSession) and (oauth_scope not in request.ctx.session.scopes):
+                        raise status.missingScope
+
+                    # Check whether user has required admin scope
+                    if (admin_scope is not None) and (not bitfield.has(request.ctx.user.admin, admin_scope)):
+                        raise status.missingScope
 
                     # Check whether user is being restricted by guardian
                     if (not ignore_guardian) and (False):
-                        raise status.missingPermissions
+                        pass
 
                     # Check whether the user is banned/suspended
                     user_moderation_status = infractions.user_status(request.ctx.user)
-                    if ((not ignore_ban) and user_moderation_status["banned"]):
-                        raise status.userRestricted
-                    elif ((not ignore_suspension) and user_moderation_status["suspended"]):
+                    if ((not ignore_suspension) and user_moderation_status["suspended"]) or ((not ignore_ban) and user_moderation_status["banned"]):
                         raise status.userRestricted
 
                 return func(request, *args, **kwargs)

@@ -7,9 +7,9 @@ MEOWER_EPOCH = 1577836800  # NEVER CHANGE THIS
 
 def timestamp(epoch: int = None, jsonify: bool = False) -> dict|datetime:
     if epoch:
-        dt = datetime.fromtimestamp(epoch, tz=timezone.utc)
+        dt = datetime.fromtimestamp(epoch, tz=(timezone.utc if jsonify else None))
     else:
-        dt = datetime.now(tz=timezone.utc)
+        dt = datetime.now(tz=(timezone.utc if jsonify else None))
 
     if jsonify:
         return {

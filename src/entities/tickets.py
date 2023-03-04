@@ -14,6 +14,7 @@ TICKET_EXPIRATIONS = {
 def create_ticket(user, type: str, data: dict = {}):
     # Create ticket data
     ticket_id = uid.snowflake()
+    data["i"] = ticket_id
     data["u"] = user.id
     data["t"] = type
     

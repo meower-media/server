@@ -30,9 +30,9 @@ async def user_updated(user_id: str, payload: dict):
     )
 
 
-@events.on("sync_updated")
-async def sync_updated(user_id: str, payload: dict):
-    await send_to_user(user_id, "sync_updated", payload)
+@events.on("user_config_updated")
+async def user_config_updated(user_id: str, payload: dict):
+    await send_to_user(user_id, "user_config_updated", payload)
 
 
 @events.on("relationship_updated")

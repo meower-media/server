@@ -90,10 +90,6 @@ class CL4Commands:
             case self.cl.supporter.too_large:
                 return await self.cl.send_code(client, "TooLarge", listener=listener)
 
-        # Check whether the client is authenticated
-        if not client.user_id:
-            return await self.cl.send_code(client, "IDRequired", listener=listener)
-
         # Add client to subscription
         if payload["type"] == "new_posts":
             self.cl._subscriptions["new_posts"].add(client)

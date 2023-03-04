@@ -42,7 +42,7 @@ class infractions:
     poisonous = 2
     blockAppeals = 3
 
-class adminPermissions:
+class adminScopes:
     accessReports = 0
     moderateUsers = 1
     moderateIPs = 2
@@ -52,12 +52,3 @@ class adminPermissions:
     manageBots = 6
     manageOAuth = 7
     manageSystem = 8
-
-class configNotifications:
-    follows = 0
-    mentions = 1
-    postLikes = 2
-    postMeows = 3
-    postComments = 4
-    commentLikes = 5
-    commentReplies = 6

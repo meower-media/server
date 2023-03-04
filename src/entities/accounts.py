@@ -162,7 +162,7 @@ class Account:
         if not self.mfa_enabled:
             self.regenerate_recovery_codes()
         self.totp_secret = secret
-        db.accounts.update_one({"_id": self._id}, {"$set": {"totp_secret": self.totp_secret}})
+        db.accounts.update_one({"_id": self.id}, {"$set": {"totp_secret": self.totp_secret}})
 
         if send_email_alert and self.email:
             # Get user
@@ -180,7 +180,7 @@ class Account:
 
         # Remove TOTP secret
         self.totp_secret = None
-        db.accounts.update_one({"_id": self._id}, {"$set": {"totp_secret": self.totp_secret}})
+        db.accounts.update_one({"_id": self.id}, {"$set": {"totp_secret": self.totp_secret}})
 
         if send_email_alert and self.email:
             # Get user
@@ -192,7 +192,7 @@ class Account:
             })
 
     def regenerate_recovery_codes(self):
-        self.recovery_codes = [token_hex(4) for i in range(8)]
+        self.recovery_codes = [token_hex(4) for i in range(6)]
         db.accounts.update_one({"_id": self.id}, {"$set": {"recovery_codes": self.recovery_codes}})
 
     def add_recovery_code(self):
@@ -222,7 +222,6 @@ def create_account(username: str, password: str, child: bool, require_email: boo
         "password": bcrypt.hash(password, rounds=int(os.getenv("pswd_rounds", 12))),
         "last_updated": uid.timestamp()
     }
-    db.user_config.insert_one({"_id": user.id})
     db.accounts.insert_one(account)
 
     return Account(**account)

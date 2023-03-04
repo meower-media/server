@@ -13,7 +13,7 @@ async def v0_search_users(request):
     fetched_users = users.search_users(query)
     return json({
         "error": False,
-        "autoget": [user.legacy for user in fetched_users],
+        "autoget": [user.legacy_public for user in fetched_users],
         "page#": 1,
         "pages": 1
     })
@@ -25,14 +25,14 @@ async def v0_search_home(request):
     fetched_posts = posts.search_posts(query)
     return json({
         "error": False,
-        "autoget": [post.legacy for post in fetched_posts],
+        "autoget": [post.legacy_public for post in fetched_posts],
         "page#": 1,
         "pages": 1
     })
 
 
 @v1.get("/users")
-@security.sanic_protected(ratelimit="search", require_auth=False)
+@security.sanic_protected(require_auth=False, ratelimit_key="search", ratelimit_scope="ip")
 async def v1_search_users(request):
     fetched_users = users.search_users(request.args.get("q", ""), before=request.args.get("before"),
                                        after=request.args.get("after"), limit=int(request.args.get("limit", 25)))
@@ -40,7 +40,7 @@ async def v1_search_users(request):
 
 
 @v1.get("/posts")
-@security.sanic_protected(ratelimit="search", require_auth=False)
+@security.sanic_protected(require_auth=False, ratelimit_key="search", ratelimit_scope="ip")
 async def v1_search_posts(request):
     fetched_posts = posts.search_posts(request.args.get("q", ""), before=request.args.get("before"),
                                        after=request.args.get("after"), limit=int(request.args.get("limit", 25)))

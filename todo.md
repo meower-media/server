@@ -1,5 +1,4 @@
 # CURRENT ISSUES
-- Session scopes
 - No way to get chats you're in
 - No database indexes
 - Implement a sane version system (startup version text)

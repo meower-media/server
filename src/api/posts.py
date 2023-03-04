@@ -49,7 +49,7 @@ async def v0_get_post(request):
     except:
         return json({"error": True, "type": "internal"}, status=500)
     else:
-        resp = post.legacy
+        resp = post.legacy_public
         resp["error"] = False
         return json(resp)
 
@@ -62,7 +62,7 @@ async def v1_get_post(request, post_id: str):
 
 @v1.patch("/")
 @validate(json=PostEditForm)
-@security.sanic_protected(ratelimit="edit_post", ignore_suspension=False)
+@security.sanic_protected(ratelimit_key="edit_post", ratelimit_scope="user", ignore_suspension=False)
 async def v1_edit_post(request, post_id: str, body: PostEditForm):
     post = posts.get_post(post_id)
     if post.author.id == request.ctx.user.id:
@@ -94,7 +94,7 @@ async def v1_post_status(request, post_id: str):
 
 
 @v1.post("/like")
-@security.sanic_protected(ratelimit="reputation", allow_bots=False, ignore_suspension=False)
+@security.sanic_protected(ratelimit_key="reputation", ratelimit_scope="user", allow_bots=False, ignore_suspension=False)
 async def v1_like_post(request, post_id: str):
     post = posts.get_post(post_id)
     post.like(request.ctx.user)
@@ -102,7 +102,7 @@ async def v1_like_post(request, post_id: str):
 
 
 @v1.post("/unlike")
-@security.sanic_protected(ratelimit="reputation", allow_bots=False, ignore_suspension=False)
+@security.sanic_protected(ratelimit_key="reputation", ratelimit_scope="user", allow_bots=False, ignore_suspension=False)
 async def v1_unlike_post(request, post_id: str):
     post = posts.get_post(post_id)
     post.unlike(request.ctx.user)
@@ -110,7 +110,7 @@ async def v1_unlike_post(request, post_id: str):
 
 
 @v1.post("/meow")
-@security.sanic_protected(ratelimit="reputation", allow_bots=False, ignore_suspension=False)
+@security.sanic_protected(ratelimit_key="reputation", ratelimit_scope="user", allow_bots=False, ignore_suspension=False)
 async def v1_meow_post(request, post_id: str):
     post = posts.get_post(post_id)
     post.meow(request.ctx.user)
@@ -118,7 +118,7 @@ async def v1_meow_post(request, post_id: str):
 
 
 @v1.post("/unmeow")
-@security.sanic_protected(ratelimit="reputation", allow_bots=False, ignore_suspension=False)
+@security.sanic_protected(ratelimit_key="reputation", ratelimit_scope="user", allow_bots=False, ignore_suspension=False)
 async def v1_unmeow_post(request, post_id: str):
     post = posts.get_post(post_id)
     post.unmeow(request.ctx.user)
@@ -136,7 +136,7 @@ async def v1_get_comments(request, post_id: str):
 
 @v1.post("/comments")
 @validate(json=CommentCreateForm)
-@security.sanic_protected(ratelimit="create_comment", ignore_suspension=False)
+@security.sanic_protected(ratelimit_key="create_comment", ratelimit_scope="user", ignore_suspension=False)
 async def v1_create_comment(request, post_id: str, body: CommentCreateForm):
     if body.masquerade:
         AuthorMasquerade(**body.masquerade)
@@ -155,7 +155,7 @@ async def v1_get_comment(request, post_id: str, comment_id: str):
 
 @v1.patch("/comments/<comment_id:str>")
 @validate(json=CommentEditForm)
-@security.sanic_protected(ratelimit="edit_comment", ignore_suspension=False)
+@security.sanic_protected(ratelimit_key="edit_comment", ratelimit_scope="user", ignore_suspension=False)
 async def v1_edit_comment(request, post_id: str, comment_id: str, body: CommentEditForm):
     post = posts.get_post(post_id)
     comment = comments.get_comment(comment_id)
@@ -189,7 +189,7 @@ async def v1_comment_status(request, post_id: str, comment_id: str):
 
 
 @v1.post("/comments/<comment_id:str>/like")
-@security.sanic_protected(ratelimit="reputation", allow_bots=False, ignore_suspension=False)
+@security.sanic_protected(ratelimit_key="reputation", ratelimit_scope="user", allow_bots=False, ignore_suspension=False)
 async def v1_like_comment(request, post_id: str, comment_id: str):
     post = posts.get_post(post_id)
     comment = comments.get_comment(comment_id)
@@ -198,7 +198,7 @@ async def v1_like_comment(request, post_id: str, comment_id: str):
 
 
 @v1.post("/comments/<comment_id:str>/unlike")
-@security.sanic_protected(ratelimit="reputation", allow_bots=False, ignore_suspension=False)
+@security.sanic_protected(ratelimit_key="reputation", ratelimit_scope="user", allow_bots=False, ignore_suspension=False)
 async def v1_unlike_comment(request, post_id: str, comment_id: str):
     post = posts.get_post(post_id)
     comment = comments.get_comment(comment_id)
@@ -218,7 +218,7 @@ async def v1_get_comment_replies(request, post_id: str, comment_id: str):
 
 @v1.post("/comments/<comment_id:str>/replies")
 @validate(json=CommentCreateForm)
-@security.sanic_protected(ratelimit="create_comment", ignore_suspension=False)
+@security.sanic_protected(ratelimit_key="create_comment", ratelimit_scope="user", ignore_suspension=False)
 async def v1_create_comment_reply(request, post_id: str, comment_id: str, body: CommentCreateForm):
     if body.masquerade:
         AuthorMasquerade(**body.masquerade)

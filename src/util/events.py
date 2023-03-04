@@ -2,11 +2,12 @@ from threading import Thread
 import json
 import asyncio
 
+from src.util import status
 from src.database import redis
 
 EVENT_NAMES = {
     "user_updated",
-    "sync_updated",
+    "user_config_updated",
     "relationship_updated",
     "session_created",
     "session_updated",
@@ -35,7 +36,7 @@ EVENT_NAMES = {
 
 def emit_event(name: str, identifier: str, message: any):
     if name not in EVENT_NAMES:
-        raise
+        raise status.internalServerError
     redis.publish(f"meower:{name}", json.dumps({"i": identifier, "m": message}))
 
 def add_event_listener(name: str, callback: callable):

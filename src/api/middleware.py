@@ -18,7 +18,8 @@ async def cors_headers(request, response):
     })
 
 async def ratelimit_headers(request, response):
-    if hasattr(request.ctx, "ratelimit_bucket"):
-        response.headers["X-Ratelimit-Bucket"] = request.ctx.ratelimit_bucket
+    if hasattr(request.ctx, "ratelimit_key"):
+        response.headers["X-Ratelimit-Key"] = request.ctx.ratelimit_key
+        response.headers["X-Ratelimit-Scope"] = request.ctx.ratelimit_scope
         response.headers["X-Ratelimit-Remaining"] = request.ctx.ratelimit_remaining
-        response.headers["X-Ratelimit-Reset"] = request.ctx.ratelimit_reset
+        response.headers["X-Ratelimit-Expires"] = request.ctx.ratelimit_expires

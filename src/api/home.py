@@ -25,7 +25,7 @@ async def v0_get_home(request):
     fetched_posts = posts.get_latest_posts()
     return json({
         "error": False,
-        "autoget": [post.legacy for post in fetched_posts],
+        "autoget": [post.legacy_public for post in fetched_posts],
         "page#": 1,
         "pages": 1
     })
@@ -55,7 +55,7 @@ async def v1_get_trending_posts(request):
 
 @v1.post("/")
 @validate(json=NewPostForm)
-@security.sanic_protected(ratelimit="create_post", ignore_suspension=False)
+@security.sanic_protected(ratelimit_key="create_post", ratelimit_scope="user", ignore_suspension=False)
 async def v1_create_post(request, body: NewPostForm):
     if body.masquerade:
         AuthorMasquerade(**body.masquerade)
