@@ -11,15 +11,21 @@ async def parse_ua(request):
         "client_type": client_type
     }
 
+
 async def cors_headers(request, response):
     response.headers.extend({
+        "Access-Control-Allow-Methods": "OPTIONS, GET, POST, PATCH, DELETE",
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Credentials": "true"
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Headers": "*"
     })
+
 
 async def ratelimit_headers(request, response):
     if hasattr(request.ctx, "ratelimit_key"):
-        response.headers["X-Ratelimit-Key"] = request.ctx.ratelimit_key
-        response.headers["X-Ratelimit-Scope"] = request.ctx.ratelimit_scope
-        response.headers["X-Ratelimit-Remaining"] = request.ctx.ratelimit_remaining
-        response.headers["X-Ratelimit-Expires"] = request.ctx.ratelimit_expires
+        response.headers.extend({
+            "X-Ratelimit-Key": request.ctx.ratelimit_key,
+            "X-Ratelimit-Scope": request.ctx.ratelimit_scope,
+            "X-Ratelimit-Remaining": request.ctx.ratelimit_remaining,
+            "X-Ratelimit-Expires": request.ctx.ratelimit_expires
+        })
