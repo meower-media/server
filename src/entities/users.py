@@ -255,7 +255,7 @@ class User:
             id_range = {"$gt": "0"}
 
         # Fetch and return all users
-        return [get_user(relationship["to"]) for relationship in db.followed_users.find({"_id.from": self.id, "_id.to": id_range}, sort=[("_id.to", -1)], limit=limit)]
+        return [get_user(relationship["to"]) for relationship in db.followed_users.find({"_id.from": self.id, "_id.to": id_range}, sort=[("time", -1)], limit=limit)]
 
     def get_followed(self, before: str = None, after: str = None, limit: int = 50):
         # Create ID range
@@ -267,7 +267,7 @@ class User:
             id_range = {"$gt": "0"}
 
         # Fetch and return all users
-        return [get_user(relationship["from"]) for relationship in db.followed_users.find({"_id.to": self.id, "_id.from": id_range}, sort=[("_id.from", -1)], limit=limit)]
+        return [get_user(relationship["from"]) for relationship in db.followed_users.find({"_id.to": self.id, "_id.from": id_range}, sort=[("time", -1)], limit=limit)]
 
     def is_following(self, user):
         return (db.followed_users.find_one({"_id": {"to": user.id, "from": self.id}}, projection={"_id": 1}) is not None)
@@ -330,12 +330,7 @@ class User:
         elif self.is_blocking(user):
             raise status.missingPermissions
 
-        db.blocked_users.insert_one({
-            "_id": uid.snowflake(),
-            "to": user.id,
-            "from": self.id,
-            "time": uid.timestamp()
-        })
+        db.blocked_users.insert_one({"_id": {"to": user.id, "from": self.id}, "time": uid.timestamp()})
 
         db.followed_users.delete_one({"_id": {"to": user.id, "from": self.id}})
         db.followed_users.delete_one({"_id": {"to": self.id, "from": user.id}})    
@@ -356,7 +351,7 @@ class User:
 
     @property
     def profile_history(self):
-        return list(db.profile_history.find({"user_id": self.id}, projection={"_id": 0, "user_id": 0}, sort=[("_id", -1)]))
+        return list(db.profile_history.find({"user_id": self.id}, projection={"_id": 0, "user_id": 0}, sort=[("time", -1)]))
 
     def update_username(self, username: str, by_admin: bool = False, store_history: bool = True, reserve_old_username: bool = True):
         if username == self.username:
@@ -536,4 +531,4 @@ def search_users(query: str, before: str = None, after: str = None, limit: int =
         id_range = {"$gt": "0"}
 
     # Fetch and return all users
-    return [User(**user) for user in db.users.find({"$text": {"$search": query}, "_id": id_range}, sort=[("_id", -1)], limit=limit)]
+    return [User(**user) for user in db.users.find({"$text": {"$search": query}, "_id": id_range}, sort=[("time", -1)], limit=limit)]

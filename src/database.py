@@ -60,13 +60,13 @@ def rebuild_indexes():  # needs to be improved
 
     # Infractions
     db.infractions.create_index([("user_id", ASCENDING)], name="user")
+    db.infractions.create_index([("time", DESCENDING), ("_id", ASCENDING)], name="latest")
 
     # Followed users
-    db.followed_users.create_index([("_id.to", ASCENDING)], name="to")
-    db.followed_users.create_index([("_id.from", ASCENDING)], name="from")
+    db.followed_users.create_index([("_id.to", ASCENDING), ("time", DESCENDING), ("_id.from", ASCENDING)], name="to")
+    db.followed_users.create_index([("_id.from", ASCENDING), ("time", DESCENDING), ("_id.to", ASCENDING)], name="from")
 
     # Blocked users
-    db.blocked_users.create_index([("_id.to", ASCENDING)], name="to")
     db.blocked_users.create_index([("_id.from", ASCENDING)], name="from")
 
     # Profile history
@@ -75,6 +75,7 @@ def rebuild_indexes():  # needs to be improved
     # Posts
     db.posts.create_index([("deleted_at", ASCENDING), ("time", DESCENDING), ("author_id", ASCENDING), ("_id", ASCENDING)], name="feed")
     db.posts.create_index([("deleted_at", ASCENDING), ("reputation", DESCENDING), ("_id", ASCENDING)], name="trending")
+    db.posts.create_index([("deleted_at", ASCENDING), ("content", TEXT), ("time", DESCENDING), ("_id", ASCENDING)], name="search")
 
     # Post revisions
     db.post_revisions.create_index([("post_id", ASCENDING)], name="post")
@@ -85,6 +86,9 @@ def rebuild_indexes():  # needs to be improved
     # Post meows
     db.post_meows.create_index([("_id.post_id", ASCENDING)], name="post")
     db.post_meows.create_index([("time", DESCENDING), ("_id.user_id", ASCENDING)], name="feed")
+
+    # Comments
+    db.post_comments.create_index([("post_id", ASCENDING), ("parent_id", ASCENDING), ("deleted_at", ASCENDING), ("time", DESCENDING), ("_id", ASCENDING)])
 
     # Chats
     db.chats.create_index([("deleted_at", ASCENDING), ("direct", ASCENDING), ("members", ASCENDING)], name="chats_list")

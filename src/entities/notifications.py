@@ -111,7 +111,7 @@ def get_user_notifications(user: any, before: str = None, after: str = None, lim
         id_range = {"$gt": "0"}
 
     # Fetch and return all notifications
-    return [Notification(**notification) for notification in db.notifications.find({"recipient_id": user.id, "_id": id_range}, sort=[("_id", -1)], limit=limit)]
+    return [Notification(**notification) for notification in db.notifications.find({"recipient_id": user.id, "_id": id_range}, sort=[("time", -1)], limit=limit)]
 
 def get_user_notification_unread_count(user: any):
     return db.notifications.count_documents({"recipient_id": user.id, "read": False})

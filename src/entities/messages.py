@@ -165,7 +165,7 @@ def get_latest_messages(chat: chats.Chat, before: str = None, after: str = None,
         id_range = {"$gt": "0"}
 
     # Fetch and return all messages
-    return [Message(**message) for message in db.chat_messages.find({"chat_id": chat.id, "deleted_at": None, "_id": id_range}, sort=[("_id", -1)], limit=limit)]
+    return [Message(**message) for message in db.chat_messages.find({"chat_id": chat.id, "deleted_at": None, "_id": id_range}, sort=[("time", -1)], limit=limit)]
 
 def get_message_context(chat: chats.Chat, message_id: str):
     return (get_latest_messages(chat, before=str(int(message_id)+1), limit=51) + get_latest_messages(chat, after=message_id))
@@ -180,4 +180,4 @@ def search_messages(chat: chats.Chat, query: str, before: str = None, after: str
         id_range = {"$gt": "0"}
 
     # Fetch and return all messages
-    return [Message(**message) for message in db.chat_messages.find({"chat_id": chat.id, "deleted_at": None, "$text": {"$search": query}, "_id": id_range}, sort=[("_id", -1)], limit=limit)]
+    return [Message(**message) for message in db.chat_messages.find({"chat_id": chat.id, "deleted_at": None, "$text": {"$search": query}, "_id": id_range}, sort=[("time", -1)], limit=limit)]

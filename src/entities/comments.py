@@ -259,7 +259,7 @@ def get_post_comments(post: posts.Post, before: str = None, after: str = None, l
         id_range = {"$gt": "0"}
 
     # Fetch and return comments
-    return [Comment(**comment) for comment in db.post_comments.find({"post_id": post.id, "parent_id": None, "deleted_at": None, "_id": id_range}, sort=[("_id", -1)], limit=limit)]
+    return [Comment(**comment) for comment in db.post_comments.find({"post_id": post.id, "parent_id": None, "deleted_at": None, "_id": id_range}, sort=[("time", -1)], limit=limit)]
 
 def get_comment_replies(comment: Comment, before: str = None, after: str = None, limit: int = 25):
     # Create ID range
@@ -271,4 +271,4 @@ def get_comment_replies(comment: Comment, before: str = None, after: str = None,
         id_range = {"$gt": "0"}
 
     # Fetch and return comments
-    return [Comment(**comment) for comment in db.post_comments.find({"post_id": comment.post_id, "parent_id": comment.id, "deleted_at": None, "_id": id_range}, sort=[("_id", -1)], limit=limit)]
+    return [Comment(**comment) for comment in db.post_comments.find({"post_id": comment.post_id, "parent_id": comment.id, "deleted_at": None, "_id": id_range}, sort=[("time", -1)], limit=limit)]

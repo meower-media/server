@@ -167,7 +167,7 @@ def get_latest_infractions(before: str = None, after: str = None, limit: int = 2
         id_range = {"$gt": "0"}
 
     # Fetch and return all infractions
-    return [Infraction(**infraction) for infraction in db.infractions.find({"_id": id_range}, sort=[("_id", -1)], limit=limit)]
+    return [Infraction(**infraction) for infraction in db.infractions.find({"_id": id_range}, sort=[("time", -1)], limit=limit)]
 
 def get_user_infractions(user: any, only_active: bool = False):
     query = {"user_id": user.id}

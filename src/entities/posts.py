@@ -317,7 +317,7 @@ def get_feed(user: any, before: str = None, after: str = None, limit: int = 25):
 
     # Get following list and posts that the user's followers have meowed
     following = user.get_following_ids()
-    meowed_posts = [meow["post_id"] for meow in db.post_meows.find({"user_id": {"$in": following}, "post_id": id_range}, sort=[("post_id", -1)], limit=limit, projection={"post_id": 1})]
+    meowed_posts = [meow["post_id"] for meow in db.post_meows.find({"user_id": {"$in": following}, "post_id": id_range}, sort=[("time", -1)], limit=limit, projection={"post_id": 1})]
 
     # Create query
     query = {
@@ -336,7 +336,7 @@ def get_feed(user: any, before: str = None, after: str = None, limit: int = 25):
     query["$or"][0]["_id"]["$in"] = meowed_posts
 
     # Primary fetch
-    fetched_posts = [Post(**post) for post in db.posts.find(query, sort=[("_id", -1)], limit=limit)]
+    fetched_posts = [Post(**post) for post in db.posts.find(query, sort=[("time", -1)], limit=limit)]
 
     # Secondary fetch to fill results
     if len(fetched_posts) < limit:
