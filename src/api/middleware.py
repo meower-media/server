@@ -1,6 +1,6 @@
 async def parse_ua(request):
     user_agent = request.headers.get("User-Agent", "Unknown")
-    client_name = request.headers.get("X-Client-Name", "Unknown")  # sveltekit_vanilla
+    client_name = request.headers.get("X-Client-Name", "Unknown")  # svelte
     client_version = request.headers.get("X-Client-Version", "Unknown")  # 1.5.1
     client_type = request.headers.get("X-Client-Type", "Unknown")  # desktop/mobile/bot
     request.ctx.user = None

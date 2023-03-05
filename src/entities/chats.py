@@ -190,19 +190,18 @@ class Chat:
                 "id": self.id
             })
 
-def create_chat(name: str, owner: any):
+def create_chat(name: str, owner_id: str):
     chat = {
         "_id": uid.snowflake(),
         "name": name,
         "direct": False,
+        "members": [owner_id],
+        "active": [owner_id],
+        "permissions": {owner_id: 2},
         "invite_code": token_urlsafe(6),
         "created": uid.timestamp()
     }
     db.chats.insert_one(chat)
-
-    chat = Chat(**chat)
-    chat.add_member(owner)
-
     return Chat(**chat)
 
 def get_chat(chat_id: str):
@@ -220,7 +219,7 @@ def get_dm_chat(user1: any, user2: any):
         raise status.missingPermissions
 
     chat = db.chats.find_one({"members": {"$all": [user1.id, user2.id]}, "direct": True, "deleted_at": None})
-    if chat is not None:
+    if chat:
         return Chat(**chat)
     else:
         chat = {
