@@ -214,6 +214,16 @@ def get_chat(chat_id: str):
     else:
         raise status.resourceNotFound
 
+def get_chat_by_invite_code(invite_code: str):
+    # Get chat from database
+    chat = db.chats.find_one({"invite_code": invite_code})
+
+    # Return chat object
+    if chat:
+        return Chat(**chat)
+    else:
+        raise status.resourceNotFound
+
 def get_dm_chat(user1: any, user2: any):
     if user1.id == user2.id:
         raise status.missingPermissions

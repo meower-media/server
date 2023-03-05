@@ -39,6 +39,7 @@ from .home import v1 as v1_home
 from .posts import v1 as v1_posts
 from .users import v1 as v1_users
 from .chats import v1 as v1_chats
+from .invites import v1 as v1_invites
 from .applications import v1 as v1_applications
 from .search import v1 as v1_search
 app.blueprint(Blueprint.group(
@@ -50,6 +51,7 @@ app.blueprint(Blueprint.group(
     v1_posts,
     v1_users,
     v1_chats,
+    v1_invites,
     v1_applications,
     v1_search,
     version=1
