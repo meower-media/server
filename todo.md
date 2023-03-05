@@ -1,5 +1,4 @@
 # CURRENT ISSUES
-- No database indexes
 - Implement a sane version system (startup version text)
 - Unfair ratelimits
 

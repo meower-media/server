@@ -66,6 +66,9 @@ class Account:
         return (redis.exists(f"lock:{self.id}") == 1)
 
     def change_email(self, new_email: str, require_verification: bool = True, send_email_alert: bool = True):
+        # Lower email
+        new_email = new_email.lower()
+
         # Get user
         user = users.get_user(self.id)
 

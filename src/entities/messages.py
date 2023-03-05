@@ -1,5 +1,4 @@
 from datetime import datetime
-import time
 
 from src.util import status, uid, events, bitfield, flags
 from src.entities import users, chats

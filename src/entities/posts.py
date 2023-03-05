@@ -122,8 +122,8 @@ class Post:
     def update_stats(self):
         def run():
             self.stats = {
-                "likes": db.post_likes.count_documents({"post_id": self.id}),
-                "meows": db.post_meows.count_documents({"post_id": self.id}),
+                "likes": db.post_likes.count_documents({"_id.post_id": self.id}),
+                "meows": db.post_meows.count_documents({"_id.post_id": self.id}),
                 "comments": db.post_comments.count_documents({"post_id": self.id, "deleted_at": None})
             }
             for key, val in self.stats.items():
@@ -158,21 +158,16 @@ class Post:
         Thread(target=run).start()
 
     def liked(self, user: any):
-        return (db.post_likes.count_documents({"post_id": self.id, "user_id": user.id}) > 0)
+        return (db.post_likes.count_documents({"_id": {"post_id": self.id, "user_id": user.id}}) > 0)
     
     def meowed(self, user: any):
-        return (db.post_meows.count_documents({"post_id": self.id, "user_id": user.id}) > 0)
+        return (db.post_meows.count_documents({"_id": {"post_id": self.id, "user_id": user.id}}) > 0)
 
     def like(self, user: any):
         if self.liked(user):
             return
         
-        db.post_likes.insert_one({
-            "_id": uid.snowflake(),
-            "post_id": self.id,
-            "user_id": user.id,
-            "time": uid.timestamp()
-        })
+        db.post_likes.insert_one({"_id": {"post_id": self.id, "user_id": user.id}, "time": uid.timestamp()})
         events.emit_event("post_status_updated", user.id, {
             "id": self.id,
             "liked": True
@@ -183,12 +178,7 @@ class Post:
         if self.meowed(user):
             return
         
-        db.post_meows.insert_one({
-            "_id": uid.snowflake(),
-            "post_id": self.id,
-            "user_id": user.id,
-            "time": uid.timestamp()
-        })
+        db.post_meows.insert_one({"_id": {"post_id": self.id, "user_id": user.id}, "time": uid.timestamp()})
         events.emit_event("post_status_updated", user.id, {
             "id": self.id,
             "meowed": True
@@ -199,10 +189,7 @@ class Post:
         if not self.liked(user):
             return
 
-        db.post_likes.delete_one({
-            "post_id": self.id,
-            "user_id": user.id
-        })
+        db.post_likes.delete_one({"_id": {"post_id": self.id, "user_id": user.id}})
         events.emit_event("post_status_updated", user.id, {
             "id": self.id,
             "liked": False
@@ -213,10 +200,7 @@ class Post:
         if not self.meowed(user):
             return
 
-        db.post_meows.delete_one({
-            "post_id": self.id,
-            "user_id": user.id
-        })
+        db.post_meows.delete_one({"_id": {"post_id": self.id, "user_id": user.id}})
         events.emit_event("post_status_updated", user.id, {
             "id": self.id,
             "meowed": False
