@@ -2,14 +2,14 @@ from copy import copy
 from datetime import datetime
 from base64 import b64encode
 from threading import Thread
-import string
 import time
 
 from src.entities import notifications, sessions
 from src.util import status, uid, events, security, bitfield, flags
 from src.database import db
 
-PERMITTED_CHARS_USERNAME = set(string.ascii_letters + string.digits + "_-")
+USERNAME_REGEX = "[a-zA-Z0-9-_.]{1,20}"
+MENTION_REGEX = "@[a-zA-Z0-9-_.]{1,20}"
 
 SERVER = {
     "_id": "0",

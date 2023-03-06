@@ -34,24 +34,34 @@ class Notification:
 
         if self.type == 0:
             data["content"] = self.data.get("content")
-        if self.type == 1:
+        elif self.type == 1:
             try:
                 data["user"] = users.get_user(self.data["user_id"]).partial
             except:
                 data["user"] = None
-        elif (self.type == 2) or (self.type == 3):
+        elif self.type == 2:
+            try:
+                data["post"] = posts.get_post(self.data["post_id"]).public
+            except:
+                data["post"] = None
+        elif self.type == 3:
+            try:
+                data["comment"] = comments.get_comment(self.data["comment_id"]).public
+            except:
+                data["comment"] = None
+        elif (self.type == 4) or (self.type == 5):
             try:
                 data["post"] = posts.get_post(self.data["post_id"]).public
                 data["milestone"] = self.data["milestone"]
             except:
                 data["post"] = None
                 data["milestone"] = None
-        elif (self.type == 4) or (self.type == 6):
+        elif (self.type == 6) or (self.type == 8):
             try:
                 data["comment"] = comments.get_comment(self.data["comment_id"]).public
             except:
                 data["comment"] = None
-        elif self.type == 5:
+        elif self.type == 7:
             try:
                 data["comment"] = comments.get_comment(self.data["comment_id"]).public
                 data["milestone"] = self.data["milestone"]

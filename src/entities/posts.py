@@ -3,8 +3,9 @@ from copy import copy
 from threading import Thread
 import time
 import random
+import re
 
-from src.util import status, uid, events, filter, bitfield, flags
+from src.util import status, uid, regex, events, filter, bitfield, flags
 from src.entities import users, notifications
 from src.database import db, redis
 
@@ -132,13 +133,13 @@ class Post:
                         if (val >= milestone) and (self.top_stats.get(key, 0) < milestone):
                             if key == "likes":
                                 if self.author.config["notification_settings"]["post_likes"]:
-                                    notifications.create_notification(self.author, 2, {
+                                    notifications.create_notification(self.author, 4, {
                                         "post_id": self.id,
                                         "milestone": milestone
                                     })
                             elif key == "meows":
                                 if self.author.config["notification_settings"]["post_meows"]:
-                                    notifications.create_notification(self.author, 3, {
+                                    notifications.create_notification(self.author, 5, {
                                         "post_id": self.id,
                                         "milestone": milestone
                                     })
@@ -285,6 +286,23 @@ def create_post(author: any, content: str, masquerade: dict = None, bridged: boo
 
     # Announce post creation
     events.emit_event("post_created", post.id, post.public)
+
+    # Notify mentioned users
+    notify_users = set()
+    for user_id, notify in [regex.extract_mention(mention) for mention in re.findall(regex.USER_MENTION, content)]:
+        if user_id == post.author.id:
+            continue
+        if notify:
+            notify_users.add(user_id)
+    for user_id in notify_users:
+        try:
+            user = users.get_user(user_id, return_deleted=False)
+            if user.config["notification_settings"]["mentions"]:
+                notifications.create_notification(user, 2, {
+                    "post_id": post.id
+                })
+        except:
+            pass
 
     # Add post ID to latest posts list
     redis.lpush("latest_posts", post.id)

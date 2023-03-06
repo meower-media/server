@@ -1,8 +1,9 @@
 from datetime import datetime
 from copy import copy
 from threading import Thread
+import re
 
-from src.util import status, uid, events, filter, bitfield, flags
+from src.util import status, uid, regex, events, filter, bitfield, flags
 from src.entities import users, posts, notifications
 from src.database import db
 
@@ -94,7 +95,7 @@ class Comment:
                 for milestone in [5, 10, 25, 50, 100, 1000]:
                     if (self.likes >= milestone) and (self.top_likes < milestone):
                         if self.author.config["notification_settings"]["comment_likes"]:
-                            notifications.create_notification(self.author, 5, {
+                            notifications.create_notification(self.author, 7, {
                                 "comment_id": self.id,
                                 "milestone": milestone
                             })
@@ -227,14 +228,35 @@ def create_comment(post: posts.Post, author: any, content: str, parent: Comment 
     # Send notifications
     if post.author.id != comment.author.id:
         if post.author.config["notification_settings"]["comments"]:
-            notifications.create_notification(post.author, 4, {
+            notifications.create_notification(post.author, 6, {
                 "comment_id": comment.id
             })
     if parent and (parent.author.id != comment.author.id):
         if post.author.config["notification_settings"]["comment_replies"]:
-            notifications.create_notification(parent.author, 6, {
+            notifications.create_notification(parent.author, 8, {
                 "comment_id": comment.id
             })
+
+    # Notify mentioned users
+    notify_users = set()
+    for user_id, notify in [regex.extract_mention(mention) for mention in re.findall(regex.USER_MENTION, content)]:
+        if user_id == comment.author.id:
+            continue
+        if user_id == post.author.id:
+            continue
+        if parent and (user_id == parent.author.id):
+            continue
+        if notify:
+            notify_users.add(user_id)
+    for user_id in notify_users:
+        try:
+            user = users.get_user(user_id, return_deleted=False)
+            if user.config["notification_settings"]["mentions"]:
+                notifications.create_notification(user, 3, {
+                    "comment_id": comment.id
+                })
+        except:
+            pass
 
     # Return comment object
     return comment

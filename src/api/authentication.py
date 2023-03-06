@@ -3,7 +3,7 @@ from sanic_ext import validate
 from pydantic import BaseModel, Field
 from typing import Optional
 
-from src.util import status, security, email
+from src.util import status, regex, security, email
 from src.entities import users, accounts, networks, sessions, tickets, security_cookies
 
 v1 = Blueprint("v1_authentication", url_prefix="/auth")
@@ -12,7 +12,8 @@ v1 = Blueprint("v1_authentication", url_prefix="/auth")
 class RegistrationForm(BaseModel):
     username: str = Field(
         min_length=1,
-        max_length=20
+        max_length=20,
+        regex=regex.USERNAME_VALIDATION
     )
     password: str = Field(
         min_length=8,
@@ -27,7 +28,8 @@ class RegistrationForm(BaseModel):
 class LoginPasswordForm(BaseModel):
     username: str = Field(
         min_length=1,
-        max_length=20
+        max_length=20,
+        regex=regex.USERNAME_VALIDATION
     )
     password: str = Field(
         max_length=255
@@ -49,7 +51,8 @@ class LoginTOTPForm(BaseModel):
 
 class PasswordRecoveryForm(BaseModel):
     email: str = Field(
-        max_length=255
+        max_length=255,
+        #regex=regex.EMAIL_VALIDATION
     )
 
 
