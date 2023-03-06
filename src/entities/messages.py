@@ -14,6 +14,7 @@ class Message:
         reply_to: str = None,
         flags: int = 0,
         content: str = None,
+        filtered_content: str = None,
         likes: list = [],
         time: datetime = None,
         delete_after: datetime = None,
@@ -26,6 +27,7 @@ class Message:
         self.reply_to = reply_to
         self.flags = flags
         self.content = content
+        self.filtered_content = filtered_content
         self.likes = likes
         self.time = time
         self.delete_after = delete_after
@@ -41,7 +43,7 @@ class Message:
             "reply_to": self.reply_to,
             "flags": self.flags,
             "content": self.content,
-            "filtered_content": self.content,  # Need to find a suitable filter, may end up being client-side
+            "filtered_content": self.filtered_content,
             "likes": self.likes,
             "time": int(self.time.timestamp()),
             "delete_after": (int(self.delete_after.timestamp()) if self.delete_after else None)
@@ -132,8 +134,14 @@ def create_message(chat: chats.Chat, author: any, content: str, reply_to: str = 
         "reply_to": reply_to,
         "flags": (bitfield.create([flags.messages.bridged]) if bridged else 0),
         "content": content,
+        "filtered_content": None,
         "time": uid.timestamp()
     }
+
+    # Filter profanity
+    filtered_content = filter.censor(content)
+    if filtered_content != content:
+        message["filtered_content"] = filtered_content
 
     # Insert message into database and convert into message object
     db.chat_messages.insert_one(message)
