@@ -112,7 +112,8 @@ class server:
                     elif (cmd in COMMANDS) and (hasattr(self.command_handler, cmd)):
                         try:
                             await getattr(self.command_handler, cmd)(client, val, listener)
-                        except:
+                        except Exception as e:
+                            print(e)
                             await self.send_code(client, "Internal", listener=listener)
                     else:
                         await self.send_code(client, "Invalid")

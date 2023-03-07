@@ -9,6 +9,13 @@ import asyncio
 from src.util import status
 from src.entities import users, accounts, networks, sessions, infractions, posts
 
+LEGACY_DEVICE = {
+    "User-Agent": "Unknown",
+    "X-Client-Name": "Legacy Client",
+    "X-Client-Version": "Unknown",
+    "X-Client-Type": "Unknown"
+}
+
 class CL3Commands:
     def __init__(self, cl_server):
         self.cl = cl_server
@@ -53,15 +60,20 @@ class CL3Commands:
         except status.resourceNotFound:
             return await self.cl.send_code(client, "IDNotFound", listener)
         
-        # Check whether account can MFA enabled
-        if account.mfa_enabled:
-            return await self.cl.send_code(client, "2FAOnly", listener)
-        
-        # Check account password
-        if account.locked:
-            return await self.cl.send_code(client, "RateLimit", listener)
-        elif not account.check_password(password):
-            return await self.cl.send_code(client, "InvalidPassword", listener)
+        # Attempt to get session by token
+        try:
+            session = sessions.get_session_by_token(password, legacy=True)
+        except:
+            session = None
+            # Check whether account can MFA enabled
+            if account.mfa_enabled:
+                return await self.cl.send_code(client, "2FAOnly", listener)
+            
+            # Check account password
+            if account.locked:
+                return await self.cl.send_code(client, "RateLimit", listener)
+            elif not account.check_password(password):
+                return await self.cl.send_code(client, "InvalidPassword", listener)
         
         # Check whether user is banned
         moderation_status = infractions.user_status(user)
@@ -69,6 +81,10 @@ class CL3Commands:
             return await self.cl.send_code(client, "Banned", listener)
 
         # Authenticate client
+        if session:
+            token = session.refresh(LEGACY_DEVICE, "127.0.0.1")
+        else:
+            token, session = sessions.create_user_session(account, LEGACY_DEVICE, "127.0.0.1", legacy=True)
         if user.id in self.cl._user_ids:
             await self.cl.kick_client(self.cl._user_ids[user.id], "IDConflict")
         client.user_id = user.id
@@ -81,7 +97,7 @@ class CL3Commands:
                 "mode": "auth",
                 "payload": {
                     "username": username,
-                    "token": "abc"
+                    "token": token
                 }
             }
         }

@@ -133,7 +133,7 @@ class User:
             "lower_username": self.lower_username,
             "created": int(self.created.timestamp()),
             "uuid": self.id,
-            "pfp_data": (self.icon["data"] if (self.icon["type"] == 0) else 1),
+            "pfp_data": 1,
             "quote": self.quote,
             "lvl": 0,
             "banned": False
@@ -142,7 +142,7 @@ class User:
     @property
     def legacy_client(self):
         legacy_public = self.legacy_public
-        config = self.config
+        config = {}
         legacy_public.update({
             "email": "",
             "unread_inbox": False,

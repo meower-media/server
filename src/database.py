@@ -51,6 +51,7 @@ def rebuild_indexes():  # needs to be improved
 
     # User sessions
     db.sessions.create_index([("user_id", ASCENDING)], name="user")
+    db.sessions.create_index([("legacy_token", ASCENDING)], name="legacy_sessions", unique=True, sparse=True)
 
     # OAuth sessions
     db.oauth_sessions.create_index([("application_id", ASCENDING), ("user_id", ASCENDING)], name="application_and_user")

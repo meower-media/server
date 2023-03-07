@@ -1,5 +1,7 @@
 from datetime import datetime
 from base64 import b64encode, b64decode
+from hashlib import sha256
+import secrets
 
 from src.util import status, uid, events, security, bitfield, email
 from src.entities import users, accounts, networks, applications
@@ -34,7 +36,8 @@ class UserSession:
         device: dict = {},
         ip_address: str = None,
         last_refreshed: datetime = None,
-        created: datetime = None
+        created: datetime = None,
+        legacy_token: str = None
     ):
         self.id = _id
         self.version = version
@@ -43,6 +46,7 @@ class UserSession:
         self.network = (networks.get_network(ip_address) if ip_address else None)
         self.last_refreshed = last_refreshed
         self.created = created
+        self.legacy_token = legacy_token
 
     @property
     def client(self):
@@ -66,15 +70,29 @@ class UserSession:
         self.device = device
         self.network = networks.get_network(ip_address)
         self.last_refreshed = uid.timestamp()
-        redis.set(f"ses:{self.id}:{str(self.version)}", self.user.id, ex=3600)
-        redis.expire(f"ses:{self.id}:{str(self.version-1)}", 5)
-        db.sessions.update_one({"_id": self.id}, {"$set": {
-            "version": self.version,
-            "device": self.device,
-            "ip_address": self.network.ip_address,
-            "last_refreshed": self.last_refreshed
-        }})
+        if self.legacy_token:
+            legacy_token = secrets.token_urlsafe(64)
+            self.legacy_token = sha256(legacy_token.encode()).hexdigest()
+            db.sessions.update_one({"_id": self.id}, {"$set": {
+                "version": self.version,
+                "device": self.device,
+                "ip_address": self.network.ip_address,
+                "last_refreshed": self.last_refreshed,
+                "legacy_token": self.legacy_token
+            }})
+        else:
+            redis.set(f"ses:{self.id}:{str(self.version)}", self.user.id, ex=3600)
+            redis.expire(f"ses:{self.id}:{str(self.version-1)}", 5)
+            db.sessions.update_one({"_id": self.id}, {"$set": {
+                "version": self.version,
+                "device": self.device,
+                "ip_address": self.network.ip_address,
+                "last_refreshed": self.last_refreshed
+            }})
         events.emit_event("session_updated", self.user.id, self.client)
+
+        if self.legacy_token:
+            return legacy_token
 
     def revoke(self):
         db.sessions.delete_one({"_id": self.id})
@@ -195,7 +213,7 @@ class BotSession:
         if self.version != self.user.bot_session:
             self = None
 
-def create_user_session(account: accounts.Account, device: dict, ip_address: str):
+def create_user_session(account: accounts.Account, device: dict, ip_address: str, legacy: bool = False):
     session = {
         "_id": uid.snowflake(),
         "version": 0,
@@ -205,9 +223,14 @@ def create_user_session(account: accounts.Account, device: dict, ip_address: str
         "last_refreshed": uid.timestamp(),
         "created": uid.timestamp()
     }
+    if legacy:
+        legacy_token = secrets.token_urlsafe(64)
+        session["legacy_token"] = sha256(legacy_token.encode()).hexdigest()
+    
     db.sessions.insert_one(session)
     session = UserSession(**session)
-    redis.set(f"ses:{session.id}:{str(session.version)}", session.user.id, ex=3600)
+    if not legacy:
+        redis.set(f"ses:{session.id}:{str(session.version)}", session.user.id, ex=3600)
     events.emit_event("session_created", account.id, session.client)
 
     if (account.id not in session.network.user_ids) and account.email:
@@ -219,6 +242,8 @@ def create_user_session(account: accounts.Account, device: dict, ip_address: str
         })
     networks.update_netlog(session.user.id, session.network.ip_address)
 
+    if legacy:
+        return legacy_token, session
     return session
 
 def get_user_session(session_id: str):
@@ -325,26 +350,36 @@ def get_partial_session_by_token(token: str):
     except:
         return None
 
-def get_session_by_token(token: str):
-    try:
-        # Decode signed token
-        token_metadata, signature = token.split(".")
-        token_metadata = token_metadata.encode()
-        signature = signature.encode()
-        ttype, session_id, version = b64decode(token_metadata).decode().split(":")
+def get_session_by_token(token: str, legacy: bool = False):
+    if legacy:
+        # Get session from database
+        session = db.sessions.find_one({"legacy_token": sha256(token.encode()).hexdigest()})
 
-        # Check token signature
-        if not security.validate_signature(signature, token_metadata):
-            return None
-
-        # Return session
-        if ttype == "1":
-            return get_user_session(session_id)
-        elif ttype == "2":
-            return get_oauth_session(session_id)
-        elif ttype == "3":
-            return BotSession(_id=session_id, version=int(version))
+        # Return session object
+        if session:
+            return UserSession(**session)
         else:
+            raise status.resourceNotFound
+    else:
+        try:
+            # Decode signed token
+            token_metadata, signature = token.split(".")
+            token_metadata = token_metadata.encode()
+            signature = signature.encode()
+            ttype, session_id, version = b64decode(token_metadata).decode().split(":")
+
+            # Check token signature
+            if not security.validate_signature(signature, token_metadata):
+                return None
+
+            # Return session
+            if ttype == "1":
+                return get_user_session(session_id)
+            elif ttype == "2":
+                return get_oauth_session(session_id)
+            elif ttype == "3":
+                return BotSession(_id=session_id, version=int(version))
+            else:
+                return None
+        except:
             return None
-    except:
-        return None
