@@ -76,7 +76,7 @@ def rebuild_indexes():  # needs to be improved
     # Posts
     db.posts.create_index([("deleted_at", ASCENDING), ("time", DESCENDING), ("author_id", ASCENDING), ("_id", ASCENDING)], name="feed")
     db.posts.create_index([("deleted_at", ASCENDING), ("reputation", DESCENDING), ("_id", ASCENDING)], name="trending")
-    db.posts.create_index([("deleted_at", ASCENDING), ("content", TEXT), ("time", DESCENDING), ("_id", ASCENDING)], name="search")
+    db.posts.create_index([("deleted_at", ASCENDING), ("author_id", ASCENDING), ("content", TEXT), ("time", DESCENDING), ("_id", ASCENDING)], name="search")
 
     # Post revisions
     db.post_revisions.create_index([("post_id", ASCENDING)], name="post")

@@ -324,7 +324,7 @@ def get_post(post_id: str, error_on_deleted: bool = True):
     else:
         raise status.resourceNotFound
 
-def get_feed(user: any, before: str = None, after: str = None, limit: int = 25):
+def get_feed(user: any, before: str = None, after: str = None, skip: int = 0, limit: int = 25):
     # Create ID range
     if before is not None:
         id_range = {"$lt": before}
@@ -335,7 +335,7 @@ def get_feed(user: any, before: str = None, after: str = None, limit: int = 25):
 
     # Get following list and posts that the user's followers have meowed
     following = user.get_following_ids()
-    meowed_posts = [meow["post_id"] for meow in db.post_meows.find({"user_id": {"$in": following}, "post_id": id_range}, sort=[("time", -1)], limit=limit, projection={"post_id": 1})]
+    meowed_posts = [meow["post_id"] for meow in db.post_meows.find({"user_id": {"$in": following}, "post_id": id_range}, sort=[("time", -1)], skip=skip, limit=limit, projection={"post_id": 1})]
 
     # Create query
     query = {
@@ -374,7 +374,7 @@ def get_feed(user: any, before: str = None, after: str = None, limit: int = 25):
     # Return fetched posts
     return fetched_posts
 
-def get_latest_posts(before: str = None, after: str = None, limit: int = 25):
+def get_latest_posts(before: str = None, after: str = None, skip: int = 0, limit: int = 25):
     # Create ID range
     if before is not None:
         id_range = {"$lt": before}
@@ -384,9 +384,9 @@ def get_latest_posts(before: str = None, after: str = None, limit: int = 25):
         id_range = {"$gt": "0"}
 
     # Fetch and return all posts
-    return [Post(**post) for post in db.posts.find({"deleted_at": None, "_id": id_range}, sort=[("time", -1)], limit=limit)]
+    return [Post(**post) for post in db.posts.find({"deleted_at": None, "_id": id_range}, sort=[("time", -1)], skip=skip, limit=limit)]
 
-def get_top_posts(before: str = None, after: str = None, limit: int = 25):
+def get_top_posts(before: str = None, after: str = None, skip: int = 0, limit: int = 25):
     # Create ID range
     if before is not None:
         id_range = {"$lt": before}
@@ -396,9 +396,9 @@ def get_top_posts(before: str = None, after: str = None, limit: int = 25):
         id_range = {"$gt": "0"}
 
     # Fetch and return all posts
-    return [Post(**post) for post in db.posts.find({"deleted_at": None, "_id": id_range}, sort=[("reputation", -1)], limit=limit)]
+    return [Post(**post) for post in db.posts.find({"deleted_at": None, "_id": id_range}, sort=[("reputation", -1)], skip=skip, limit=limit)]
 
-def get_user_posts(user: any, before: str = None, after: str = None, limit: int = 25):
+def get_user_posts(user_id: str, before: str = None, after: str = None, skip: int = 0, limit: int = 25):
     # Create ID range
     if before is not None:
         id_range = {"$lt": before}
@@ -408,9 +408,9 @@ def get_user_posts(user: any, before: str = None, after: str = None, limit: int 
         id_range = {"$gt": "0"}
 
     # Fetch and return all posts
-    return [Post(**post) for post in db.posts.find({"deleted_at": None, "author_id": user.id, "_id": id_range}, sort=[("time", -1)], limit=limit)]
+    return [Post(**post) for post in db.posts.find({"deleted_at": None, "author_id": user_id, "_id": id_range}, sort=[("time", -1)], skip=skip, limit=limit)]
 
-def search_posts(query: str, before: str = None, after: str = None, limit: int = 25):
+def search_posts(query: str, before: str = None, after: str = None, skip: int = 0, limit: int = 25):
     # Create ID range
     if before is not None:
         id_range = {"$lt": before}
@@ -420,4 +420,4 @@ def search_posts(query: str, before: str = None, after: str = None, limit: int =
         id_range = {"$gt": "0"}
 
     # Fetch and return all posts
-    return [Post(**post) for post in db.posts.find({"deleted_at": None, "$text": {"$search": query}, "_id": id_range}, sort=[("time", -1)], limit=limit)]
+    return [Post(**post) for post in db.posts.find({"deleted_at": None, "$text": {"$search": query}, "_id": id_range}, sort=[("time", -1)], skip=skip, limit=limit)]

@@ -32,6 +32,7 @@ COMMANDS = {
     "get_home",
     "post_home",
     "get_post",
+    "search_user_posts",
     "delete_post"
 }
 DISABLED_COMMANDS = {

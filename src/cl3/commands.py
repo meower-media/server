@@ -135,6 +135,7 @@ class CL3Commands:
         await self.cl.send_to_client(client, payload, listener)
         return await self.cl.send_code(client, "OK", listener)
     
+    """ pain.
     async def update_config(self, client, val, listener):
         # Check if the client is authenticated
         if not client.user_id:
@@ -170,6 +171,7 @@ class CL3Commands:
         else:
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
+    """
     
     # General
     
@@ -185,14 +187,22 @@ class CL3Commands:
             page = 1
 
         # Get home index
-        home_index = [post.id for post in posts.get_latest_posts()]
+        home_index = [post.id for post in posts.get_latest_posts(skip=((page-1)*25))]
 
         # Return home index
         payload = {
             "cmd": "direct",
             "val": {
                 "mode": "home",
-                "payload": home_index
+                "payload": {
+                    "index": home_index,
+                    "page#": page,
+                    "pages": 1,  # placeholder
+                    "query": {
+                        "post_origin": "home",
+                        "isDeleted": False
+                    }
+                }
             }
         }
         await self.cl.send_code(client, "OK", listener)
@@ -251,6 +261,7 @@ class CL3Commands:
     
     # Logging and data management
     
+    """ not implemented
     def get_peak_users(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
         if self.supporter.isAuthenticated(client):
@@ -267,39 +278,54 @@ class CL3Commands:
         else:
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-    
-    def search_user_posts(self, client, val, listener_detected, listener_id):
-        # Check if the client is authenticated
-        if self.supporter.isAuthenticated(client):
-            if type(val) == dict:
-                if ("query" in val) and (type(val["query"]) == str):
-                    if ("page" in val) and self.checkForInt(val["page"]):
-                        page = int(val["page"])
-                    else:
-                        page = 1
+    """
 
-                    post_index = self.getIndex(location="posts", query={"post_origin": "home", "u": val["query"], "isDeleted": False}, truncate=True, page=page)
-                    for i in range(len(post_index["index"])):
-                        post_index["index"][i] = post_index["index"][i]["_id"]
-                    post_index["index"].reverse()
-                    payload = {
-                        "mode": "user_posts",
-                        "index": post_index
-                    }
-                    self.sendPacket({"cmd": "direct", "val": payload, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
-                    self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    # Bad syntax
-                    self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-            else:
-                # Bad datatype
-                self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
+    async def search_user_posts(self, client, val, listener):
+        # Check if the client is authenticated
+        if not client.user_id:
+            return await self.cl.send_code(client, "Refused", listener)
+        
+        # Get user ID
+        if isinstance(val, dict) and ("query" in val) and isinstance(val["query"], str):
+            try:
+                user_id = users.get_id_from_username(val["query"])
+            except status.resourceNotFound:
+                return await self.cl.send_code(client, "IDNotFound", listener)
         else:
-            # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
+            return await self.cl.send_code(client, "Datatype", listener)
+
+        # Get page
+        if isinstance(val, dict) and ("page" in val) and isinstance(val["page"], int):
+            page = val["page"]
+        else:
+            page = 1
+
+        # Get index
+        index = [post.id for post in posts.get_user_posts(user_id, skip=((page-1)*25))]
+
+        # Return index
+        payload = {
+            "cmd": "direct",
+            "val": {
+                "mode": "user_posts",
+                "index": {
+                    "index": index,
+                    "page#": page,
+                    "pages": 1,  # placeholder
+                    "query": {
+                        "post_origin": "home",
+                        "u": val["query"],
+                        "isDeleted": False
+                    }
+                }
+            }
+        }
+        await self.cl.send_code(client, "OK", listener)
+        return await self.cl.send_to_client(client, payload, listener)
     
     # Moderator features
     
+    """
     def report(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
         if self.supporter.isAuthenticated(client):
@@ -347,7 +373,8 @@ class CL3Commands:
         else:
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-
+    """
+            
     # Chat-related
     
     async def delete_post(self, client, val, listener):
@@ -537,7 +564,6 @@ class CL3Commands:
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
 
-    # Formatting looks different to other commands because this is taken from the beta 6 server
     def set_chat_state(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
