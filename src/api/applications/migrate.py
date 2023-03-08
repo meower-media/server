@@ -25,7 +25,7 @@ class MigrationForm(BaseModel):
 
 @v1.post("/")
 @validate(json=MigrationForm)
-@security.sanic_protected(allow_bots=False, ignore_suspension=False)
+@security.v1_protected(allow_bots=False, ignore_suspension=False)
 async def v1_migrate_user_to_bot(request, body: MigrationForm):
     # Check whether migrations can still be completed
     if time.time() > 1688169599:

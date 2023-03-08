@@ -30,7 +30,7 @@ class CL4Commands:
                 return await self.cl.send_code(client, "TooLarge", listener=listener)
 
         # Check whether the client is already authenticated
-        if client.user_id is not None:
+        if client.user_id:
             return await self.cl.send_code(client, "IDSet", listener=listener)
 
         # Start session start timer
@@ -46,6 +46,12 @@ class CL4Commands:
             self.cl._users[client.user_id].add(client)
         else:
             self.cl._users[client.user_id] = {client}
+
+        # Subscribe to chats
+        for chat_id in chats.get_all_chat_ids(client.user_id):
+            if chat_id not in self.cl._subscriptions["chats"]:
+                self.cl._subscriptions["chats"][chat_id] = set()
+            self.cl._subscriptions["chats"][chat_id].add(client)
 
         # Initialize WebSocket session (get user, chats, relationships, etc.)
         await self.cl.send_code(client, "OK", listener=listener)

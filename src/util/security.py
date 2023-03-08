@@ -1,6 +1,6 @@
 from base64 import b64encode, b64decode
 from hashlib import sha512
-from sanic.response import HTTPResponse
+from sanic.response import HTTPResponse, json
 import secrets
 import hmac
 import requests
@@ -129,7 +129,42 @@ def auto_ratelimit(key: str, identifier: str):
 
     return (key, remaining, expires)
 
-def sanic_protected(
+def v0_protected(
+        ignore_guardian: bool = False,
+        ignore_suspension: bool = True,
+        ignore_ban: bool = False
+    ):
+        def decorator(func: callable) -> callable:
+            def wrapper(request, *args, **kwargs) -> HTTPResponse:
+                # Extract username and token
+                username = request.headers.get("Username", "")
+                token = request.headers.get("Token", "")
+                if len(username) > 20:
+                    username = username[:20]
+                if len(token) > 255:
+                    token = token[:255]
+
+                # Get session and user
+                request.ctx.session = sessions.get_session_by_token(token, legacy=True)
+                if request.ctx.session and (request.ctx.session.user.username == username):
+                    request.ctx.user = request.ctx.session.user
+                else:
+                    return json({"error": True, "type": "Unauthorized"}, status=401)
+
+                # Check whether user is being restricted by guardian
+                if (not ignore_guardian) and (False):
+                    pass
+
+                # Check whether the user is banned/suspended
+                user_moderation_status = infractions.user_status(request.ctx.user)
+                if ((not ignore_suspension) and user_moderation_status["suspended"]) or ((not ignore_ban) and user_moderation_status["banned"]):
+                    raise status.userRestricted
+
+                return func(request, *args, **kwargs)
+            return wrapper
+        return decorator
+
+def v1_protected(
         require_auth: bool = True,
         ratelimit_key: str = None,
         ratelimit_scope: str = None,

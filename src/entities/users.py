@@ -8,9 +8,6 @@ from src.entities import notifications, sessions
 from src.util import status, uid, events, security, bitfield, flags
 from src.database import db
 
-USERNAME_REGEX = "[a-zA-Z0-9-_.]{1,20}"
-MENTION_REGEX = "@[a-zA-Z0-9-_.]{1,20}"
-
 SERVER = {
     "_id": "0",
     "username": "Server",

@@ -39,7 +39,7 @@ class MFARecoveryCodesForm(BaseModel):
     regenerate: bool = Field()
 
 @v1.get("/")
-@security.sanic_protected(allow_bots=False)
+@security.v1_protected(allow_bots=False)
 async def v1_get_account(request):
     account = accounts.get_account(request.ctx.user.id)
     
@@ -47,7 +47,7 @@ async def v1_get_account(request):
 
 @v1.patch("/email")
 @validate(json=UpdateEmailForm)
-@security.sanic_protected(allow_bots=False)
+@security.v1_protected(allow_bots=False)
 async def v1_update_email(request, body: UpdateEmailForm):
     account = accounts.get_account(request.ctx.user.id)
     
@@ -57,7 +57,7 @@ async def v1_update_email(request, body: UpdateEmailForm):
 
 @v1.post("/password")
 @validate(json=UpdatePasswordForm)
-@security.sanic_protected(allow_bots=False)
+@security.v1_protected(allow_bots=False)
 async def v1_update_password(request, body: UpdatePasswordForm):
     account = accounts.get_account(request.ctx.user.id)
     
@@ -67,7 +67,7 @@ async def v1_update_password(request, body: UpdatePasswordForm):
 
 @v1.patch("/mfa/totp")
 @validate(json=EnableTOTPForm)
-@security.sanic_protected(allow_bots=False)
+@security.v1_protected(allow_bots=False)
 async def v1_mfa_enable_totp(request, body: EnableTOTPForm):
     account = accounts.get_account(request.ctx.user.id)
 
@@ -77,7 +77,7 @@ async def v1_mfa_enable_totp(request, body: EnableTOTPForm):
 
 @v1.delete("/mfa/totp")
 @validate(json=DisableTOTPForm)
-@security.sanic_protected(allow_bots=False)
+@security.v1_protected(allow_bots=False)
 async def v1_mfa_disable_totp(request, body: DisableTOTPForm):
     account = accounts.get_account(request.ctx.user.id)
 
@@ -87,7 +87,7 @@ async def v1_mfa_disable_totp(request, body: DisableTOTPForm):
 
 @v1.post("/mfa/recovery-codes")
 @validate(json=MFARecoveryCodesForm)
-@security.sanic_protected(allow_bots=False)
+@security.v1_protected(allow_bots=False)
 async def v1_mfa_recovery_codes(request, body: MFARecoveryCodesForm):
     account = accounts.get_account(request.ctx.user.id)
 

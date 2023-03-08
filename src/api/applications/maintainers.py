@@ -8,7 +8,7 @@ v1 = Blueprint("v1_applications_maintainers", url_prefix="/<application_id:str>/
 
 
 @v1.put("/")
-@security.sanic_protected(allow_bots=False)
+@security.v1_protected(allow_bots=False)
 async def v1_add_application_maintainer(request, application_id: str, maintainer_id: str):
     # Get application
     application = get_application_or_abort_if_not_owner(application_id, request.ctx.user)
@@ -20,7 +20,7 @@ async def v1_add_application_maintainer(request, application_id: str, maintainer
 
 
 @v1.delete("/")
-@security.sanic_protected(allow_bots=False)
+@security.v1_protected(allow_bots=False)
 async def v1_remove_application_maintainer(request, application_id: str, maintainer_id: str):
     # Get application
     application = get_application_or_abort_if_not_maintainer(application_id, request.ctx.user)
@@ -37,7 +37,7 @@ async def v1_remove_application_maintainer(request, application_id: str, maintai
 
 
 @v1.post("/transfer")
-@security.sanic_protected(allow_bots=False)
+@security.v1_protected(allow_bots=False)
 async def v1_transfer_application_ownership(request, application_id: str, maintainer_id: str):
     # Get application
     application = get_application_or_abort_if_not_owner(application_id, request.ctx.user)

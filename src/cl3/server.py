@@ -1,6 +1,7 @@
 import websockets
 import asyncio
 import json
+import time
 
 from src.cl3.commands import CL3Commands
 
@@ -33,7 +34,16 @@ COMMANDS = {
     "post_home",
     "get_post",
     "search_user_posts",
-    "delete_post"
+    "delete_post",
+    "create_chat",
+    "leave_chat",
+    "get_chat_list",
+    "get_chat_data",
+    "get_chat_posts",
+    "set_chat_state",
+    "post_chat",
+    "add_to_chat",
+    "remove_from_chat"
 }
 DISABLED_COMMANDS = {
     "gmsg",
@@ -60,9 +70,10 @@ class server:
             return _ulist
 
     async def broadcast(self, payload: dict):
+        payload = json.dumps(payload)
         for client in self.clients:
             try:
-                await client.send(json.dumps(payload))
+                await client.send(payload)
             except:
                 pass
 
@@ -74,6 +85,14 @@ class server:
         except:
             pass
     
+    async def send_to_chat(self, chat_id: str, payload: dict):
+        payload = json.dumps(payload)
+        for client in self._chats.get(chat_id, set()):
+            try:
+                await client.send(payload)
+            except:
+                pass
+
     async def send_code(self, client, code: str, listener: str = None):
         payload = {"cmd": "statuscode", "val": CODES[code]}
         if listener:
@@ -86,6 +105,10 @@ class server:
         await client.close(code=1001, reason="")
 
     async def __handler__(self, client):
+        if time.time() > 1688169599:  # Check whether v0 has been discontinued
+            return await self.kick_client(client)
+
+        client.session_id = None
         client.user_id = None
         client.username = None
         self.clients.add(client)

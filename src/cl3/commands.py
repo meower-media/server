@@ -1,13 +1,6 @@
-import time
-import uuid
-import secrets
-import pymongo
-import os
-import requests
-import asyncio
-
 from src.util import status
-from src.entities import users, accounts, networks, sessions, infractions, posts
+from src.entities import users, accounts, networks, sessions, infractions, posts, chats, messages
+from src.database import db
 
 LEGACY_DEVICE = {
     "User-Agent": "Unknown",
@@ -87,10 +80,15 @@ class CL3Commands:
             token, session = sessions.create_user_session(account, LEGACY_DEVICE, "127.0.0.1", legacy=True)
         if user.id in self.cl._user_ids:
             await self.cl.kick_client(self.cl._user_ids[user.id], "IDConflict")
+        client.session_id = session.id
         client.user_id = user.id
         client.username = username
         self.cl._user_ids[user.id] = client
         self.cl._usernames[username] = client
+        for chat_id in chats.get_all_chat_ids(user.id):
+            if chat_id not in self.cl._chats:
+                self.cl._chats[chat_id] = set()
+            self.cl._chats[chat_id].add(client)
         payload = {
             "cmd": "direct",
             "val": {
@@ -197,7 +195,7 @@ class CL3Commands:
                 "payload": {
                     "index": home_index,
                     "page#": page,
-                    "pages": 1,  # placeholder
+                    "pages": ((db.posts.count_documents({"deleted_at": None}) // 25)+1),
                     "query": {
                         "post_origin": "home",
                         "isDeleted": False
@@ -311,7 +309,7 @@ class CL3Commands:
                 "index": {
                     "index": index,
                     "page#": page,
-                    "pages": 1,  # placeholder
+                    "pages": ((db.posts.count_documents({"deleted_at": None, "author_id": user_id}) // 25)+1),
                     "query": {
                         "post_origin": "home",
                         "u": val["query"],
@@ -402,348 +400,350 @@ class CL3Commands:
         # Tell the client the post was deleted
         return await self.cl.send_code(client, "OK", listener)
     
-    def create_chat(self, client, val, listener_detected, listener_id):
-        # Check if the client is already authenticated
-        if self.supporter.isAuthenticated(client):
-            if type(val) == str:
-                if not len(val) > 20:
-                    val = self.supporter.wordfilter(val)
-                    if not self.filesystem.does_item_exist("chats", val):
-                        result = self.filesystem.create_item("chats", str(uuid.uuid4()), {"nickname": val, "owner": client, "members": [client]})
-                        if result:
-                            self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                        else:
-                            # Some other error, raise an internal error.
-                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                    else:
-                        self.returnCode(client = client, code = "ChatExists", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    # Bad syntax
-                    self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-            else:
-                # Bad datatype
-                self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        else:
-            # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
+    async def create_chat(self, client, val, listener):
+        # Check if the client is authenticated
+        if not client.user_id:
+            return await self.cl.send_code(client, "Refused", listener)
+        
+        # Check datatype
+        if not isinstance(val, str):
+            return await self.cl.send_code(client, "Datatype", listener)
+
+        # Check length
+        if len(val) < 1:
+            return await self.cl.send_code(client, "Syntax", listener)
+        elif len(val) > 20:
+            return await self.cl.send_code(client, "TooLarge", listener)
+
+        # Create chat
+        chats.create_chat(val, client.user_id)
+
+        # Tell the client the chat was created
+        return await self.cl.send_code(client, "OK", listener)
     
-    def leave_chat(self, client, val, listener_detected, listener_id):
-        # Check if the client is already authenticated
-        if self.supporter.isAuthenticated(client):
-            if type(val) == str:
-                if not len(val) > 50:
-                    if self.filesystem.does_item_exist("chats", val):
-                        result, payload = self.filesystem.load_item("chats", val)
-                        if result:
-                            if client in payload["members"]:
-                                if payload["owner"] == client:
-                                    result = self.filesystem.delete_item("chats", val)
-                                    for member in payload["members"]:
-                                        if member in self.cl.getUsernames():
-                                            self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": payload["_id"]}, "id": member})
-                                    if result:
-                                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                                    else:
-                                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                                else:
-                                    payload["members"].remove(client)
-                                    result = self.filesystem.write_item("chats", val, payload)
-                                    if result:
-                                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                                    else:
-                                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                            else:
-                                self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
-                        else:
-                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                    else:
-                        self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    # Too large
-                    self.returnCode(client = client, code = "TooLarge", listener_detected = listener_detected, listener_id = listener_id)
-            else:
-                # Bad datatype
-                self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        else:
-            # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
+    async def leave_chat(self, client, val, listener):
+        # Check if the client is authenticated
+        if not client.user_id:
+            return await self.cl.send_code(client, "Refused", listener)
+        
+        # Check datatype
+        if not isinstance(val, str):
+            return await self.cl.send_code(client, "Datatype", listener)
+
+        # Get chat
+        try:
+            chat = chats.get_chat(val)
+        except status.resourceNotFound:
+            return await self.cl.send_code(client, "IDNotFound", listener)
+        
+        user = users.get_user(client.user_id)
+
+        # Check if the client is in the chat
+        if not chat.has_member(user):
+            return await self.cl.send_code(client, "MissingPermissions", listener)
+        
+        # Check if the chat is a DM
+        if chat.direct:
+            return await self.cl.send_code(client, "MissingPermissions", listener)
+
+        # Remove member from the chat
+        chat.remove_member(user)
+
+        # Tell the client the chat was deleted
+        return await self.cl.send_code(client, "OK", listener)
     
-    def get_chat_list(self, client, val, listener_detected, listener_id):
-        # Check if the client is already authenticated
-        if self.supporter.isAuthenticated(client):
-            if (type(val) == dict) and ("page" in val) and self.checkForInt(val["page"]):
-                page = int(val["page"])
-            else:
+    async def get_chat_list(self, client, val, listener):
+        # Check if the client is authenticated
+        if not client.user_id:
+            return await self.cl.send_code(client, "Refused", listener)
+        
+        # Get page
+        if isinstance(val, dict) and ("page" in val) and isinstance(val["page"], int):
+            page = val["page"]
+            if page < 1:
                 page = 1
-            chat_index = self.getIndex(location="chats", query={"members": {"$all": [client]}}, truncate=True, page=page, sort="nickname")
-            chat_index["all_chats"] = []
-            for i in range(len(chat_index["index"])):
-                chat_index["all_chats"].append(chat_index["index"][i])
-                chat_index["index"][i] = chat_index["index"][i]["_id"]
-            chat_index["index"].reverse()
-            chat_index["all_chats"].reverse()
-            payload = {
+        else:
+            page = 1
+
+        # Get chats
+        chats_index = chats.get_all_chats(client.user_id, skip=((page-1)*25))
+
+        # Return chats index
+        payload = {
+            "cmd": "direct",
+            "val": {
                 "mode": "chats",
-                "payload": chat_index
+                "payload": {
+                    "index": [chat.id for chat in chats_index],
+                    "all_chats": [chat.legacy_public for chat in chats_index],
+                    "page#": page,
+                    "pages": ((db.chats.count_documents({"members": {"$all": [client.user_id]}, "deleted_at": None}) // 25)+1),
+                    "query": {
+                        "members": {
+                            "$all": [client.username]
+                        }
+                    }
+                }
             }
-            self.sendPacket({"cmd": "direct", "val": payload, "id": client})
-            self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-        else:
-            # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
+        }
+        await self.cl.send_code(client, "OK", listener)
+        return await self.cl.send_to_client(client, payload, listener)
     
-    def get_chat_data(self, client, val, listener_detected, listener_id):
-        # Check if the client is already authenticated
-        if self.supporter.isAuthenticated(client):
-            if type(val) == str:
-                if not len(val) > 50:
-                    if self.filesystem.does_item_exist("chats", val):
-                        result, chatdata = self.filesystem.load_item("chats", val)
-                        if result:
-                            if client in chatdata["members"]:
-                                payload = {
-                                    "mode": "chat_data",
-                                    "payload": {
-                                        "chatid": chatdata["_id"],
-                                        "nickname": chatdata["nickname"],
-                                        "owner": chatdata["owner"],
-                                        "members": chatdata["members"]
-                                    }
-                                }
-                                self.sendPacket({"cmd": "direct", "val": payload, "id": client})
-                                self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                            else:
-                                self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
-                        else:
-                            # Some other error, raise an internal error.
-                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                    else:
-                        self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    self.returnCode(client = client, code = "TooLarge", listener_detected = listener_detected, listener_id = listener_id)
-            else:
-                # Bad datatype
-                self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        else:
-            # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-    
-    def get_chat_posts(self, client, val, listener_detected, listener_id):
-        # Check if the client is already authenticated
-        if self.supporter.isAuthenticated(client):
-            if type(val) == str:
-                if not len(val) > 50:
-                    if self.filesystem.does_item_exist("chats", val):
-                        result, chatdata = self.filesystem.load_item("chats", val)
-                        if result:
-                            if client in chatdata["members"]:
-                                posts_index = self.getIndex(location="posts", query={"post_origin": val, "isDeleted": False}, truncate=True)
-                                for i in range(len(posts_index["index"])):
-                                    posts_index["index"][i] = posts_index["index"][i]["_id"]
-                                print(posts_index)
-                                payload = {
-                                    "mode": "chat_posts",
-                                    "payload": posts_index
-                                }
-                                self.sendPacket({"cmd": "direct", "val": payload, "id": client})
-                                self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                            
-                            else:
-                                self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
-                        else:
-                            # Some other error, raise an internal error.
-                            self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                    else:
-                        self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    self.returnCode(client = client, code = "TooLarge", listener_detected = listener_detected, listener_id = listener_id)
-            else:
-                # Bad datatype
-                self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        else:
-            # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-
-    def set_chat_state(self, client, val, listener_detected, listener_id):
+    async def get_chat_data(self, client, val, listener):
         # Check if the client is authenticated
-        if not self.supporter.isAuthenticated(client):
-            # Not authenticated
-            return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        elif not ((type(val) == dict) and (("state" in val) and self.checkForInt(val["state"]) and (("chatid" in val) and (type(val["chatid"]) == str)))):
-            # Bad datatype
-            return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        elif len(val["chatid"]) > 50:
-            # Chat ID too long
-            return self.returnCode(client = client, code = "TooLarge", listener_detected = listener_detected, listener_id = listener_id)
+        if not client.user_id:
+            return await self.cl.send_code(client, "Refused", listener)
         
-        # Extract state and chat ID for simplicity
-        state = int(val["state"])
-        chatid = val["chatid"]
+        # Check datatype
+        if not isinstance(val, str):
+            return await self.cl.send_code(client, "Datatype", listener)
 
-        # Some messy permission checking
-        if chatid == "livechat":
-            pass
-        else:
-            FileRead, chatdata = self.filesystem.load_item("chats", chatid)
-            if not FileRead:
-                if not self.filesystem.does_item_exist("chats", chatid):
-                    # Chat doesn't exist
-                    return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    # Some other error, raise an internal error
-                    return self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-            if not (client in chatdata["members"]):
-                # User not in chat
-                return self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
+        # Get chat
+        try:
+            chat = chats.get_chat(val)
+        except status.resourceNotFound:
+            return await self.cl.send_code(client, "IDNotFound", listener)
+        
+        user = users.get_user(client.user_id)
 
-        # Create post format
-        post_w_metadata = {}
-        post_w_metadata["state"] = state
-        post_w_metadata["u"] = str(client)
-        post_w_metadata["chatid"] = str(chatid)
-        
-        self.log("{0} modifying {1} state to {2}".format(client, chatid, state))
+        # Check if the client is in the chat
+        if not chat.has_member(user):
+            return await self.cl.send_code(client, "MissingPermissions", listener)
 
-        if chatid == "livechat":
-            self.sendPacket({"cmd": "direct", "val": post_w_metadata})
-        else:
-            for member in chatdata["members"]:
-                self.sendPacket({"cmd": "direct", "val": post_w_metadata, "id": member})
-        
-        # Tell client message was sent
-        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-        
-        # Rate limit user
-        self.supporter.ratelimit(client)
+        # Return chat data
+        chat_json = chat.legacy_public
+        chat_json["chatid"] = chat_json["_id"]
+        del chat_json["_id"]
+        payload = {
+            "cmd": "direct",
+            "val": {
+                "mode": "chat_data",
+                "payload": chat_json
+            }
+        }
+        await self.cl.send_code(client, "OK", listener)
+        return await self.cl.send_to_client(client, payload, listener)
     
-    def post_chat(self, client, val, listener_detected, listener_id):
+    async def get_chat_posts(self, client, val, listener):
         # Check if the client is authenticated
-        if self.supporter.isAuthenticated(client):
-            if (type(val) == dict) and (("p" in val) and (type(val["p"]) == str)) and (("chatid" in val) and (type(val["chatid"]) == str)):
-                post = val["p"]
-                chatid = val["chatid"]
-                if (not len(post) > 360) and (not len(chatid) > 50):
-                    if not self.supporter.check_for_spam("posts", client, burst=6, seconds=5):
-                        if chatid == "livechat":
-                            result = self.createPost(post_origin=chatid, user=client, content=post)
-                            if result:
-                                self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                                self.supporter.ratelimit(client)
-                            else:
-                                self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                        else:
-                            result, chat_data = self.filesystem.load_item("chats", chatid)
-                            if result:
-                                if client in chat_data["members"]:
-                                    result = self.createPost(post_origin=chatid, user=client, content=post)
-                                    if result:
-                                        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                                        self.supporter.ratelimit(client)
-                                    else:
-                                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                                else:
-                                    self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
-                            else:
-                                self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                    else:
-                        # Rate limiter
-                        self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    # Message too large
-                    self.returnCode(client = client, code = "TooLarge", listener_detected = listener_detected, listener_id = listener_id)
-            else:
-                # Bad datatype
-                self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
+        if not client.user_id:
+            return await self.cl.send_code(client, "Refused", listener)
+
+        # Check datatype
+        if not isinstance(val, str):
+            return await self.cl.send_code(client, "Datatype", listener)
+
+        # Get chat
+        try:
+            chat = chats.get_chat(val)
+        except status.resourceNotFound:
+            return await self.cl.send_code(client, "IDNotFound", listener)
+
+        user = users.get_user(client.user_id)
+
+        # Check if the client is in the chat
+        if not chat.has_member(user):
+            return await self.cl.send_code(client, "MissingPermissions", listener)
+
+        # Get messages index
+        messages_index = [message.id for message in messages.get_latest_messages(chat, limit=25)]
+
+        # Return messages index
+        payload = {
+            "cmd": "direct",
+            "val": {
+                "mode": "chat_posts",
+                "payload": {
+                    "index": messages_index,
+                    "page#": 1,
+                    "pages": ((db.posts.count_documents({"chat_id": chat.id, "deleted_at": None}) // 25)+1),
+                    "query": {
+                        "post_origin": chat.id,
+                        "isDeleted": False
+                    }
+                }
+            }
+        }
+        await self.cl.send_code(client, "OK", listener)
+        return await self.cl.send_to_client(client, payload, listener)
+
+    async def set_chat_state(self, client, val, listener):
+        # Check if the client is authenticated
+        if not client.user_id:
+            return await self.cl.send_code(client, "Refused", listener)
+        
+        # Check datatype
+        if not isinstance(val, dict):
+            return await self.cl.send_code(client, "Datatype", listener)
+
+        # Get chat ID
+        if ("chatid" in val) and isinstance(val["chatid"], str):
+            chat_id = val["chatid"]
         else:
-            # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
+            return await self.cl.send_code(client, "Datatype", listener)
+
+        # Get state
+        if ("state" in val) and isinstance(val["state"], int):
+            state = val["state"]
+        else:
+            return await self.cl.send_code(client, "Datatype", listener)
+
+        try:
+            chat = chats.get_chat(chat_id)
+        except status.resourceNotFound:
+            return await self.cl.send_code(client, "IDNotFound", listener)
+
+        user = users.get_user(client.user_id)
+
+        # Check if the client is in the chat
+        if not chat.has_member(user):
+            return await self.cl.send_code(client, "MissingPermissions", listener)
+        
+        # Broadcast new chat state
+        payload = {
+            "cmd": "direct",
+            "val": {
+                "chatid": chat_id,
+                "u": client.username,
+                "state": state
+            }
+        }
+        await self.cl.send_code(client, "OK", listener)
+        return await self.cl.send_to_client(client, payload, listener)
     
-    def add_to_chat(self, client, val, listener_detected, listener_id):
-        # Check if the client is already authenticated
-        if self.supporter.isAuthenticated(client):
-            if type(val) == dict:
-                if (("username" in val) and (type(val["username"]) == str)) and (("chatid" in val) and (type(val["chatid"]) == str)):
-                    username = val["username"]
-                    chatid = val["chatid"]
-                    
-                    # Read chat UUID's nickname
-                    FileRead, chatdata = self.filesystem.load_item("chats", chatid)
-                    print(chatid)
-                    if FileRead:
-                        if client in chatdata["members"]:
-                            # Add user to group chat
-                            if (username not in chatdata["members"]) and (username != "Server"):
-                                chatdata["members"].append(username)
-                                FileWrite = self.filesystem.write_item("chats", chatid, chatdata)
+    async def post_chat(self, client, val, listener):
+        # Check if the client is authenticated
+        if not client.user_id:
+            return await self.cl.send_code(client, "Refused", listener)
+        
+        # Check datatype
+        if not isinstance(val, dict):
+            return await self.cl.send_code(client, "Datatype", listener)
 
-                                if FileWrite:
-                                    # Inbox message to say the user was added to the group chat
-                                    self.createPost("inbox", username, "You have been added to the group chat '{0}' by @{1}!".format(chatdata["nickname"], client))
-
-                                    # Tell client user was added
-                                    self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                                else:
-                                    # Some other error, raise an internal error.
-                                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                            else:
-                                self.returnCode(client = client, code = "IDExists", listener_detected = listener_detected, listener_id = listener_id)
-                        else:
-                            self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
-                    else:
-                        # Some other error, raise an internal error.
-                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    # Bad syntax
-                    self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-            else:
-                # Bad datatype
-                self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
+        # Get chat ID
+        if ("chatid" in val) and isinstance(val["chatid"], str):
+            chat_id = val["chatid"]
         else:
-            # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
+            return await self.cl.send_code(client, "Datatype", listener)
 
-    def remove_from_chat(self, client, val, listener_detected, listener_id):
-        # Check if the client is already authenticated
-        if self.supporter.isAuthenticated(client):
-            if type(val) == dict:
-                if (("username" in val) and (type(val["username"]) == str)) and (("chatid" in val) and (type(val["chatid"]) == str)):
-                    username = val["username"]
-                    chatid = val["chatid"]
-                    
-                    # Read chat UUID's nickname
-                    result, chatdata = self.filesystem.load_item("chats", chatid)
-                    if result:
-                        if client == chatdata["owner"]:
-                            if (client != username) and (username != "Server"):
-                                # Remove user from group chat
-                                chatdata["members"].remove(username)
-                                result = self.filesystem.write_item("chats", chatid, chatdata)
-
-                                if result:
-                                    # Inbox message to say the user was removed from the group chat
-                                    self.createPost("inbox", username, "You have been removed from the group chat '{0}' by @{1}!".format(chatdata["nickname"], client))
-
-                                    # Tell client user was added
-                                    self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                                else:
-                                    # Some other error, raise an internal error.
-                                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                            else:
-                                self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-                        else:
-                            self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
-                    else:
-                        # Some other error, raise an internal error.
-                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    # Bad syntax
-                    self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-            else:
-                # Bad datatype
-                self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
+        # Get content
+        if ("p" in val) and isinstance(val["p"], str):
+            content = val["p"]
         else:
-            # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
+            return await self.cl.send_code(client, "Datatype", listener)
+
+        # Check length
+        if len(content) > 360:
+            return await self.cl.send_code(client, "TooLarge", listener)
+        
+        # Get user
+        user = users.get_user(client.user_id, return_deleted=False)
+
+        # Get chat
+        try:
+            chat = chats.get_chat(chat_id)
+        except status.resourceNotFound:
+            return await self.cl.send_code(client, "IDNotFound", listener)
+
+        # Check if the client is in the chat
+        if not chat.has_member(user):
+            return await self.cl.send_code(client, "IDNotFound", listener)
+
+        # Check whether the user is suspended
+        moderation_status = infractions.user_status(user)
+        if moderation_status["suspended"] or moderation_status["banned"]:
+            return await self.cl.send_code(client, "Banned", listener)
+
+        # Create message
+        messages.create_message(chat, user, content)
+
+        # Tell the client the message was created
+        return await self.cl.send_code(client, "OK", listener)
+    
+    async def add_to_chat(self, client, val, listener):
+        # Check if the client is authenticated
+        if not client.user_id:
+            return await self.cl.send_code(client, "Refused", listener)
+        
+        # Check datatype
+        if not isinstance(val, dict):
+            return await self.cl.send_code(client, "Datatype", listener)
+
+        # Get chat ID
+        if ("chatid" in val) and isinstance(val["chatid"], str):
+            chat_id = val["chatid"]
+        else:
+            return await self.cl.send_code(client, "Datatype", listener)
+
+        # Get username
+        if ("username" in val) and isinstance(val["username"], str):
+            username = val["username"]
+        else:
+            return await self.cl.send_code(client, "Datatype", listener)
+        
+        # Get user
+        user = users.get_user(client.user_id, return_deleted=False)
+
+        # Get chat
+        try:
+            chat = chats.get_chat(chat_id)
+        except status.resourceNotFound:
+            return await self.cl.send_code(client, "IDNotFound", listener)
+
+        # Check if the client is in the chat
+        if not chat.has_member(user):
+            return await self.cl.send_code(client, "MissingPermissions", listener)
+
+        # Check whether the user is suspended
+        moderation_status = infractions.user_status(user)
+        if moderation_status["suspended"] or moderation_status["banned"]:
+            return await self.cl.send_code(client, "Banned", listener)
+
+        # Add member to chat
+        chat.add_member(users.get_user(users.get_id_from_username(username)))
+
+        # Tell the client the member was added
+        return await self.cl.send_code(client, "OK", listener)
+
+    async def remove_from_chat(self, client, val, listener):
+        # Check if the client is authenticated
+        if not client.user_id:
+            return await self.cl.send_code(client, "Refused", listener)
+        
+        # Check datatype
+        if not isinstance(val, dict):
+            return await self.cl.send_code(client, "Datatype", listener)
+
+        # Get chat ID
+        if ("chatid" in val) and isinstance(val["chatid"], str):
+            chat_id = val["chatid"]
+        else:
+            return await self.cl.send_code(client, "Datatype", listener)
+
+        # Get username
+        if ("username" in val) and isinstance(val["username"], str):
+            username = val["username"]
+        else:
+            return await self.cl.send_code(client, "Datatype", listener)
+        
+        # Get user
+        user = users.get_user(client.user_id, return_deleted=False)
+
+        # Get chat
+        try:
+            chat = chats.get_chat(chat_id)
+        except status.resourceNotFound:
+            return await self.cl.send_code(client, "IDNotFound", listener)
+
+        # Check if the client is in the chat and has permission
+        if (not chat.has_member(user)) or (chat.permissions.get(user.id, 0) < 1):
+            return await self.cl.send_code(client, "MissingPermissions", listener)
+
+        # Remove member from chat
+        chat.remove_member(users.get_user(users.get_id_from_username(username)))
+
+        # Tell the client the member was removed
+        return await self.cl.send_code(client, "OK", listener)
 
     def get_inbox(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated

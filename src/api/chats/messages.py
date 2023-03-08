@@ -31,7 +31,7 @@ class EditMessageForm(BaseModel):
 
 
 @v1.get("/")
-@security.sanic_protected()
+@security.v1_protected()
 async def v1_get_chat_messages(request, chat_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
@@ -43,7 +43,7 @@ async def v1_get_chat_messages(request, chat_id: str):
 
 @v1.post("/")
 @validate(json=NewMessageForm)
-@security.sanic_protected(ratelimit_key="create_message", ratelimit_scope="user", ignore_suspension=False)
+@security.v1_protected(ratelimit_key="create_message", ratelimit_scope="user", ignore_suspension=False)
 async def v1_create_chat_message(request, chat_id: str, body: NewMessageForm):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
@@ -52,7 +52,7 @@ async def v1_create_chat_message(request, chat_id: str, body: NewMessageForm):
 
 
 @v1.get("/<message_id:str>")
-@security.sanic_protected()
+@security.v1_protected()
 async def v1_get_chat_message(request, chat_id: str, message_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
@@ -66,7 +66,7 @@ async def v1_get_chat_message(request, chat_id: str, message_id: str):
 
 @v1.patch("/<message_id:str>")
 @validate(json=EditMessageForm)
-@security.sanic_protected(ratelimit_key="edit_message", ratelimit_scope="user")
+@security.v1_protected(ratelimit_key="edit_message", ratelimit_scope="user")
 async def v1_edit_chat_message(request, chat_id: str, message_id: str, body: EditMessageForm):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
@@ -84,7 +84,7 @@ async def v1_edit_chat_message(request, chat_id: str, message_id: str, body: Edi
 
 
 @v1.delete("/<message_id:str>")
-@security.sanic_protected(ratelimit_key="edit_message", ratelimit_scope="user")
+@security.v1_protected(ratelimit_key="edit_message", ratelimit_scope="user")
 async def v1_delete_chat_message(request, chat_id: str, message_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
@@ -102,7 +102,7 @@ async def v1_delete_chat_message(request, chat_id: str, message_id: str):
 
 
 @v1.get("/<message_id:str>/context")
-@security.sanic_protected()
+@security.v1_protected()
 async def v1_get_chat_message_context(request, chat_id: str, message_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 

@@ -1,5 +1,12 @@
 from sanic import Blueprint
 
+# v0
+from .inbox import v0 as v0_inbox
+v0 = Blueprint.group(
+    v0_inbox,
+    url_prefix="/"
+)
+
 # v1
 from .account import v1 as v1_account
 from .profile import v1 as v1_profile

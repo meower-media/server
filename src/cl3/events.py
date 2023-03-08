@@ -12,11 +12,9 @@ async def user_updated(user_id: str, payload: dict):
 
 @events.on("session_deleted")
 async def session_deleted(user_id: str, payload: dict):
-    return
-    await send_to_user(user_id, "session_deleted", payload)
-    for client in cl._users.get(user_id, set()):
-        if client.session_id == payload["id"]:
-            await client.close(code=3000, reason="Session revoked")
+    if user_id in cl._user_ids:
+        if cl._user_ids[user_id].session_id == payload["id"]:
+            await cl.kick_client(cl._user_ids[user_id])
 
 
 @events.on("notification_count_updated")
@@ -86,3 +84,59 @@ async def post_deleted(post_id: str, payload: dict):
             "id": post_id
         }
     })
+
+
+@events.on("chat_created")
+async def chat_created(user_id: str, payload: dict):
+    if payload["id"] not in cl._chats:
+        cl._chats[payload["id"]] = set()
+    if user_id in cl._user_ids:
+        cl._chats[payload["id"]].add(cl._user_ids[user_id])
+
+
+@events.on("chat_deleted")
+async def chat_deleted(user_id: str, payload: dict):
+    if payload["id"] in cl._chats:
+        if user_id in cl._user_ids:
+            cl._chats[payload["id"]].remove(cl._user_ids[user_id])
+        if len(cl._chats[payload["id"]]) == 0:
+            del cl._chats[payload["id"]]
+
+
+@events.on("message_created")
+async def message_created(chat_id: str, payload: dict):
+    await cl.send_to_chat(chat_id, {
+        "cmd": "direct",
+        "val": {
+            "type": 1,
+            "post_origin": chat_id,
+            "u": payload["author"]["username"],
+            "t": uid.timestamp(epoch=payload["time"], jsonify=True),
+            "p": (payload["filtered_content"] if payload["filtered_content"] else payload["content"]),
+            "post_id": payload["id"],
+            "isDeleted": False,
+            "_id": payload["id"],
+            "state": 2
+        }
+    })
+
+
+@events.on("message_deleted")
+async def message_deleted(chat_id: str, payload: dict):
+    await cl.send_to_chat(chat_id, {
+        "cmd": "direct",
+        "val": {
+            "mode": "delete",
+            "id": payload["id"]
+        }
+    })
+
+
+@events.on("cl_direct")
+async def cl_direct(user_id: str, payload: dict):
+    if user_id in cl._user_ids:
+        await cl.send_to_client(cl._user_ids[user_id], {
+            "cmd": "pmsg",
+            "origin": users.get_user(payload["origin"]).username,
+            "val": payload["val"]
+        })

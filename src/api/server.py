@@ -18,12 +18,14 @@ app.register_middleware(ratelimit_headers, "response")
 # Initialize v0 API Blueprints
 if not time.time() > 1688169599:  # Check whether v0 has been discontinued
     from .general import v0 as v0_general
+    from .me import v0 as v0_me
     from .home import v0 as v0_home
     from .posts import v0 as v0_posts
     from .users import v0 as v0_users
     from .search import v0 as v0_search
     app.blueprint(Blueprint.group(
         v0_general,
+        v0_me,
         v0_home,
         v0_posts,
         v0_users,

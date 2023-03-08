@@ -1,7 +1,7 @@
 from sanic import Blueprint, json
 from sanic_ext import validate
 from pydantic import BaseModel, Field
-from typing import Optional, Union
+from typing import Optional
 
 from src.util import security
 
@@ -13,15 +13,8 @@ class UpdateProfileForm(BaseModel):
         min_length=1,
         max_length=20
     )
-    quote: str = Field(
+    quote: Optional[str] = Field(
         max_length=500
-    )
-    icon_type: int = Field(
-        ge=0,
-        le=2
-    )
-    icon_data: Union[int, str] = Field(
-        max_length=255
     )
 
 
@@ -50,14 +43,14 @@ class UpdateProfileThemeForm(BaseModel):
 
 
 @v1.get("/")
-@security.sanic_protected()
+@security.v1_protected()
 async def v1_get_profile(request):
     return json(request.ctx.user.client)
 
 
 @v1.patch("/")
 @validate(json=UpdateProfileForm)
-@security.sanic_protected(allow_bots=False, ignore_suspension=False)
+@security.v1_protected(allow_bots=False, ignore_suspension=False)
 async def v1_update_profile(request, body: UpdateProfileForm):
     if body.username:
         request.ctx.user.update_username(body.username)
@@ -69,7 +62,7 @@ async def v1_update_profile(request, body: UpdateProfileForm):
 
 @v1.patch("/theme")
 @validate(json=UpdateProfileThemeForm)
-@security.sanic_protected(allow_bots=False, ignore_suspension=False)
+@security.v1_protected(allow_bots=False, ignore_suspension=False)
 async def v1_update_profile_theme(request, body: UpdateProfileThemeForm):
     request.ctx.user.update_theme(request.json)
 

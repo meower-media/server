@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from src.util import status, uid, events, bitfield, flags
+from src.util import status, uid, events, filter, bitfield, flags
 from src.entities import users, chats
 from src.database import db
 
@@ -47,6 +47,19 @@ class Message:
             "likes": self.likes,
             "time": int(self.time.timestamp()),
             "delete_after": (int(self.delete_after.timestamp()) if self.delete_after else None)
+        }
+    
+    @property
+    def legacy_public(self):
+        return {
+            "_id": self.id,
+            "type": 1,
+            "post_origin": self.chat_id,
+            "u": self.author.username,
+            "t": uid.timestamp(epoch=int(self.time.timestamp()), jsonify=True),
+            "p": (self.filtered_content if self.filtered_content else self.content),
+            "post_id": self.id,
+            "isDeleted": (self.deleted_at is not None)
         }
 
     def liked(self, user: any):
@@ -163,7 +176,7 @@ def get_message(message_id: str, error_on_deleted: bool = True):
     else:
         raise status.resourceNotFound
 
-def get_latest_messages(chat: chats.Chat, before: str = None, after: str = None, limit: int = 50):
+def get_latest_messages(chat: chats.Chat, before: str = None, after: str = None, skip: int = 0, limit: int = 50):
     # Create ID range
     if before is not None:
         id_range = {"$lt": before}
@@ -173,7 +186,7 @@ def get_latest_messages(chat: chats.Chat, before: str = None, after: str = None,
         id_range = {"$gt": "0"}
 
     # Fetch and return all messages
-    return [Message(**message) for message in db.chat_messages.find({"chat_id": chat.id, "deleted_at": None, "_id": id_range}, sort=[("time", -1)], limit=limit)]
+    return [Message(**message) for message in db.chat_messages.find({"chat_id": chat.id, "deleted_at": None, "_id": id_range}, sort=[("time", -1)], skip=skip, limit=limit)]
 
 def get_message_context(chat: chats.Chat, message_id: str):
     return (get_latest_messages(chat, before=str(int(message_id)+1), limit=51) + get_latest_messages(chat, after=message_id))

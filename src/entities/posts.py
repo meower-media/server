@@ -133,13 +133,13 @@ class Post:
                         if (val >= milestone) and (self.top_stats.get(key, 0) < milestone):
                             if key == "likes":
                                 if self.author.config["notification_settings"]["post_likes"]:
-                                    notifications.create_notification(self.author, 4, {
+                                    notifications.create_notification(self.author, 6, {
                                         "post_id": self.id,
                                         "milestone": milestone
                                     })
                             elif key == "meows":
                                 if self.author.config["notification_settings"]["post_meows"]:
-                                    notifications.create_notification(self.author, 5, {
+                                    notifications.create_notification(self.author, 7, {
                                         "post_id": self.id,
                                         "milestone": milestone
                                     })
@@ -289,14 +289,14 @@ def create_post(author: any, content: str, masquerade: dict = None, bridged: boo
 
     # Notify mentioned users
     notify_users = set()
-    for user_id, notify in [regex.extract_mention(mention) for mention in re.findall(regex.USER_MENTION, content)]:
-        if user_id == post.author.id:
+    for username, notify in [regex.extract_mention(mention) for mention in re.findall(regex.USER_MENTION, content)]:
+        if username == post.author.username:
             continue
         if notify:
-            notify_users.add(user_id)
-    for user_id in notify_users:
+            notify_users.add(username)
+    for username in notify_users:
         try:
-            user = users.get_user(user_id, return_deleted=False)
+            user = users.get_user(users.get_id_from_username(username), return_deleted=False)
             if user.config["notification_settings"]["mentions"]:
                 notifications.create_notification(user, 2, {
                     "post_id": post.id

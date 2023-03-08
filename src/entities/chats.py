@@ -5,6 +5,11 @@ from src.util import status, uid, events, bitfield, flags
 from src.entities import users
 from src.database import db
 
+LIVECHAT = {
+    "_id": "livechat",
+    "created": uid.timestamp(epoch=0)
+}
+
 class Chat:
     def __init__(
         self,
@@ -42,13 +47,30 @@ class Chat:
             "invite_code": self.invite_code,
             "created": int(self.created.timestamp())
         }
+    
+    @property
+    def legacy_public(self):
+        owner = self.members[0].username
+        for user_id, level in self.permissions.items():
+            if level == 2:
+                for user in self.members:
+                    if user.id == user_id:
+                        owner = user.username
+        return {
+            "_id": self.id,
+            "nickname": (f"{self.members[0].username} & {self.members[1].username}" if self.direct else self.name),
+            "owner": owner,
+            "members": [member.username for member in self.members]
+        }
 
     @property
     def partial_members(self):
         return [member.partial for member in self.members]
 
     def update_name(self, name: str):
-        if self.direct:
+        if self.id == "livechat":
+            raise status.missingPermissions
+        elif self.direct:
             raise status.missingPermissions
 
         self.name = name
@@ -59,13 +81,17 @@ class Chat:
         })
 
     def has_member(self, user: any):
+        if self.id == "livechat":
+            return True
         for member in self.members:
             if member.id == user.id:
                 return True
         return False
 
     def add_member(self, user: any):
-        if self.direct:
+        if self.id == "livechat":
+            raise status.missingPermissions
+        elif self.direct:
             raise status.missingPermissions
         elif self.has_member(user):
             raise status.chatMemberAlreadyExists
@@ -82,7 +108,9 @@ class Chat:
             self.transfer_ownership(user)
 
     def remove_member(self, user: any):
-        if self.direct:
+        if self.id == "livechat":
+            raise status.missingPermissions
+        elif self.direct:
             raise status.missingPermissions
         elif not self.has_member(user):
             raise status.resourceNotFound
@@ -111,7 +139,9 @@ class Chat:
             self.transfer_ownership(self.members[0])
 
     def promote_member(self, user: any):
-        if self.direct:
+        if self.id == "livechat":
+            raise status.missingPermissions
+        elif self.direct:
             raise status.missingPermissions
         elif not self.has_member(user):
             raise status.resourceNotFound
@@ -125,7 +155,9 @@ class Chat:
             })
     
     def demote_member(self, user: any):
-        if self.direct:
+        if self.id == "livechat":
+            raise status.missingPermissions
+        elif self.direct:
             raise status.missingPermissions
         elif not self.has_member(user):
             raise status.resourceNotFound
@@ -139,7 +171,9 @@ class Chat:
             })
 
     def transfer_ownership(self, user: any):
-        if self.direct:
+        if self.id == "livechat":
+            raise status.missingPermissions
+        elif self.direct:
             raise status.missingPermissions
         elif not self.has_member(user):
             raise status.resourceNotFound
@@ -167,7 +201,9 @@ class Chat:
         })
 
     def refresh_invite_code(self):
-        if self.direct:
+        if self.id == "livechat":
+            raise status.missingPermissions
+        elif self.direct:
             raise status.missingPermissions
         elif bitfield.has(self.flags, flags.chats.vanityInviteCode):
             raise status.missingPermissions
@@ -180,7 +216,9 @@ class Chat:
         })
 
     def delete(self):
-        if self.direct:
+        if self.id == "livechat":
+            raise status.missingPermissions
+        elif self.direct:
             raise status.missingPermissions
         
         self.deleted_at = uid.timestamp()
@@ -205,8 +243,11 @@ def create_chat(name: str, owner_id: str):
     return Chat(**chat)
 
 def get_chat(chat_id: str):
-    # Get chat from database
-    chat = db.chats.find_one({"_id": chat_id})
+    if chat_id == "livechat":
+        chat = LIVECHAT
+    else:
+        # Get chat from database
+        chat = db.chats.find_one({"_id": chat_id})
 
     # Return chat object
     if chat:
@@ -247,3 +288,19 @@ def get_dm_chat(user1: any, user2: any):
 
 def get_active_chats(user: any):
     return [Chat(**chat) for chat in db.chats.find({"members": {"$all": [user.id]}, "active": {"$all": [user.id]}, "deleted_at": None})]
+
+def get_all_chats(user_id: str, before: str = None, after: str = None, skip: int = 0, limit: int = 25):
+    # Create ID range
+    if before is not None:
+        id_range = {"$lt": before}
+    elif after is not None:
+        id_range = {"$gt": after}
+    else:
+        id_range = {"$gt": "0"}
+
+    # Fetch and return all chats
+    return [Chat(**chat) for chat in db.chats.find({"members": {"$all": [user_id]}, "deleted_at": None, "_id": id_range}, sort=[("time", -1)], skip=skip, limit=limit)]
+
+def get_all_chat_ids(user_id: str):
+    # Fetch and return all chat IDs
+    return [chat["_id"] for chat in db.chats.find({"members": {"$all": [user_id]}, "deleted_at": None}, projection={"_id": 1})]

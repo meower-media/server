@@ -27,7 +27,7 @@ async def v1_get_upload(request, upload_id: str, token: str):
 
 
 @v1.post("/")
-@security.sanic_protected(ignore_suspension=False)
+@security.v1_protected(ignore_suspension=False)
 async def v1_create_upload(request):
     # Get file
     file = request.files.get("file")

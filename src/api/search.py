@@ -32,7 +32,7 @@ async def v0_search_home(request):
 
 
 @v1.get("/users")
-@security.sanic_protected(require_auth=False, ratelimit_key="search", ratelimit_scope="ip")
+@security.v1_protected(require_auth=False, ratelimit_key="search", ratelimit_scope="ip")
 async def v1_search_users(request):
     fetched_users = users.search_users(request.args.get("q", ""), before=request.args.get("before"),
                                        after=request.args.get("after"), limit=int(request.args.get("limit", 25)))
@@ -40,7 +40,7 @@ async def v1_search_users(request):
 
 
 @v1.get("/posts")
-@security.sanic_protected(require_auth=False, ratelimit_key="search", ratelimit_scope="ip")
+@security.v1_protected(require_auth=False, ratelimit_key="search", ratelimit_scope="ip")
 async def v1_search_posts(request):
     fetched_posts = posts.search_posts(request.args.get("q", ""), before=request.args.get("before"),
                                        after=request.args.get("after"), limit=int(request.args.get("limit", 25)))

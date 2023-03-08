@@ -32,36 +32,31 @@ class Notification:
             "time": int(self.time.timestamp())
         }
 
-        if self.type == 0:
+        if self.type == 0:  # standard content
             data["content"] = self.data.get("content")
-        elif self.type == 1:
+        elif self.type == 1:  # user follow
             try:
                 data["user"] = users.get_user(self.data["user_id"]).partial
             except:
                 data["user"] = None
-        elif self.type == 2:
+        elif self.type == 2:  # post mention
             try:
                 data["post"] = posts.get_post(self.data["post_id"]).public
             except:
                 data["post"] = None
-        elif self.type == 3:
+        elif (self.type == 3) or (self.type == 4) or (self.type == 5):  # comment mention, post comment, or comment reply
             try:
                 data["comment"] = comments.get_comment(self.data["comment_id"]).public
             except:
                 data["comment"] = None
-        elif (self.type == 4) or (self.type == 5):
+        elif (self.type == 6) or (self.type == 7):  # post like/meow milestone
             try:
                 data["post"] = posts.get_post(self.data["post_id"]).public
                 data["milestone"] = self.data["milestone"]
             except:
                 data["post"] = None
                 data["milestone"] = None
-        elif (self.type == 6) or (self.type == 8):
-            try:
-                data["comment"] = comments.get_comment(self.data["comment_id"]).public
-            except:
-                data["comment"] = None
-        elif self.type == 7:
+        elif self.type == 8:  # comment like milestone
             try:
                 data["comment"] = comments.get_comment(self.data["comment_id"]).public
                 data["milestone"] = self.data["milestone"]
@@ -70,6 +65,52 @@ class Notification:
                 data["milestone"] = None
 
         return data
+    
+    @property
+    def legacy_client(self):
+        try:
+            if self.type == 0:  # standard content
+                content = self.data["content"]
+            elif self.type == 1:  # user follow
+                user = users.get_user(self.data["user_id"])
+                content = f"@{user.username} started following you!"
+            elif self.type == 2:  # post mention
+                post = posts.get_post(self.data["post_id"])
+                content = f"@{post.author.username} mentioned you in a post! Post: '{(post.filtered_content if post.filtered_content else post.content)}'"
+            elif self.type == 3: # comment mention
+                comment = comments.get_comment(self.data["comment_id"])
+                content = f"@{post.author.username} mentioned you in a comment! Comment: '{(comment.filtered_content if comment.filtered_content else comment.content)}'"
+            elif self.type == 4:  # post comment
+                comment = comments.get_comment(self.data["comment_id"])
+                content = f"@{post.author.username} made a comment on your post! Comment: '{(comment.filtered_content if comment.filtered_content else comment.content)}'"
+            elif self.type == 5:  # comment reply
+                comment = comments.get_comment(self.data["comment_id"])
+                content = f"@{post.author.username} replied to your comment! Comment: '{(comment.filtered_content if comment.filtered_content else comment.content)}'"
+            elif self.type == 6:  # post like milestone
+                post = posts.get_post(self.data["post_id"])
+                milestone = self.data["milestone"]
+                content = f"You reached {str(milestone)} likes on your post! Post: '{(post.filtered_content if post.filtered_content else post.content)}'"
+            elif self.type == 7:  # post meow milestone
+                post = posts.get_post(self.data["post_id"])
+                milestone = self.data["milestone"]
+                content = f"You reached {str(milestone)} meows on your post! Post: '{(post.filtered_content if post.filtered_content else post.content)}'"
+            elif self.type == 8:  # comment like milestone
+                comment = comments.get_comment(self.data["comment_id"])
+                milestone = self.data["milestone"]
+                content = f"You reached {str(milestone)} likes on your comment! Post: '{(comment.filtered_content if comment.filtered_content else comment.content)}'"
+        except:
+            content = "Unable to parse notification!"
+
+        return {
+            "_id": self.id,
+            "type": 2,
+            "post_origin": "inbox",
+            "u": self.recipient.username,
+            "t": uid.timestamp(epoch=int(self.time.timestamp()), jsonify=True),
+            "p": content,
+            "post_id": self.id,
+            "isDeleted": False
+        }
 
     def mark(self, read_status: bool):
         self.read = read_status
@@ -111,7 +152,7 @@ def get_notification(notification_id: str):
     else:
         raise status.resourceNotFound
 
-def get_user_notifications(user: any, before: str = None, after: str = None, limit: int = 25):
+def get_user_notifications(user: any, before: str = None, after: str = None, skip: int = 0, limit: int = 25):
     # Create ID range
     if before is not None:
         id_range = {"$lt": before}
@@ -121,7 +162,7 @@ def get_user_notifications(user: any, before: str = None, after: str = None, lim
         id_range = {"$gt": "0"}
 
     # Fetch and return all notifications
-    return [Notification(**notification) for notification in db.notifications.find({"recipient_id": user.id, "_id": id_range}, sort=[("time", -1)], limit=limit)]
+    return [Notification(**notification) for notification in db.notifications.find({"recipient_id": user.id, "_id": id_range}, sort=[("time", -1)], skip=skip, limit=limit)]
 
 def get_user_notification_unread_count(user: any):
     return db.notifications.count_documents({"recipient_id": user.id, "read": False})

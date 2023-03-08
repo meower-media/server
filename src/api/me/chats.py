@@ -16,7 +16,7 @@ class CreateChatForm(BaseModel):
 
 
 @v1.get("/")
-@security.sanic_protected(allow_bots=False)
+@security.v1_protected(allow_bots=False)
 async def v1_get_chats(request):
     active_chats = chats.get_active_chats(request.ctx.user)
     return json([chat.public for chat in active_chats])
@@ -24,7 +24,7 @@ async def v1_get_chats(request):
 
 @v1.post("/")
 @validate(json=CreateChatForm)
-@security.sanic_protected(ratelimit_key="open_chat", ratelimit_scope="user", allow_bots=False)
+@security.v1_protected(ratelimit_key="open_chat", ratelimit_scope="user", allow_bots=False)
 async def v1_create_chat(request, body: CreateChatForm):
     chat = chats.create_chat(body.name, request.ctx.user.id)
     return json(chat.public)

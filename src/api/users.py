@@ -53,7 +53,7 @@ async def v1_get_followers(request, user_id: str):
 
 
 @v1.post("/follow")
-@security.sanic_protected(ratelimit_key="change_relationship", ratelimit_scope="user", allow_bots=False, ignore_suspension=False)
+@security.v1_protected(ratelimit_key="change_relationship", ratelimit_scope="user", allow_bots=False, ignore_suspension=False)
 async def v1_follow_user(request, user_id: str):
     user = users.get_user(user_id, return_deleted=False)
     request.ctx.user.follow_user(user)
@@ -62,7 +62,7 @@ async def v1_follow_user(request, user_id: str):
 
 
 @v1.post("/unfollow")
-@security.sanic_protected(ratelimit_key="change_relationship", ratelimit_scope="user", allow_bots=False)
+@security.v1_protected(ratelimit_key="change_relationship", ratelimit_scope="user", allow_bots=False)
 async def v1_unfollow_user(request, user_id: str):
     user = users.get_user(user_id, return_deleted=False)
     request.ctx.user.unfollow_user(user)
@@ -71,7 +71,7 @@ async def v1_unfollow_user(request, user_id: str):
 
 
 @v1.post("/block")
-@security.sanic_protected(ratelimit_key="change_relationship", ratelimit_scope="user", allow_bots=False)
+@security.v1_protected(ratelimit_key="change_relationship", ratelimit_scope="user", allow_bots=False)
 async def v1_block_user(request, user_id: str):
     user = users.get_user(user_id, return_deleted=False)
     request.ctx.user.block_user(user)
@@ -80,7 +80,7 @@ async def v1_block_user(request, user_id: str):
 
 
 @v1.post("/unblock")
-@security.sanic_protected(ratelimit_key="change_relationship", ratelimit_scope="user", allow_bots=False)
+@security.v1_protected(ratelimit_key="change_relationship", ratelimit_scope="user", allow_bots=False)
 async def v1_unblock_user(request, user_id: str):
     user = users.get_user(user_id, return_deleted=False)
     request.ctx.user.unblock_user(user)
@@ -89,7 +89,7 @@ async def v1_unblock_user(request, user_id: str):
 
 
 @v1.get("/dm")
-@security.sanic_protected(ratelimit_key="open_chat", ratelimit_scope="user")
+@security.v1_protected(ratelimit_key="open_chat", ratelimit_scope="user")
 async def v1_dm_user(request, user_id: str):
     user = users.get_user(user_id, return_deleted=False)
     chat = chats.get_dm_chat(request.ctx.user, user)

@@ -58,7 +58,7 @@ class PasswordRecoveryForm(BaseModel):
 
 @v1.post("/register")
 @validate(json=RegistrationForm)
-@security.sanic_protected(require_auth=False, ratelimit_key="register", ratelimit_scope="ip")
+@security.v1_protected(require_auth=False, ratelimit_key="register", ratelimit_scope="ip")
 async def v1_register(request, body: RegistrationForm):
     # Get network and check whether it's blocked
     network = networks.get_network(request.ip)
@@ -83,7 +83,7 @@ async def v1_register(request, body: RegistrationForm):
 
 @v1.post("/password")
 @validate(json=LoginPasswordForm)
-@security.sanic_protected(require_auth=False, ratelimit_key="login", ratelimit_scope="ip")
+@security.v1_protected(require_auth=False, ratelimit_key="login", ratelimit_scope="ip")
 async def v1_login_password(request, body: LoginPasswordForm):
     # Get network and check whether it's blocked
     network = networks.get_network(request.ip)
@@ -133,7 +133,7 @@ async def v1_login_password(request, body: LoginPasswordForm):
 
 @v1.post("/mfa/totp")
 @validate(json=LoginTOTPForm)
-@security.sanic_protected(require_auth=False, ratelimit_key="mfa", ratelimit_scope="ip")
+@security.v1_protected(require_auth=False, ratelimit_key="mfa", ratelimit_scope="ip")
 async def v1_mfa_totp(request, body: LoginTOTPForm):
     # Get ticket details
     ticket = tickets.get_ticket_details(body.ticket)
@@ -164,7 +164,7 @@ async def v1_mfa_totp(request, body: LoginTOTPForm):
 
 @v1.post("/recovery/password")
 @validate(json=PasswordRecoveryForm)
-@security.sanic_protected(require_auth=False, ratelimit_key="verify", ratelimit_scope="ip")  # placeholder ratelimit bucket
+@security.v1_protected(require_auth=False, ratelimit_key="verify", ratelimit_scope="ip")  # placeholder ratelimit bucket
 async def v1_password_recovery(request, body: PasswordRecoveryForm):
     # Get user ID
     user_id = accounts.get_id_from_email(body.email)

@@ -32,7 +32,7 @@ async def v0_get_home(request):
 
 
 @v1.get("/")
-@security.sanic_protected(allow_bots=False)
+@security.v1_protected(allow_bots=False)
 async def v1_get_feed(request):
     fetched_posts = posts.get_feed(request.ctx.user, before=request.args.get("before"), after=request.args.get("after"),
                                    limit=int(request.args.get("limit", 25)))
@@ -55,7 +55,7 @@ async def v1_get_trending_posts(request):
 
 @v1.post("/")
 @validate(json=NewPostForm)
-@security.sanic_protected(ratelimit_key="create_post", ratelimit_scope="user", ignore_suspension=False)
+@security.v1_protected(ratelimit_key="create_post", ratelimit_scope="user", ignore_suspension=False)
 async def v1_create_post(request, body: NewPostForm):
     if body.masquerade:
         AuthorMasquerade(**body.masquerade)

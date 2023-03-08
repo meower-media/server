@@ -22,7 +22,7 @@ class EditChatForm(BaseModel):
 
 
 @v1.get("/")
-@security.sanic_protected()
+@security.v1_protected()
 async def v1_get_chat(request, chat_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
@@ -31,7 +31,7 @@ async def v1_get_chat(request, chat_id: str):
 
 @v1.patch("/")
 @validate(json=EditChatForm)
-@security.sanic_protected(ratelimit_key="update_chat", ratelimit_scope="user", ignore_suspension=False)
+@security.v1_protected(ratelimit_key="update_chat", ratelimit_scope="user", ignore_suspension=False)
 async def v1_update_chat(request, chat_id: str, body: EditChatForm):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
@@ -50,7 +50,7 @@ async def v1_update_chat(request, chat_id: str, body: EditChatForm):
 
 
 @v1.delete("/")
-@security.sanic_protected(ratelimit_key="update_chat", ratelimit_scope="user")
+@security.v1_protected(ratelimit_key="update_chat", ratelimit_scope="user")
 async def v1_delete_chat(request, chat_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
@@ -63,7 +63,7 @@ async def v1_delete_chat(request, chat_id: str):
 
 
 @v1.post("/refresh-invite")
-@security.sanic_protected(ratelimit_key="update_chat", ratelimit_scope="user")
+@security.v1_protected(ratelimit_key="update_chat", ratelimit_scope="user")
 async def v1_refresh_chat_invite(request, chat_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
@@ -76,7 +76,7 @@ async def v1_refresh_chat_invite(request, chat_id: str):
 
 
 @v1.post("/typing")
-@security.sanic_protected(ratelimit_key="typing", ratelimit_scope="user", ignore_suspension=False)
+@security.v1_protected(ratelimit_key="typing", ratelimit_scope="user", ignore_suspension=False)
 async def v1_chat_typing_indicator(request, chat_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
@@ -86,7 +86,7 @@ async def v1_chat_typing_indicator(request, chat_id: str):
 
 
 @v1.get("/search")
-@security.sanic_protected(ratelimit_key="search", ratelimit_scope="user")
+@security.v1_protected(ratelimit_key="search", ratelimit_scope="user")
 async def v1_search_chat_messages(request, chat_id: str):
     chat = get_chat_or_abort_if_no_membership(chat_id, request.ctx.user)
 
