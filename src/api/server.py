@@ -15,6 +15,12 @@ app.register_middleware(parse_ua, "request")
 app.register_middleware(cors_headers, "response")
 app.register_middleware(ratelimit_headers, "response")
 
+# Initialize unversioned API Blueprints
+from .general import unversioned as unversioned_general
+app.blueprint(Blueprint.group(
+    unversioned_general
+))
+
 # Initialize v0 API Blueprints
 if not time.time() > 1688169599:  # Check whether v0 has been discontinued
     from .general import v0 as v0_general

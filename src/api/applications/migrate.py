@@ -48,11 +48,7 @@ async def v1_migrate_user_to_bot(request, body: MigrationForm):
     # Migrate user
     user = users.get_user(user_id)
     application = applications.migrate_user_to_bot(user, request.ctx.user)
-    bot = application.create_bot(body.username)
-    token = bot.rotate_bot_session()
+    #bot = application.create_bot(body.username)
+    #token = bot.rotate_bot_session()
 
-    return json({
-        "application": application,
-        "bot": bot.client,
-        "token": token
-    })
+    return json(application.client)

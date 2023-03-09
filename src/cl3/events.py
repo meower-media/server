@@ -92,6 +92,7 @@ async def chat_created(user_id: str, payload: dict):
         cl._chats[payload["id"]] = set()
     if user_id in cl._user_ids:
         cl._chats[payload["id"]].add(cl._user_ids[user_id])
+    print(cl._chats)
 
 
 @events.on("chat_deleted")
@@ -101,6 +102,19 @@ async def chat_deleted(user_id: str, payload: dict):
             cl._chats[payload["id"]].remove(cl._user_ids[user_id])
         if len(cl._chats[payload["id"]]) == 0:
             del cl._chats[payload["id"]]
+
+
+@events.on("typing_start")
+async def typing_start(chat_id: str, payload: dict):
+    user = users.get_user(payload["user_id"])
+    await cl.send_to_chat(chat_id, {
+        "cmd": "direct",
+        "val": {
+            "chatid": chat_id,
+            "u": user.username,
+            "state": 100
+        }
+    })
 
 
 @events.on("message_created")

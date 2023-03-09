@@ -1,12 +1,12 @@
 from src.util import status
-from src.entities import users, accounts, networks, sessions, infractions, posts, chats, messages
+from src.entities import users, accounts, networks, sessions, infractions, posts, chats, messages, notifications
 from src.database import db
 
 LEGACY_DEVICE = {
-    "User-Agent": "Unknown",
-    "X-Client-Name": "Legacy Client",
-    "X-Client-Version": "Unknown",
-    "X-Client-Type": "Unknown"
+    "user_agent": "Unknown",
+    "client_name": "Legacy Client",
+    "client_version": "Unknown",
+    "client_type": "Unknown"
 }
 
 class CL3Commands:
@@ -85,7 +85,7 @@ class CL3Commands:
         client.username = username
         self.cl._user_ids[user.id] = client
         self.cl._usernames[username] = client
-        for chat_id in chats.get_all_chat_ids(user.id):
+        for chat_id in (["livechat"] + chats.get_all_chat_ids(user.id)):
             if chat_id not in self.cl._chats:
                 self.cl._chats[chat_id] = set()
             self.cl._chats[chat_id].add(client)
@@ -600,16 +600,20 @@ class CL3Commands:
             return await self.cl.send_code(client, "MissingPermissions", listener)
         
         # Broadcast new chat state
-        payload = {
-            "cmd": "direct",
-            "val": {
-                "chatid": chat_id,
-                "u": client.username,
-                "state": state
+        if state == 100:
+            chat.emit_typing(user)
+            return await self.cl.send_code(client, "OK", listener)
+        else:
+            payload = {
+                "cmd": "direct",
+                "val": {
+                    "chatid": chat_id,
+                    "u": client.username,
+                    "state": state
+                }
             }
-        }
-        await self.cl.send_code(client, "OK", listener)
-        return await self.cl.send_to_client(client, payload, listener)
+            await self.cl.send_code(client, "OK", listener)
+            return await self.cl.send_to_chat(chat_id, payload)
     
     async def post_chat(self, client, val, listener):
         # Check if the client is authenticated
@@ -745,28 +749,40 @@ class CL3Commands:
         # Tell the client the member was removed
         return await self.cl.send_code(client, "OK", listener)
 
-    def get_inbox(self, client, val, listener_detected, listener_id):
+    async def get_inbox(self, client, val, listener):
         # Check if the client is authenticated
-        if self.supporter.isAuthenticated(client):
-            if type(val) == dict:
-                if ("page" in val) and self.checkForInt(val["page"]):
-                    page = int(val["page"])
-                else:
-                    page = 1
-                
-                inbox_index = self.getIndex(location="posts", query={"post_origin": "inbox", "u": {"$in": [client, "Server"]}, "isDeleted": False}, page=page)
-                for i in range(len(inbox_index["index"])):
-                    inbox_index["index"][i] = inbox_index["index"][i]["_id"]
-                inbox_index["index"].reverse()
-                payload = {
-                    "mode": "inbox",
-                    "payload": inbox_index
-                }
-                self.sendPacket({"cmd": "direct", "val": payload, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
-                self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-            else:
-                # Bad datatype
-                self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
+        if not client.user_id:
+            return await self.cl.send_code(client, "Refused", listener)
+        
+        # Get page
+        if isinstance(val, dict) and ("page" in val) and isinstance(val["page"], int):
+            page = val["page"]
+            if page < 1:
+                page = 1
         else:
-            # Not authenticated
-            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
+            page = 1
+
+        # Get inbox index
+        inbox_index = [notification.id for notification in notifications.get_user_notifications(client.user_id, skip=((page-1)*25))]
+
+        # Return inbox index
+        payload = {
+            "cmd": "direct",
+            "val": {
+                "mode": "inbox",
+                "payload": {
+                    "index": inbox_index,
+                    "page#": page,
+                    "pages": ((db.notifications.count_documents({"recipient_id": client.user_id}) // 25)+1),
+                    "query": {
+                        "post_origin": "inbox",
+                        "u": {
+                            "$in": [client.username, "Server"]
+                        },
+                        "isDeleted": False
+                    }
+                }
+            }
+        }
+        await self.cl.send_code(client, "OK", listener)
+        return await self.cl.send_to_client(client, payload, listener)

@@ -43,7 +43,8 @@ COMMANDS = {
     "set_chat_state",
     "post_chat",
     "add_to_chat",
-    "remove_from_chat"
+    "remove_from_chat",
+    "get_inbox"
 }
 DISABLED_COMMANDS = {
     "gmsg",

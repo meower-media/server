@@ -17,7 +17,7 @@ async def v0_get_notifications(request):
         page = 1
 
     # Fetch and return chat messages
-    fetched_notifications = notifications.get_user_notifications(request.ctx.user, skip=((page-1)*25), limit=25)
+    fetched_notifications = notifications.get_user_notifications(request.ctx.user.id, skip=((page-1)*25), limit=25)
     return json({
         "error": False,
         "autoget": [notification.legacy_client for notification in fetched_notifications],
@@ -29,7 +29,7 @@ async def v0_get_notifications(request):
 @v1.get("/")
 @security.v1_protected(allow_bots=False, ignore_ban=True)
 async def v1_get_notifications(request):
-    fetched_notifications = notifications.get_user_notifications(request.ctx.user, before=request.args.get("before"),
+    fetched_notifications = notifications.get_user_notifications(request.ctx.user.id, before=request.args.get("before"),
                                                                  after=request.args.get("after"),
                                                                  limit=int(request.args.get("limit", 25)))
     return json([notification.client for notification in fetched_notifications])
@@ -72,7 +72,7 @@ async def v1_mark_notification_as_read(request, notification_id: str):
 @v1.get("/unread")
 @security.v1_protected(allow_bots=False, ignore_ban=True)
 async def v1_get_unread_notifications(request):
-    notification_unread_count = notifications.get_user_notification_unread_count(request.ctx.user)
+    notification_unread_count = notifications.get_user_notification_unread_count(request.ctx.user.id)
     return json({"count": notification_unread_count})
 
 

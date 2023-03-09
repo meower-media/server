@@ -4,8 +4,25 @@ import time
 from src.util import uid
 from src.database import db, redis
 
+unversioned = Blueprint("unversioned_general", url_prefix="/")
 v0 = Blueprint("v0_general", url_prefix="/")
 v1 = Blueprint("v1_general", url_prefix="/")
+
+
+@unversioned.get("/status")
+async def unversioned_status(request):
+    return json({
+        "isRepairMode": (redis.exists("repair_mode") == 1),
+        "scratchDeprecated": (time.time() > 1688169599),
+        "supported": {
+            0: (not time.time() > 1688169599),
+            1: True
+        },
+        "supportedGateway": {
+            "cl3": (not time.time() > 1688169599),
+            "cl4": True
+        }
+    })
 
 
 @v0.get("/")
@@ -21,14 +38,6 @@ async def v1_welcome(request):
 @v0.get("/ip")
 async def v0_get_client_ip(request):
     return text(request.ip)
-
-
-@v0.get("/status")
-async def v0_status(request):
-    return json({
-        "isRepairMode": (redis.exists("repair_mode") == 1),
-        "scratchDeprecated": (time.time() > 1688169599)
-    })
 
 
 @v0.get("/statistics")

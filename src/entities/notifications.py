@@ -97,7 +97,7 @@ class Notification:
             elif self.type == 8:  # comment like milestone
                 comment = comments.get_comment(self.data["comment_id"])
                 milestone = self.data["milestone"]
-                content = f"You reached {str(milestone)} likes on your comment! Post: '{(comment.filtered_content if comment.filtered_content else comment.content)}'"
+                content = f"You reached {str(milestone)} likes on your comment! Comment: '{(comment.filtered_content if comment.filtered_content else comment.content)}'"
         except:
             content = "Unable to parse notification!"
 
@@ -115,11 +115,11 @@ class Notification:
     def mark(self, read_status: bool):
         self.read = read_status
         db.notifications.update_one({"_id": self.id}, {"$set": {"read": self.read}})
-        Thread(target=emit_user_notification_unread_count, args=(self.recipient,)).start()
+        Thread(target=emit_user_notification_unread_count, args=(self.recipient.id,)).start()
 
     def delete(self):
         db.notifications.delete_one({"_id": self.id})
-        Thread(target=emit_user_notification_unread_count, args=(self.recipient,)).start()
+        Thread(target=emit_user_notification_unread_count, args=(self.recipient.id,)).start()
 
 def create_notification(recipient: any, type: int, data: dict):
     # Create notification data
@@ -137,7 +137,7 @@ def create_notification(recipient: any, type: int, data: dict):
     notification = Notification(**notification)
 
     # Announce new notification count
-    Thread(target=emit_user_notification_unread_count, args=(recipient,)).start()
+    Thread(target=emit_user_notification_unread_count, args=(recipient.id,)).start()
 
     # Return notification object
     return notification
@@ -152,7 +152,7 @@ def get_notification(notification_id: str):
     else:
         raise status.resourceNotFound
 
-def get_user_notifications(user: any, before: str = None, after: str = None, skip: int = 0, limit: int = 25):
+def get_user_notifications(user_id: str, before: str = None, after: str = None, skip: int = 0, limit: int = 25):
     # Create ID range
     if before is not None:
         id_range = {"$lt": before}
@@ -162,17 +162,17 @@ def get_user_notifications(user: any, before: str = None, after: str = None, ski
         id_range = {"$gt": "0"}
 
     # Fetch and return all notifications
-    return [Notification(**notification) for notification in db.notifications.find({"recipient_id": user.id, "_id": id_range}, sort=[("time", -1)], skip=skip, limit=limit)]
+    return [Notification(**notification) for notification in db.notifications.find({"recipient_id": user_id, "_id": id_range}, sort=[("time", -1)], skip=skip, limit=limit)]
 
-def get_user_notification_unread_count(user: any):
-    return db.notifications.count_documents({"recipient_id": user.id, "read": False})
+def get_user_notification_unread_count(user_id: str):
+    return db.notifications.count_documents({"recipient_id": user_id, "read": False})
 
-def emit_user_notification_unread_count(user: any):
-    unread_notifications = get_user_notification_unread_count(user)
-    events.emit_event("notification_count_updated", user.id, {
+def emit_user_notification_unread_count(user_id: str):
+    unread_notifications = get_user_notification_unread_count(user_id)
+    events.emit_event("notification_count_updated", user_id, {
         "unread": unread_notifications
     })
 
-def clear_unread_user_notifications(user: any):
-    db.notifications.update_many({"recipient_id": user.id, "read": False}, {"$set": {"read": True}})
-    Thread(target=emit_user_notification_unread_count, args=(user,)).start()
+def clear_unread_user_notifications(user_id: str):
+    db.notifications.update_many({"recipient_id": user_id, "read": False}, {"$set": {"read": True}})
+    Thread(target=emit_user_notification_unread_count, args=(user_id,)).start()

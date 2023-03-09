@@ -198,11 +198,11 @@ def migrate_user_to_bot(user: any, owner: any):
     })
 
     # Delete all items that are not needed as a bot
-    db.followed_users.delete_many({"from": user.id})
-    db.blocked_users.delete_many({"from": user.id})
-    db.post_likes.delete_many({"user_id": user.id})
-    db.post_meows.delete_many({"user_id": user.id})
-    db.user_sync.delete_one({"_id": user.id})
+    db.followed_users.delete_many({"_id.from": user.id})
+    db.blocked_users.delete_many({"_id.from": user.id})
+    db.post_likes.delete_many({"_id.user_id": user.id})
+    db.post_meows.delete_many({"_id.user_id": user.id})
+    #db.user_sync.delete_one({"_id": user.id})
     db.accounts.delete_one({"_id": user.id})
 
     # Update user stats

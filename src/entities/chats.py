@@ -64,6 +64,14 @@ class Chat:
         }
 
     @property
+    def owner(self):
+        for user_id, level in self.permissions.items():
+            if level == 2:
+                for user in self.members:
+                    if user.id == user_id:
+                        return user
+
+    @property
     def partial_members(self):
         return [member.partial for member in self.members]
 
@@ -104,9 +112,6 @@ class Chat:
         })
         events.emit_event("chat_created", user.id, self.public)
 
-        if len(self.members) == 1:
-            self.transfer_ownership(user)
-
     def remove_member(self, user: any):
         if self.id == "livechat":
             raise status.missingPermissions
@@ -136,7 +141,9 @@ class Chat:
                 "members": self.partial_members,
                 "permissions": self.permissions
             })
-            self.transfer_ownership(self.members[0])
+
+            if not self.owner:
+                self.transfer_ownership(self.members[0])
 
     def promote_member(self, user: any):
         if self.id == "livechat":
@@ -181,9 +188,8 @@ class Chat:
             raise status.missingPermissions
         
         # Demote old owner
-        for user_id, level in self.permissions.items():
-            if level == 2:
-                self.permissions[user_id] = 0
+        if self.owner:
+            self.permissions[self.owner.id] = 0
 
         # Promote new owner
         self.permissions[user.id] = 2
@@ -240,7 +246,9 @@ def create_chat(name: str, owner_id: str):
         "created": uid.timestamp()
     }
     db.chats.insert_one(chat)
-    return Chat(**chat)
+    chat = Chat(**chat)
+    events.emit_event("chat_created", owner_id, chat.public)
+    return chat
 
 def get_chat(chat_id: str):
     if chat_id == "livechat":

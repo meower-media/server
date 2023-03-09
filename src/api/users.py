@@ -3,7 +3,8 @@ from sanic_ext import validate
 from pydantic import BaseModel, Field
 
 from src.util import status, security
-from src.entities import users, chats
+from src.entities import users, posts, chats
+from src.database import db
 
 v0 = Blueprint("v0_users", url_prefix="/users/<username:str>")
 v1 = Blueprint("v1_users", url_prefix="/users/<user_id:str>")
@@ -17,11 +18,41 @@ async def v0_get_user(request, username: str):
     except status.resourceNotFound:
         return json({"error": True, "type": "notFound"}, status=404)
     except:
-        return json({"error": True, "type": "internal"}, status=500)
+        return json({"error": True, "type": "Internal"}, status=500)
     else:
         resp = user.legacy_public
         resp["error"] = False
         return json(resp)
+
+
+@v0.get("/posts")
+async def v0_get_user_posts(request, username: str):
+    # Get page
+    page = request.args.get("page", 1)
+    try:
+        page = int(page)
+    except:
+        return json({"error": True, "type": "Datatype"}, status=500)
+    else:
+        if page < 1:
+            page = 1
+
+    # Get user posts
+    try:
+        user_id = users.get_id_from_username(username)
+        fetched_posts = posts.get_user_posts(user_id, skip=((page-1)*25))
+    except status.resourceNotFound:
+        fetched_posts = []
+    except:
+        return json({"error": True, "type": "Internal"}, status=500)
+    
+    # Return posts
+    return json({
+        "error": False,
+        "autoget": [post.legacy_public for post in fetched_posts],
+        "page#": page,
+        "pages": ((db.posts.count_documents({"deleted_at": None, "author_id": user_id}) // 25)+1)
+    })
 
 
 @v1.get("/")
