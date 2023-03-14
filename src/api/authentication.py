@@ -19,7 +19,6 @@ class RegistrationForm(BaseModel):
         min_length=8,
         max_length=255
     )
-    child: bool = Field()
     captcha: Optional[str] = Field(
         max_length=2048
     )
@@ -70,7 +69,7 @@ async def v1_register(request, body: RegistrationForm):
         raise status.invalidCaptcha
 
     # Create account
-    account = accounts.create_account(body.username, body.password, body.child, require_email=(len(network.users) >= 3))
+    account = accounts.create_account(body.username, body.password, require_email=(len(network.users) >= 3))
 
     # Complete authentication
     security_cookie = security_cookies.decode_security_cookie(cookie=request.cookies.get("security_cookie"))
@@ -131,10 +130,10 @@ async def v1_login_password(request, body: LoginPasswordForm):
         return resp
 
 
-@v1.post("/mfa/totp")
+@v1.post("/totp")
 @validate(json=LoginTOTPForm)
 @security.v1_protected(require_auth=False, ratelimit_key="mfa", ratelimit_scope="ip")
-async def v1_mfa_totp(request, body: LoginTOTPForm):
+async def v1_login_totp(request, body: LoginTOTPForm):
     # Get ticket details
     ticket = tickets.get_ticket_details(body.ticket)
     if (not ticket) or (ticket["t"] != "mfa"):

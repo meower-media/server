@@ -90,9 +90,6 @@ class User:
         self.redirect_to = redirect_to
         self.delete_after = delete_after
 
-        if self.redirect_to is not None:
-            self = get_user(self.redirect_to)
-
     @property
     def public(self):
         return {
@@ -166,7 +163,6 @@ class User:
     def public_flags(self):
         pub_flags = copy(self.flags)
         for flag in [
-            flags.users.child,
             flags.users.ageNotConfirmed,
             flags.users.requireEmail,
             flags.users.requireMFA
@@ -280,8 +276,7 @@ class User:
 
     def follow_user(self, user):
         if self.id == user.id:
-            pass
-            #raise status.missingPermissions
+            raise status.missingPermissions
         elif self.is_following(user):
             raise status.missingPermissions
         elif self.is_blocking(user) or self.is_blocked(user):
@@ -494,6 +489,8 @@ def get_user(user_id: str, return_deleted: bool = True):
 
     # Return user object
     if user:
+        if user.get("redirect_to"):
+            return get_user(user["redirect_to"])
         return User(**user)
     elif return_deleted:
         return User(**DELETED)

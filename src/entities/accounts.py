@@ -203,13 +203,11 @@ class Account:
         db.accounts.update_one({"_id": self.id}, {"$push": {"recovery_codes": code}})
         return code
 
-def create_account(username: str, password: str, child: bool, require_email: bool = False, send_welcome_notification: bool = True):
+def create_account(username: str, password: str, require_email: bool = False, send_welcome_notification: bool = True):
     if not users.username_available(username):
         raise status.usernameAlreadyTaken
 
     user_flags = 0
-    if child:
-        user_flags = bitfield.add(user_flags, flags.users.child)
     if require_email:
         user_flags = bitfield.add(user_flags, flags.users.requireEmail)
 

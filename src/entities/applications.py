@@ -15,6 +15,7 @@ class Application:
         owner_id: str = None,
         maintainers: list = [],
         oauth_secret: str = None,
+        oauth_redirects: list = [],
         created: datetime = None
     ):
         self.id = _id
@@ -24,6 +25,7 @@ class Application:
         self.owner_id = owner_id
         self.maintainers = [users.get_user(maintainer_id) for maintainer_id in maintainers]
         self.oauth_secret = oauth_secret
+        self.oauth_redirects = oauth_redirects
         self.created = created
 
     @property
@@ -176,7 +178,6 @@ def migrate_user_to_bot(user: any, owner: any):
 
     # Update user
     for flag in [
-        flags.users.child,
         flags.users.ageNotConfirmed,
         flags.users.requireEmail,
         flags.users.requireMFA

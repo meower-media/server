@@ -1,18 +1,15 @@
 class users:
     system = 0
-    child = 1
-    bot = 2
-    verifiedBot = 3
-    deleted = 4
-    notSafeForKids = 5
-    ageNotConfirmed = 6
-    requireEmail = 7
-    requireMFA = 8
+    bot = 1
+    verifiedBot = 2
+    deleted = 3
+    ageNotConfirmed = 4
+    requireEmail = 5
+    requireMFA = 6
 
 class applications:
     firstParty = 0
     hasBot = 1
-    notSafeForKids = 2
 
 class posts:
     bridged = 0
@@ -29,7 +26,6 @@ class comments:
 class chats:
     inviteCodeDisabled = 0
     vanityInviteCode = 1
-    notSafeForKids = 2
 
 class messages:
     systemAlert = 0

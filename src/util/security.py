@@ -1,6 +1,7 @@
 from base64 import b64encode, b64decode
 from hashlib import sha512
 from sanic.response import HTTPResponse, json
+from functools import wraps
 import secrets
 import hmac
 import requests
@@ -130,11 +131,11 @@ def auto_ratelimit(key: str, identifier: str):
     return (key, remaining, expires)
 
 def v0_protected(
-        ignore_guardian: bool = False,
         ignore_suspension: bool = True,
         ignore_ban: bool = False
     ):
         def decorator(func: callable) -> callable:
+            @wraps(func)
             def wrapper(request, *args, **kwargs) -> HTTPResponse:
                 # Extract username and token
                 username = request.headers.get("Username", "")
@@ -150,10 +151,6 @@ def v0_protected(
                     request.ctx.user = request.ctx.session.user
                 else:
                     return json({"error": True, "type": "Unauthorized"}, status=401)
-
-                # Check whether user is being restricted by guardian
-                if (not ignore_guardian) and (False):
-                    pass
 
                 # Check whether the user is banned/suspended
                 user_moderation_status = infractions.user_status(request.ctx.user)
@@ -171,11 +168,11 @@ def v1_protected(
         allow_bots: bool = True,
         oauth_scope: str = None,
         admin_scope: int = None,
-        ignore_guardian: bool = False,
         ignore_suspension: bool = True,
         ignore_ban: bool = False
     ):
         def decorator(func: callable) -> callable:
+            @wraps(func)
             def wrapper(request, *args, **kwargs) -> HTTPResponse:
                 # Get user from access token
                 if request.token:
@@ -218,10 +215,6 @@ def v1_protected(
                     # Check whether user has required admin scope
                     if (admin_scope is not None) and (not bitfield.has(request.ctx.user.admin, admin_scope)):
                         raise status.missingScope
-
-                    # Check whether user is being restricted by guardian
-                    if (not ignore_guardian) and (False):
-                        pass
 
                     # Check whether the user is banned/suspended
                     user_moderation_status = infractions.user_status(request.ctx.user)

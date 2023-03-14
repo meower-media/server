@@ -52,7 +52,7 @@ async def v1_get_application(request, application_id: str):
 @v1.patch("/<application_id:str>")
 @validate(json=EditApplicationForm)
 @security.v1_protected(allow_bots=False, ignore_suspension=False)
-async def v1_get_application(request, application_id: str, body: EditApplicationForm):
+async def v1_update_application(request, application_id: str, body: EditApplicationForm):
     # Get application
     application = get_application_or_abort_if_not_maintainer(application_id, request.ctx.user)
 
@@ -64,7 +64,7 @@ async def v1_get_application(request, application_id: str, body: EditApplication
 
 @v1.delete("/<application_id:str>")
 @security.v1_protected(allow_bots=False)
-async def v1_get_application(request, application_id: str):
+async def v1_delete_application(request, application_id: str):
     # Get application
     application = get_application_or_abort_if_not_owner(application_id, request.ctx.user)
 

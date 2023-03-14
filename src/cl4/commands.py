@@ -67,7 +67,6 @@ class CL4Commands:
                 "chats": [chat.public for chat in chats.get_active_chats(session.user)],
                 "following": session.user.get_following_ids(),
                 "blocked": session.user.get_blocking_ids(),
-                "guardian": None,
                 "infractions": [infraction.client for infraction in infractions.get_user_infractions(session.user)],
                 "time_taken": int((time.time() - timer_start) * 1000)
             },
@@ -130,10 +129,6 @@ class CL4Commands:
                 return await self.cl.send_code(client, "Syntax", listener=listener)
             case self.cl.supporter.too_large:
                 return await self.cl.send_code(client, "TooLarge", listener=listener)
-
-        # Check whether the client is authenticated
-        if not client.user_id:
-            return await self.cl.send_code(client, "IDRequired", listener=listener)
 
         # Remove client from subscription
         if payload["type"] == "new_posts":

@@ -106,7 +106,8 @@ class server:
         await client.close(code=1001, reason="")
 
     async def __handler__(self, client):
-        if time.time() > 1688169599:  # Check whether v0 has been discontinued
+        # Check whether CL3 has been discontinued
+        if time.time() > 1688169599:
             return await self.kick_client(client)
 
         client.session_id = None

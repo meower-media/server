@@ -59,7 +59,7 @@ async def v1_mark_notification_as_read(request, notification_id: str):
 
 @v1.post("/<notification_id:str>/unread")
 @security.v1_protected(allow_bots=False, ignore_ban=True)
-async def v1_mark_notification_as_read(request, notification_id: str):
+async def v1_mark_notification_as_unread(request, notification_id: str):
     notification = notifications.get_notification(notification_id)
     if notification.recipient.id != request.ctx.user.id:
         raise status.resourceNotFound

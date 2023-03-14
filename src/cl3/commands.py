@@ -1,3 +1,6 @@
+from copy import copy
+import time
+
 from src.util import status
 from src.entities import users, accounts, networks, sessions, infractions, posts, chats, messages, notifications
 from src.database import db
@@ -16,7 +19,15 @@ class CL3Commands:
     # Networking/client utilities
     
     async def ping(self, client, val, listener):
-        await self.cl.send_code(client, "OK", listener)
+        # Check whether CL3 has been discontinued
+        if time.time() > 1688169599:
+            for client in copy(self.cl.clients):
+                try:
+                    await self.cl.kick_client(client)
+                except:
+                    pass
+        else:
+            await self.cl.send_code(client, "OK", listener)
     
     async def version_chk(self, client, val, listener):
         await self.cl.send_code(client, "OK", listener)

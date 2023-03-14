@@ -27,7 +27,7 @@ async def unversioned_status(request):
 
 @v0.get("/")
 async def v0_welcome(request):
-    return text(f"Welcome to v0 of the Meower API! Meower API v0 will be discontinued on {uid.timestamp(epoch=1688169600).isoformat()}. Please use Meower API v1.")
+    return text(f"Welcome to v0 of the Meower API! Meower API v0 will no longer function on {uid.timestamp(epoch=1688169600).isoformat()}. Please use Meower API v1.")
 
 
 @v1.get("/")
