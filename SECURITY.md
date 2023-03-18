@@ -1,5 +1,5 @@
 # Security Policy
-Meower Media thanks you for taking time to help make Meower a safer place. Meower Media takes the security of all products and services seriously, including all open source repositories managed via our Github organization, [meower-media-co](https://github.com/meower-media-co).
+Meower Media thanks you for taking time to help make Meower a safer place. Meower Media takes the security of all products and services seriously, including all open source repositories under our Github organization, [meower-media-co](https://github.com/meower-media-co).
 
 ## Version support
 | Version               | Supported                  |
@@ -7,7 +7,7 @@ Meower Media thanks you for taking time to help make Meower a safer place. Meowe
 | 0.6.0 (aka. CL4 port) | ✅                         |
 | 0.5.0 (aka. CL3)      | ✅ (until June 24th, 2023) |
 
-Last updated (INSERT MONTH.DATE.YEAR).
+Last updated 03/18/2023.
 
 ## Reporting a data breach
 If you believe that your data on any Meower Media products/services has been compromised, please contact an administrator of Meower Media directly, or contact support@meower.org immediately. From which, Meower Media will review your report in a timely fashion, and determine suitable course of action.
