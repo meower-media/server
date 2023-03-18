@@ -1,0 +1,22 @@
+version: "3.1"
+
+services:
+    meower-redis:
+        image: redis:alpine
+        hostname: redis
+    meower-mongo:
+        image: mongo
+        hostname: mongo
+    meower-server:
+        build: .
+        depends_on:
+          - meower-redis
+          - meower-mongo
+        ports:
+          - 5000:3000
+          - 5001:3001
+          - 5002:3002
+        environment:
+          - REDIS_HOST=redis
+          - DB_URI=mongodb://mongo:27017/
+          - HOST=0.0.0.0
