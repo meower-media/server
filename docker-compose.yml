@@ -19,3 +19,4 @@ services:
         environment:
           - REDIS_HOST=redis
           - DB_URI=mongodb://mongo:27017/
+          - HOST=0.0.0.0
