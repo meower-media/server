@@ -43,7 +43,7 @@ class LoginTOTPForm(BaseModel):
         max_length=255
     )
     code: str = Field(
-        min_length=1,
+        min_length=6,
         max_length=8
     )
 
@@ -161,10 +161,10 @@ async def v1_login_totp(request, body: LoginTOTPForm):
         return resp
 
 
-@v1.post("/recovery/password")
+@v1.post("/auth/password")
 @validate(json=PasswordRecoveryForm)
 @security.v1_protected(require_auth=False, ratelimit_key="verify", ratelimit_scope="ip")  # placeholder ratelimit bucket
-async def v1_password_recovery(request, body: PasswordRecoveryForm):
+async def v1_account_recovery(request, body: PasswordRecoveryForm):
     # Get user ID
     user_id = accounts.get_id_from_email(body.email)
 

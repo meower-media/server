@@ -7,7 +7,7 @@ import hmac
 import requests
 import os
 
-from src.util import status, logging, bitfield, flags
+from src.util import status, logging, bitfield
 from src.entities import sessions, infractions
 from src.database import redis
 
