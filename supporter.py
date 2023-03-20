@@ -18,11 +18,11 @@ This keeps the main.py clean and more understandable.
 class Supporter:
     def __init__(self, cl=None, packet_callback=None):
         self.filter = None
-        self.last_packet = {}
-        self.burst_amount = {}
-        self.ratelimits = {}
-        self.good_ips = []
-        self.known_vpns = []
+        self.last_packet = dict()
+        self.burst_amount = dict()
+        self.ratelimits = dict()
+        self.good_ips = set()
+        self.known_vpns = set()
         self.status = {"repair_mode": True, "is_deprecated": False}
         self.cl = cl
         self.profanity = profanity

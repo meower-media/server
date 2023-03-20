@@ -2,8 +2,6 @@ from pymongo import MongoClient
 import time
 from uuid import uuid4
 
-from requests import delete
-
 """
 
 Meower Files Module
