@@ -69,18 +69,23 @@ class Meower:
     def createPost(self, post_origin, user, content):
         post_id = str(uuid.uuid4())
         timestamp = self.supporter.timestamp(1).copy()
-        content = self.supporter.wordfilter(content)
-        if post_origin == "home":
-            post_data = {
-                "type": 1,
-                "post_origin": str(post_origin), 
-                "u": str(user), 
-                "t": timestamp, 
-                "p": str(content), 
-                "post_id": post_id, 
-                "isDeleted": False
-            }
 
+        post_data = {
+            "type": 1,
+            "post_origin": str(post_origin), 
+            "u": str(user), 
+            "t": timestamp, 
+            "p": str(content),
+            "post_id": post_id, 
+            "isDeleted": False
+        }
+        
+        filtered_content = self.supporter.wordfilter(content)
+        if filtered_content != content:
+            post_data["p"] = filtered_content
+            post_data["unfiltered_p"] = content
+
+        if post_origin == "home":
             result = self.filesystem.create_item("posts", post_id, post_data)
 
             if result:
@@ -92,15 +97,7 @@ class Meower:
             else:
                 return False
         elif post_origin == "inbox":
-            post_data = {
-                "type": 2,
-                "post_origin": str(post_origin), 
-                "u": str(user), 
-                "t": timestamp, 
-                "p": str(content), 
-                "post_id": post_id, 
-                "isDeleted": False
-            }
+            post_data["type"] = 2
 
             result = self.filesystem.create_item("posts", post_id, post_data)
 
@@ -119,16 +116,6 @@ class Meower:
             else:
                 return False
         elif post_origin == "livechat":
-            post_data = {
-                "type": 1,
-                "post_origin": str(post_origin), 
-                "u": str(user), 
-                "t": timestamp, 
-                "p": str(content), 
-                "post_id": post_id, 
-                "isDeleted": False
-            }
-
             payload = post_data
             payload["state"] = 2
 
@@ -137,16 +124,6 @@ class Meower:
         else:
             result, chat_data = self.filesystem.load_item("chats", post_origin)
             if result:
-                post_data = {
-                    "type": 1,
-                    "post_origin": str(post_origin), 
-                    "u": str(user), 
-                    "t": timestamp, 
-                    "p": str(content), 
-                    "post_id": post_id, 
-                    "isDeleted": False
-                }
-
                 result = self.filesystem.create_item("posts", post_id, post_data)
 
                 if result:
@@ -320,10 +297,10 @@ class Meower:
                                         if ip_info.status_code == 200:
                                             if ip_info.json()["block"] == 1:
                                                 self.log("{0} was detected as a VPN/proxy".format(ip))
-                                                self.supporter.known_vpns.append(ip)
+                                                self.supporter.known_vpns.add(ip)
                                                 return self.returnCode(client = client, code = "Blocked", listener_detected = listener_detected, listener_id = listener_id)
                                             else:
-                                                self.supporter.good_ips.append(ip)
+                                                self.supporter.good_ips.add(ip)
                                         else:
                                             self.log("{0} was detected using an invalid IP")
                                             return self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
@@ -1277,6 +1254,7 @@ class Meower:
                             if accountData["lvl"] >= 1:
                                 if type(val) == str:
                                     payload["isDeleted"] = True
+                                    payload["mod_deleted"] = True
                                     result = self.filesystem.write_item("posts", val, payload)
                                     if result:
                                         self.log("{0} deleting post {1}".format(client, val))
@@ -1478,18 +1456,12 @@ class Meower:
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
 
-    # Formatting looks different to other commands because this is taken from the beta 6 server
     def set_chat_state(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
-        if not self.supporter.isAuthenticated(client):
-            # Not authenticated
+        if not self.supporter.isAuthenticated(client):  # Not authenticated
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        elif not ((type(val) == dict) and (("state" in val) and self.checkForInt(val["state"]) and (("chatid" in val) and (type(val["chatid"]) == str)))):
-            # Bad datatype
+        elif not ((type(val) == dict) and (("state" in val) and self.checkForInt(val["state"]) and (("chatid" in val) and (type(val["chatid"]) == str)))):  # Bad datatype
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        elif len(val["chatid"]) > 50:
-            # Chat ID too long
-            return self.returnCode(client = client, code = "TooLarge", listener_detected = listener_detected, listener_id = listener_id)
         
         # Extract state and chat ID for simplicity
         state = int(val["state"])
@@ -1746,13 +1718,11 @@ class Meower:
     def del_tokens(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
         if self.supporter.isAuthenticated(client):
-            FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
-            if FileCheck and FileRead:
-                FileCheck, FileRead, FileWrite = self.accounts.update_setting(client, {"tokens": []}, forceUpdate=True)
-                if FileCheck and FileRead and FileWrite:
-                    self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                else:
-                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+            FileCheck, FileRead, FileWrite = self.accounts.update_setting(client, {"tokens": []}, forceUpdate=True)
+            if FileCheck and FileRead and FileWrite:
+                self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+            else:
+                self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
         else:
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
