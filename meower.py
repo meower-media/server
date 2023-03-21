@@ -196,7 +196,7 @@ class Meower:
                     
                     if ((type(username) == str) and (type(password) == str)):
                         if not self.supporter.checkForBadCharsUsername(username):
-                            if not self.supporter.checkForBadCharsPost(password):
+                            if True: # not self.supporter.checkForBadCharsPost(password)
                                 if not (self.supporter.check_for_spam("login", ip, burst=5, seconds=60)) or (self.supporter.check_for_spam("login", username, burst=5, seconds=60)):
                                     FileCheck, FileRead, ValidAuth, Banned = self.accounts.authenticate(username, password)
                                     if FileCheck and FileRead:
