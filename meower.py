@@ -461,7 +461,7 @@ class Meower:
         # Check if the client is authenticated
         if self.supporter.isAuthenticated(client):
             if type(val) == str:
-                if not len(val) > 360:
+                if not len(val) > 4000:
                     if not self.supporter.check_for_spam("posts", client, burst=6, seconds=5):
                         # Create post
                         result = self.createPost(post_origin="home", user=client, content=val)
@@ -1509,7 +1509,7 @@ class Meower:
             if (type(val) == dict) and (("p" in val) and (type(val["p"]) == str)) and (("chatid" in val) and (type(val["chatid"]) == str)):
                 post = val["p"]
                 chatid = val["chatid"]
-                if (not len(post) > 360) and (not len(chatid) > 50):
+                if (not len(post) > 2000) and (not len(chatid) > 50):
                     if not self.supporter.check_for_spam("posts", client, burst=6, seconds=5):
                         if chatid == "livechat":
                             result = self.createPost(post_origin=chatid, user=client, content=post)
