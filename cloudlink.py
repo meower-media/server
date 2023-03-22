@@ -531,7 +531,7 @@ class CloudLink(API):
                                             if self._get_client_type(client) == "scratch":
                                                 if self._is_json(msg["val"]):
                                                     msg["val"] = json.loads(msg["val"])
-                                            if not len(str(msg["val"])) > 1000:
+                                            if True:
                                                 if self.debug:
                                                     print("message is {0} bytes".format(len(str(msg["val"]))))
                                                 self.statedata["gmsg"] = msg["val"]
@@ -564,7 +564,7 @@ class CloudLink(API):
                                             if self._is_json(msg["val"]):
                                                 msg["val"] = json.loads(msg["val"])
                                         if msg["id"] in self.statedata["ulist"]["usernames"]:
-                                            if not len(str(msg["val"])) > 1000:
+                                            if True:
                                                 if not client == self._get_obj_of_username(msg["id"]):
                                                     try:
                                                         otherclient = self._get_obj_of_username(msg["id"])
@@ -628,7 +628,7 @@ class CloudLink(API):
                                     if False:
                                         if "val" in msg: # Verify that the packet contains the required parameters.
                                             if not len(str(msg["val"])) == 0:
-                                                if not len(str(msg["val"])) > 1000:
+                                                if True:
                                                     if type(msg["val"]) == str:
                                                         if self.statedata["ulist"]["objs"][client['id']]["username"] == "":
                                                             if not msg["val"] in self.statedata["ulist"]["usernames"]:
@@ -793,7 +793,7 @@ class CloudLink(API):
                                             if self._get_client_type(client) == "scratch":
                                                 if self._is_json(msg["val"]):
                                                     msg["val"] = json.loads(msg["val"])
-                                            if (not len(str(msg["val"])) > 1000) and (not len(str(msg["name"])) > 100):
+                                            if not len(str(msg["name"])) > 100:
                                                 # Send the packet to all clients.
                                                 self._send_to_all({"cmd": "gvar", "val": msg["val"], "name": msg["name"]})
                                                 
@@ -824,7 +824,7 @@ class CloudLink(API):
                                             if self._is_json(msg["val"]):
                                                 msg["val"] = json.loads(msg["val"])
                                         if msg["id"] in self.statedata["ulist"]["usernames"]:
-                                            if (not len(str(msg["val"])) > 1000) and (not len(str(msg["name"])) > 1000):
+                                            if not len(str(msg["name"])) > 1000:
                                                 if not client == self._get_obj_of_username(msg["id"]):
                                                     try:
                                                         otherclient = self._get_obj_of_username(msg["id"])
@@ -897,7 +897,7 @@ class CloudLink(API):
                                         if self._is_json(msg["val"]):
                                             msg["val"] = json.loads(msg["val"])
                                     if msg["id"] in self.statedata["ulist"]["usernames"]:
-                                        if not len(str(msg["val"])) > 1000:
+                                        if True:
                                             if not client == self._get_obj_of_username(msg["id"]):
                                                 try:
                                                     otherclient = self._get_obj_of_username(msg["id"])
