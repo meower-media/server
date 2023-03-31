@@ -170,6 +170,15 @@ class commands:
             if not valid(client, message, cl4_protocol.direct):
                 return
             
+            # Check whether the client is already authenticated
+            if client.user_id:
+                protocol.send_statuscode(
+                    client=client,
+                    code=protocol.statuscodes.id_already_set,
+                    message=message
+                )
+                return
+            
             # Emit event
             events.emit_event("cl_direct", message["id"], {
                 "val": message["val"],
