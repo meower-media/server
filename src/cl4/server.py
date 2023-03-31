@@ -1,6 +1,6 @@
 from src.cl4.cloudlink import server
 from src.cl4.cloudlink.server.protocols import clpv4
-from src.cl4.commands import CL4Commands
+from src.cl4.commands import commands
 
 # Initialize the CL server
 cl = server()
@@ -39,7 +39,7 @@ cl._subscriptions = {
 }
 
 # Load custom CL methods
-# cl.load_custom_methods(CL4Commands(cl))
+commands(cl, clpv4)
 
 # Initialize the event handler
 from src.cl4 import events
