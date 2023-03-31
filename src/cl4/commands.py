@@ -167,7 +167,7 @@ class commands:
             await protocol.automatic_notify_handshake(client)
             
             # Validate schema
-            if not valid(client, message, cl4_protocol.direct):
+            if not valid(client, message, protocol.schema.direct):
                 return
             
             # Check whether the client is already authenticated
