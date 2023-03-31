@@ -8,7 +8,7 @@ clpv4 = clpv4(cl)
 
 # Configure the CL server
 clpv4.enable_motd = True
-clpv4.motd_message = f"Meower Social Media Platform | CL4 Server {cl.version}"
+clpv4.motd_message = f"Meower Server - Running on CloudLink 4 Server v{cl.version}"
 clpv4.real_ip_header = "cf-connecting-ip"
 
 # Disable default CL commands
