@@ -206,10 +206,10 @@ class commands:
                 return
             
             # Check whether the client is already authenticated
-            if client.user_id:
+            if not client.user_id:
                 protocol.send_statuscode(
                     client=client,
-                    code=protocol.statuscodes.id_already_set,
+                    code=protocol.statuscodes.id_required,
                     message=message
                 )
                 return
