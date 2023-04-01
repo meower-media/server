@@ -41,8 +41,13 @@ cl._subscriptions = {
 # Load custom CL methods
 commands(cl, clpv4)
 
+# Set logging level
+cl.logging.basicConfig(
+    level=cl.logging.DEBUG
+)
+
 # Initialize the event handler
 from src.cl4 import events
 @cl.on_connect
 async def on_connect(client):
-    events.on_connect(client)
+    await events.on_connect(client)

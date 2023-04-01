@@ -57,7 +57,7 @@ class commands:
             timer_start = time.time()
 
             # Get session info
-            session = sessions.get_session_by_token(payload["val"])
+            session = sessions.get_session_by_token(message["val"])
 
             # Set session info
             client.user_id = session.user.id
