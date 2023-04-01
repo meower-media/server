@@ -11,7 +11,7 @@ clpv4.enable_motd = True
 clpv4.motd_message = f"Meower Server - Running on CloudLink 4 Server v{cl.version}"
 clpv4.real_ip_header = "cf-connecting-ip"
 cl.logging.basicConfig(
-    level=cl.logging.DEBUG
+    level=cl.logging.INFO
 )
 
 # Disable default CL commands
@@ -27,7 +27,7 @@ disabled = [
 for method in disabled:
     cl.disable_command(method, clpv4.schema)
 
-# Unbind commands so they can be patched
+# Unbind commands so they can be patched by the commands class
 patched = [
     "handshake",
     "direct"
