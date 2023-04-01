@@ -56,6 +56,15 @@ class commands:
 
             # Get session info
             session = sessions.get_session_by_token(message["val"])
+            
+            # Exit command handler if the session is invalid
+            if not session:
+                protocol.send_statuscode(
+                    client,
+                    protocol.statuscodes.invalid_token,
+                    message=message
+                )
+                return
 
             # Set session info
             client.user_id = session.user.id
