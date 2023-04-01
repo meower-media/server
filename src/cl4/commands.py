@@ -38,8 +38,6 @@ class commands:
         
         @server.on_command(cmd="authenticate", schema=protocol.schema)
         async def authenticate(client, message):
-            await protocol.automatic_notify_handshake(client)
-            
             # Validate payload
             if not protocol.valid(client, message, protocol.schema.authenticate):
                 return
@@ -62,21 +60,21 @@ class commands:
             # Set session info
             client.user_id = session.user.id
             client.session_id = session.id
-            if client.user_id in self.cl._users:
-                self.cl._users[client.user_id].add(client)
+            if client.user_id in server._users:
+                server._users[client.user_id].add(client)
             else:
-                self.cl._users[client.user_id] = {client}
+                server._users[client.user_id] = {client}
 
             # Subscribe to chats
             for chat_id in chats.get_all_chat_ids(client.user_id):
-                if chat_id not in self.cl._subscriptions["chats"]:
-                    self.cl._subscriptions["chats"][chat_id] = set()
-                self.cl._subscriptions["chats"][chat_id].add(client)
+                if chat_id not in server._subscriptions["chats"]:
+                    server._subscriptions["chats"][chat_id] = set()
+                server._subscriptions["chats"][chat_id].add(client)
 
             # Initialize WebSocket session (get user, chats, relationships, etc.)
             protocol.send_statuscode(
                 client,
-                protocol.schema.ok,
+                protocol.statuscodes.ok,
                 message=message
             )
             
@@ -102,70 +100,64 @@ class commands:
         
         @server.on_command(cmd="subscribe", schema=protocol.schema)
         async def subscribe(client, message):
-            await protocol.automatic_notify_handshake(client)
-            
             # Validate payload
             if not protocol.valid(client, message, protocol.schema.subscriptions):
                 return
 
             # Add client to subscription
             if message["type"] == "new_posts":
-                self.cl._subscriptions["new_posts"].add(client)
+                server._subscriptions["new_posts"].add(client)
             elif message["type"] in ["users", "posts", "comments"]:
-                if message["id"] in self.cl._subscriptions[message["type"]]:
-                    self.cl._subscriptions[message["type"]][message["id"]].add(client)
+                if message["id"] in server._subscriptions[message["type"]]:
+                    server._subscriptions[message["type"]][message["id"]].add(client)
                 else:
-                    self.cl._subscriptions[message["type"]][message["id"]] = {client}
+                    server._subscriptions[message["type"]][message["id"]] = {client}
             else:
                 protocol.send_statuscode(
                     client,
-                    protocol.schema.invalid_subscription_type,
+                    protocol.statuscodes.invalid_subscription_type,
                     message=message
                 )
                 return
             
             protocol.send_statuscode(
                 client,
-                protocol.schema.ok,
+                protocol.statuscodes.ok,
                 message=message
             )
         
         @server.on_command(cmd="unsubscribe", schema=protocol.schema)
         async def unsubscribe(client, message):
-            await protocol.automatic_notify_handshake(client)
-            
             # Validate payload
             if not protocol.valid(client, message, protocol.schema.subscriptions):
                 return
 
             # Remove client from subscription
             if message["type"] == "new_posts":
-                if client in self.cl._subscriptions["new_posts"]:
-                    self.cl._subscriptions["new_posts"].remove(client)
+                if client in server._subscriptions["new_posts"]:
+                    server._subscriptions["new_posts"].remove(client)
             elif message["type"] in ["users", "posts", "comments"]:
-                if message["id"] in self.cl._subscriptions[message["type"]]:
-                    if client in self.cl._subscriptions[message["type"]][message["id"]]:
-                        self.cl._subscriptions[message["type"]][message["id"]].remove(client)
-                    if len(self.cl._subscriptions[message["type"]][message["id"]]) == 0:
-                        del self.cl._subscriptions[message["type"]][message["id"]]
+                if message["id"] in server._subscriptions[message["type"]]:
+                    if client in server._subscriptions[message["type"]][message["id"]]:
+                        server._subscriptions[message["type"]][message["id"]].remove(client)
+                    if len(server._subscriptions[message["type"]][message["id"]]) == 0:
+                        del server._subscriptions[message["type"]][message["id"]]
             else:
                 protocol.send_statuscode(
                     client,
-                    protocol.schema.invalid_subscription_type,
+                    protocol.statuscodes.invalid_subscription_type,
                     message=message
                 )
                 return
 
             protocol.send_statuscode(
                 client,
-                protocol.schema.ok,
+                protocol.statuscodes.ok,
                 message=message
             )
         
-        # Monkey-patch the function
+        @server.on_command(cmd="direct", schema=protocol.schema)
         async def direct(client, message):
-            await protocol.automatic_notify_handshake(client)
-            
             # Validate schema
             if not valid(client, message, protocol.schema.direct):
                 return
@@ -188,9 +180,6 @@ class commands:
             # Return statuscode
             protocol.send_statuscode(
                 client,
-                protocol.schema.ok,
+                protocol.statuscodes.ok,
                 message=message
             )
-        
-        # Patch the function
-        protocol.on_direct = direct

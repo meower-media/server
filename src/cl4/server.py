@@ -10,6 +10,9 @@ clpv4 = clpv4(cl)
 clpv4.enable_motd = True
 clpv4.motd_message = f"Meower Server - Running on CloudLink 4 Server v{cl.version}"
 clpv4.real_ip_header = "cf-connecting-ip"
+cl.logging.basicConfig(
+    level=cl.logging.DEBUG
+)
 
 # Disable default CL commands
 disabled = [
@@ -23,6 +26,14 @@ disabled = [
 ]
 for method in disabled:
     cl.disable_command(method, clpv4.schema)
+
+# Unbind commands so they can be patched
+patched = [
+    "handshake",
+    "direct"
+]
+for method in patched:
+    cl.unbind_command(method, clpv4.schema)
 
 # Set custom CL status codes
 clpv4.statuscodes.invalid_token = (clpv4.statuscodes.error, 200, "Invalid token")
@@ -40,11 +51,6 @@ cl._subscriptions = {
 
 # Load custom CL methods
 commands(cl, clpv4)
-
-# Set logging level
-cl.logging.basicConfig(
-    level=cl.logging.DEBUG
-)
 
 # Initialize the event handler
 from src.cl4 import events

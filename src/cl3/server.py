@@ -157,7 +157,7 @@ class server:
 
             del client
 
-    async def main(self, host="localhost", port=3002):
+    async def main(self, host="localhost", port=3003):
         async with websockets.serve(self.__handler__, host, port):
             await asyncio.Future()
 
