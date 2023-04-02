@@ -164,9 +164,3 @@ class CL3Events:
                 "cmd": "direct",
                 "val": payload
             })
-
-        elif event == "groupcat":
-            await self.cl.broadcast({
-                "cmd": "direct",
-                "val": "GROUPCAT"
-            })

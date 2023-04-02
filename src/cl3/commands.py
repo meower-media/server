@@ -1059,7 +1059,7 @@ class CL3Commands:
         
         # Transfer ownership
         if val.get("owner"):
-            chat.change_owner(val["owner"])
+            chat.change_owner(val["owner"], actor=client.username)
 
         # Reset invite code
         if val.get("invite_code"):

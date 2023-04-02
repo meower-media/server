@@ -108,6 +108,7 @@ class Chat:
             posts.create_post(self.id, "Server", f"@{username} joined the group chat via an invite code.")
         else:
             posts.create_post(self.id, "Server", f"@{actor} added @{username} to the group chat.")
+            posts.create_inbox_message(username, f"@{actor} added you to the group chat '{self.nickname}'.")
     
     def remove_member(self, username: str, actor: str):
         # Make sure the chat isn't livechat
@@ -138,6 +139,7 @@ class Chat:
             posts.create_post(self.id, "Server", f"@{username} left the group chat.")
         else:
             posts.create_post(self.id, "Server", f"@{actor} removed @{username} from the group chat.")
+            posts.create_inbox_message(username, f"@{actor} removed you from the group chat '{self.nickname}'.")
 
     def set_chat_state(self, username: str, state: int):
         events.send_event("update_chat_state", {
