@@ -62,13 +62,23 @@ For a development environment, most of the defaults should work fine, but in a p
 >
 > Documentation has yet to be completed for this branch. Please check back later.
 
-## CL4 API
-This server is CLPv4 and UPLv2.1 compliant. [Visit this page for documentation on the Cloudlink protocol.](https://hackmd.io/@MikeDEV/HJiNYwOfo)
+## CloudLink API
+This server utilizes CloudLink 4. Documentation can be found [here](https://github.com/MikeDev101/cloudlink/wiki).
 
 ### Notes
-All websocket requests and responses are JSON-encoded text frames. 
+All websocket requests and responses are JSON-encoded text frames.
 
-### All CL4 custom methods
+Certain commands are disabled in this server, such as:
+* `setid`
+* `gmsg` and `gvar`
+* `pvar`
+* `link` and `unlink`
+
+These commands have modified behavior:
+* `direct`
+* `handshake`
+
+### Meower-Specific commands
 
 #### `authenticate`
 *Request*
@@ -110,7 +120,7 @@ All websocket requests and responses are JSON-encoded text frames.
 
 #### `direct`
 
-### CL4 Error responses
+### Meower-Specific Error Codes
 
 *Invalid datatype(s)*
 ```js
