@@ -15,7 +15,7 @@ class commands:
             },
             "val": {
                 "type": "string",
-                "required": True
+                "required": False
             }
         }
         
@@ -36,12 +36,42 @@ class commands:
             }
         }
         
-        @server.on_command(cmd="authenticate", schema=protocol.schema)
-        async def authenticate(client, message):
+        # Patched command
+        @server.on_command(cmd="handshake", schema=protocol.schema)
+        async def handshake(client, message):
             # Validate payload
             if not protocol.valid(client, message, protocol.schema.authenticate):
                 return
+            
+            # Handshake responses
+            if not client.handshake:
+                client.handshake = True
+                
+                # Send client IP address
+                server.send_packet(client, {
+                    "cmd": "client_ip",
+                    "val": protocol.get_client_ip(client)
+                })
 
+                # Send server version
+                server.send_packet(client, {
+                    "cmd": "server_version",
+                    "val": server.version
+                })
+
+                # Send Message-Of-The-Day
+                if protocol.enable_motd:
+                    server.send_packet(client, {
+                        "cmd": "motd",
+                        "val": protocol.motd_message
+                    })
+
+                # Send client's Snowflake ID
+                server.send_packet(client, {
+                    "cmd": "client_obj",
+                    "val": protocol.generate_user_object(client)
+                })
+            
             # Check whether the client is already authenticated
             if client.user_id:
                 protocol.send_statuscode(
@@ -54,8 +84,22 @@ class commands:
             # Start session start timer
             timer_start = time.time()
 
+            # Get session token
+            token = client.request_headers.get("Authorization")
+            if not token:
+                if not "val" in message:
+                    protocol.send_statuscode(
+                        client=client,
+                        code=protocol.statuscodes.session_token_missing,
+                        message=message
+                    )
+                    return
+                
+                # Get session token
+                token = message["val"]
+            
             # Get session info
-            session = sessions.get_session_by_token(message["val"])
+            session = sessions.get_session_by_token(token)
             
             # Exit command handler if the session is invalid
             if not session:
@@ -157,41 +201,6 @@ class commands:
                 )
                 return
 
-            protocol.send_statuscode(
-                client,
-                protocol.statuscodes.ok,
-                message=message
-            )
-        
-        # Patched command
-        @server.on_command(cmd="handshake", schema=protocol.schema)
-        async def handshake(client, message):
-            # Send client IP address
-            server.send_packet(client, {
-                "cmd": "client_ip",
-                "val": protocol.get_client_ip(client)
-            })
-
-            # Send server version
-            server.send_packet(client, {
-                "cmd": "server_version",
-                "val": server.version
-            })
-
-            # Send Message-Of-The-Day
-            if protocol.enable_motd:
-                server.send_packet(client, {
-                    "cmd": "motd",
-                    "val": protocol.motd_message
-                })
-
-            # Send client's Snowflake ID
-            server.send_packet(client, {
-                "cmd": "client_obj",
-                "val": protocol.generate_user_object(client)
-            })
-            
-            # Return statuscode
             protocol.send_statuscode(
                 client,
                 protocol.statuscodes.ok,

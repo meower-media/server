@@ -38,6 +38,7 @@ for method in patched:
 # Set custom CL status codes
 clpv4.statuscodes.invalid_token = (clpv4.statuscodes.error, 200, "Invalid token")
 clpv4.statuscodes.invalid_subscription_type = (clpv4.statuscodes.error, 201, "Invalid subscription type")
+clpv4.statuscodes.session_token_missing = (clpv4.statuscodes.error, 202, "Session token missing")
 
 # Initialize custom dictionaries
 cl._users = {}
