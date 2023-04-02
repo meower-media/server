@@ -16,3 +16,5 @@ sanic_ext
 pyotp
 sanic
 redis
+snowflake-id
+cerberus

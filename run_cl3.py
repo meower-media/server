@@ -11,6 +11,6 @@ if __name__ == "__main__":
     display_version()
 
     HOST = os.getenv("HOST", "127.0.0.1")
-    CL3_PORT = int(os.getenv("CL3_PORT", 3002))
+    CL3_PORT = int(os.getenv("CL3_PORT", 3003))
 
     asyncio.run(cl.main(host=HOST, port=CL3_PORT))

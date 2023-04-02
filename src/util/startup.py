@@ -4,9 +4,9 @@
 VERSION = "0.6.0-cl4-dev"
 
 # BUILD_DATE - Provide an epoch time stamp of the server's most recent change before commits.
-BUILD_DATE = 1675960612
+BUILD_DATE = 1680318412
 
 
 def display_version():
     # TODO: Make this a log event
-    print(f"Meower Server - Version {VERSION} - Build {BUILD_DATE}")
+    print(f"Meower Server v{VERSION} ({BUILD_DATE})")
