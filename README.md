@@ -1,15 +1,11 @@
 # Meower Server
-This is the backend source code for the Meower social media platform powered by Python, Sanic, MongoDB, Redis, Better Profanity, and Cloudlink 4.
+This is the backend source code for the Meower social media platform powered by Python, Sanic, MongoDB, Redis, Better Profanity, and CloudLink 4.
 
 This server software is licensed under the MIT license. See `LICENSE` for details.
 
 > **Warning**
 >
 > This branch is for the Meower Server's port to CL4, a complete rewrite that will break all existing code. Please use the main branch for the time being. 
->
-> Do not merge any pre-existing CL4 branches into this branch as this one contains major improvements.
->
-> Code changes can ONLY be made by @tnix100 and @MikeDev101 until this branch is finalized and the codebase in the main branch merged.
 
 ## Configuring Meower Server
 ### Docker (recomended)
