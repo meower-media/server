@@ -65,6 +65,8 @@ For a development environment, most of the defaults should work fine, but in a p
 ## CloudLink API
 This server utilizes CloudLink 4. Documentation can be found [here](https://github.com/MikeDev101/cloudlink/wiki).
 
+This server also utilizes a custom CloudLink 3 implementation to retain backwards compatibility with older Meower Clients. This legacy websocket endpoint will be retired in the near future, so documentation will not be provided.
+
 ### Notes
 All websocket requests and responses are JSON-encoded text frames.
 
@@ -80,37 +82,25 @@ These commands have modified behavior:
 
 ### Meower-Specific commands
 
-#### `authenticate`
+#### `handshake`
+This is a standard command used in a vanilla CL4 server. This has been modified for authentication purposes.
+You can connect to the server and specify your session token in this command, or omit the val key if you
+provide the session token using a Authorization header upon connection to the websocket server.
+
 *Request*
 ```js
 {
-  "cmd": "authenticate",
-  "token": String, // Authentication token
-  "listener": String
+  "cmd": "handshake",
+  "val": String // Session token, required for browsers, optional if Authorization header is provided
 }
 ```
 
-*Responses*
+*Response*
 ```js
 {
   "cmd": "statuscode",
   "code": "I:100 | OK",
   "code_id": 100
-}
-```
-
-```js
-{
-  "cmd": "ready",
-  "session_id": String, // Session ID
-  "user": { // User metatdata, such as ID and flags
-    // TODO: Doc this
-  }, 
-  "chats": Array, // Array of string chat IDs
-  "following": Array, // Array of string User IDs being followed
-  "blocked": Array, // Array of string User IDs being blocked
-  "infractions": Array, // TODO: Doc this
-  "time_taken": Integer // Epoch?
 }
 ```
 
@@ -122,29 +112,20 @@ These commands have modified behavior:
 
 ### Meower-Specific Error Codes
 
-*Invalid datatype(s)*
+*Invalid token*
 ```js
 {
   "cmd": "statuscode",
-  "code": "E:109 | Invalid command",
-  "code_id": 109
+  "code": "E:200 | Invalid token",
+  "code_id": 200
 }
 ```
 
-*Missing arguments / invalid syntax*
+*Invalid subscription*
 ```js
 {
   "cmd": "statuscode",
-  "code": "E:101 | Syntax",
-  "code_id": 101
-}
-```
-
-*Too large argument(s)*
-```js
-{
-  "cmd": "statuscode",
-  "code": "E:113 | Too large",
-  "code_id": 113
+  "code": "E:201 | Invalid subscription type",
+  "code_id": 201
 }
 ```
