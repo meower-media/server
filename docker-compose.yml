@@ -1,0 +1,32 @@
+version: "3.1"
+
+services:
+  # MongoDB
+  meower-database:
+    image: mongo
+    hostname: mongo
+    restart: always    
+    volumes:
+      - ./data/db:/data/db
+
+  # Redis
+  meower-redis:
+    image: redis:alpine
+    hostname: redis
+    restart: always
+  
+  # Meower Server
+  meower-server:
+    build: .
+    env_file: .env
+    restart: always
+    depends_on:
+      - meower-database
+      - meower-redis
+    ports:
+      - 3000:3000
+      - 3001:3001
+    environment:
+      - HOST=0.0.0.0
+      - DB_URI=mongodb://mongo:27017/
+      - REDIS_HOST=redis

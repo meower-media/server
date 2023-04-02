@@ -1,8 +1,9 @@
-CloudLink>=0.1.7.4
-bcrypt
-requests
-flask-cors
-uuid
-flask
-pymongo
 python-dotenv
+pymongo
+redis
+ujson
+requests
+bcrypt
+flask
+flask-cors
+websockets
