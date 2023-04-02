@@ -87,7 +87,7 @@ class commands:
             # Get session token
             token = client.request_headers.get("Authorization")
             if not token:
-                if not "val" in message:
+                if "val" not in message:
                     protocol.send_statuscode(
                         client=client,
                         code=protocol.statuscodes.session_token_missing,
@@ -129,24 +129,6 @@ class commands:
                 client,
                 protocol.statuscodes.ok,
                 message=message
-            )
-            protocol.send_message(
-                client,
-                {
-                    "cmd": "ready",
-                    "val": {
-                        "session_id": client.session_id,
-                        "bot_session": isinstance(session, sessions.BotSession),
-                        "user": session.user.client,
-                        "account": (accounts.get_account(session.user.id).client if isinstance(session, sessions.UserSession) else None),
-                        "application": (applications.get_application(session.user.id).client if isinstance(session, sessions.BotSession) else None),
-                        "chats": [chat.public for chat in chats.get_active_chats(session.user)],
-                        "following": session.user.get_following_ids(),
-                        "blocked": session.user.get_blocking_ids(),
-                        "infractions": [infraction.client for infraction in infractions.get_user_infractions(session.user)],
-                        "time_taken": int((time.time() - timer_start) * 1000)
-                    }
-                }
             )
         
         @server.on_command(cmd="subscribe", schema=protocol.schema)
