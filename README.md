@@ -113,6 +113,9 @@ provide the session token using a Authorization header upon connection to the we
 ### Meower-Specific Error Codes
 
 *Invalid token*
+
+This message is returned when you send an invalid or malformed session token to the server.
+
 ```js
 {
   "cmd": "statuscode",
@@ -127,5 +130,17 @@ provide the session token using a Authorization header upon connection to the we
   "cmd": "statuscode",
   "code": "E:201 | Invalid subscription type",
   "code_id": 201
+}
+```
+
+*Session token missing*
+
+This message is returned when the server fails to locate the session token from the `Authorization` header or through the `handshake` command's `val` key.
+
+```js
+{
+  "cmd": "statuscode",
+  "code": "E:202 | Session token missing",
+  "code_id": 202
 }
 ```
