@@ -29,7 +29,7 @@ Here's a small guide on how to use [Proxmox VE](https://www.proxmox.com/en/proxm
 6. Update the MongoDB and Redis containers to version 6 or higher and version 7 or higher respectively
 7. Install Python dependencies using `pip3 install -r requirements.txt`
 8. Configure your instance (see below)
-9. Run `startServer.sh`
+9. Run `start_server.sh`
 
 ### Run locally (development use)
 **DO NOT RUN A PRODUCTION SERVER USING THIS METHOD**
