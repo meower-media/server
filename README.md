@@ -39,7 +39,7 @@ To run Meower Server locally, you'll need to have Python 3 and Git installed and
 Follow the Git commands in the Docker guide to clone the Git repo then do the following:
 1. Install dependencies using `pip3 install -r requirements.txt`
 2. Configure your instance (see below)
-3. Run `startServer.sh`
+3. Run `start_server.sh`
 
 ## Configuring your instance
 ### MongoDB & Redis
