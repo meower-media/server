@@ -63,7 +63,7 @@ def build_indexes():
                            partialFilterExpression={"origin": "inbox", "deleted_at": None})
     db.posts.create_index([("deleted_at", ASCENDING)], name="deleted_posts",
                           expireAfterSeconds=2592000,
-                          partialFilterExpression={"deleted_at": {"$exists": True}})
+                          partialFilterExpression={"deleted_at": {"$gt": 0}})
 
     # Chats
     db.chats.create_index([("members", ASCENDING), ("created", DESCENDING)],

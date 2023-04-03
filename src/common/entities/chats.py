@@ -1,4 +1,5 @@
 from secrets import token_urlsafe
+from threading import Thread
 import ujson
 import time
 
@@ -183,6 +184,9 @@ class Chat:
 
         # Send chat update event
         self.send_chat_update_event()
+
+        # Schedule chat messages for deletion
+        Thread(target=db.posts.update_many, args=({"origin": self.id, "deleted_at": None}, {"$set": {"delete_after": int(time.time())}},)).start()
 
 
 def create_chat(nickname: str, owner: str) -> Chat:

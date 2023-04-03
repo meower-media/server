@@ -306,7 +306,7 @@ class User:
 
     def clear_posts(self, moderator: str = None):
         # Delete posts
-        for post in db.posts.find({"author": self.username}):
+        for post in db.posts.find({"origin": {"$ne": "inbox"}, "deleted_at": None, "author": self.username}):
             posts.Post(**post).delete(moderator)
 
         # Create audit log item
@@ -428,7 +428,7 @@ class User:
         db.networks.update_many({"users": self.username}, {"$pull": {"users": self.username}})
 
         # Delete all posts
-        db.posts.delete_many({"author": self.username})
+        db.posts.delete_many({"origin": {"$exists": True}, "deleted_at": None, "author": self.username})
 
         # Update all chats
         _, user_chats = chats.get_users_chats(self.username, page=None)
