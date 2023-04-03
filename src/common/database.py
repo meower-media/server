@@ -52,12 +52,16 @@ def build_indexes():
 
     # Posts
     db.posts.create_index([("origin", ASCENDING), ("deleted_at", ASCENDING),
+                           ("time", DESCENDING)],
+                           name="latest_posts",
+                           partialFilterExpression={"deleted_at": None})
+    db.posts.create_index([("origin", ASCENDING), ("deleted_at", ASCENDING),
                            ("author", ASCENDING), ("time", DESCENDING)],
-                           name="existing_posts",
+                           name="user_search",
                            partialFilterExpression={"deleted_at": None})
     db.posts.create_index([("origin", ASCENDING), ("deleted_at", ASCENDING),
                            ("content", TEXT), ("time", DESCENDING)],
-                           name="search",
+                           name="content_search",
                            partialFilterExpression={"deleted_at": None})
     db.posts.create_index([("origin", ASCENDING), ("deleted_at", ASCENDING),
                            ("time", DESCENDING), ("author", ASCENDING)],
@@ -83,9 +87,15 @@ def build_indexes():
 
 def create_config_items():
     logging.info("Creating config items...")
-    db.config.insert_one({"_id": "version", "database": DB_VERSION})
-    db.config.insert_one({"_id": "security", "signing_key": secrets.token_bytes(2048)})
-    db.config.insert_one({"_id": "filter", "whitelist": [], "blacklist": []})
+    for item in [
+        {"_id": "version", "database": DB_VERSION},
+        {"_id": "security", "signing_key": secrets.token_bytes(2048)},
+        {"_id": "filter", "whitelist": [], "blacklist": []}
+    ]:
+        try:
+            db.config.insert_one(item)
+        except:
+            pass
 
 
 def setup_db():
@@ -101,7 +111,6 @@ def setup_db():
     else:
         create_collections()
         delete_indexes()
-        create_config_items()
         build_indexes()
         db_version = DB_VERSION
 
@@ -132,6 +141,9 @@ def setup_db():
         db.config.update_one({"_id": "version"}, {"$set": {"database": DB_VERSION}})
     else:
         db.config.insert_one({"_id": "version", "database": DB_VERSION})
+
+    # Create default config items
+    create_config_items()
 
 
 def count_pages(collection: str, query: dict) -> int:

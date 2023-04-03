@@ -192,11 +192,9 @@ def migrate_from_v1(db):
         lower_usernames = set()
         for user in db.usersv0.find({}):
             username = str(user["_id"])
-            if username.lower() in lower_usernames:
-                raise Exception("Duplicate username")
-            else:
-                lower_usernames.add(username.lower())
             try:
+                if username.lower() in lower_usernames:
+                    raise Exception("Duplicate username")
                 db.users.insert_one({
                     "_id": str(username),
                     "lower_username": str(username.lower()),
@@ -206,7 +204,7 @@ def migrate_from_v1(db):
                     "lvl": int(user.get("lvl", 0)),
                     "last_ip": user.get("last_ip"),
                     "banned_until": (-1 if user.get("banned") else None),
-                    "unread_inbox": bool(user("unread_inbox", False)),
+                    "unread_inbox": bool(user.get("unread_inbox", False)),
                     "theme": str(user.get("theme", "orange")),
                     "mode": bool(user.get("mode", True)),
                     "layout": str(user.get("layout", "new")),
@@ -221,6 +219,7 @@ def migrate_from_v1(db):
                 logging.error(f"Failed to migrate user {username}: {str(e)}")
             else:
                 usernames.add(username)
+                lower_usernames.add(username.lower())
         del lower_usernames
         db.usersv0.drop()
         db.usersv1.drop()
