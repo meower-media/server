@@ -2,8 +2,10 @@ from pymongo import MongoClient, ASCENDING, DESCENDING, TEXT
 from redis import Redis
 import os
 import secrets
+import random
+import time
 
-from src.common.util import config, logging, migration
+from src.common.util import config, full_stack, logging, migration
 
 
 DB_COLLECTIONS = {
@@ -171,4 +173,14 @@ except Exception as e:
 
 
 # Setup database
-setup_db()
+logging.info("Acquiring lock to setup database...")
+time.sleep((random.randint(100, 7000) / 1000))
+while redis.exists("db_setup_lock") == 1:
+    time.sleep(0.5)
+try:
+    redis.set("db_setup_lock", "")
+    setup_db()
+except:
+    print(full_stack())
+finally:
+    redis.delete("db_setup_lock")
