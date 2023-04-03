@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cmds=("python run_api.py" "python run_cl3.py")
+cmds=("python run_api.py" "python run_cl3.py" "python background_worker.py")
 
 for cmd in "${cmds[@]}"; do {
   echo "Process \"$cmd\" started";

@@ -188,6 +188,7 @@ class User:
             "pswd": self.pswd,
             "token_key": self.token_key,
             "lvl": self.lvl,
+            "report_reputation": self.report_reputation,
             "last_ip": self.last_ip,
             "banned_until": self.banned_until,
             "invisible": self.invisible,
@@ -212,7 +213,7 @@ class User:
         db.networks.update_many({"users": old_username}, {"$set": {"users.$": self.username}})
 
         # Update all posts
-        db.posts.update_many({"u": old_username}, {"$set": {"u": self.username}})
+        db.posts.update_many({"origin": old_username}, {"$set": {"origin": self.username}})
 
         # Update all chats
         db.chats.update_many({"members": old_username}, {"$set": {"members.$": self.username}})
@@ -483,7 +484,7 @@ def create_user(username: str, password: str) -> User:
     redis.set(f"user:{username}", ujson.dumps(user_data), ex=120)
     
     # Send welcome inbox message
-    posts.create_inbox_message(username, f"Welcome to Meower! We welcome you with open arms! You can get started by making friends in the global chat or home, or by searching for people and adding them to a group chat. We hope you have fun!")
+    posts.create_inbox_message(username, "Welcome to Meower! We welcome you with open arms! You can get started by making friends in the global chat or home, or by searching for people and adding them to a group chat. We hope you have fun!")
 
     # Return user object
     return User(**user_data)

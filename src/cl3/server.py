@@ -266,11 +266,13 @@ class server:
                         await self.send_code(client, e.cl_code, listener=listener)
                         continue
                     else:
-                        print(full_stack())
+                        if config.development:
+                            print(full_stack())
                         await self.send_code(client, "Internal", listener=listener)
                         continue
         except:
-            print(full_stack())
+            if config.development:
+                print(full_stack())
         finally:
             # Remove client from clients list
             self.clients.remove(client)

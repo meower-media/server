@@ -6,6 +6,6 @@ if __name__ == "__main__":
     display_startup()
 
     try:
-        app.run(host=config.host, port=config.api_port)
+        app.run(host=config.host, port=config.api_port, debug=config.development)
     except KeyboardInterrupt:
         exit()
