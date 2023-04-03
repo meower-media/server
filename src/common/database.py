@@ -174,7 +174,6 @@ except Exception as e:
 
 # Setup database
 logging.info("Acquiring lock to setup database...")
-time.sleep((random.randint(100, 7000) / 1000))
 while redis.exists("db_setup_lock") == 1:
     time.sleep(0.5)
 try:

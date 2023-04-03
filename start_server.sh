@@ -6,6 +6,7 @@ for cmd in "${cmds[@]}"; do {
   echo "Process \"$cmd\" started";
   $cmd & pid=$!
   PID_LIST+=" $pid";
+  sleep 2
 } done
 
 trap "kill $PID_LIST" SIGINT
