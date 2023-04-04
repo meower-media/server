@@ -1,4 +1,3 @@
-from pymongo import MongoClient
 from datetime import datetime
 import os
 import ujson
@@ -278,9 +277,9 @@ def migrate_from_v1(db):
             post_id = str(post["_id"])
             try:
                 if (post["post_origin"] != "home") and (post["post_origin"] not in chat_ids):
-                    db.posts.delete_one({"_id": post_id})
+                    raise Exception("Chat no longer exists")
                 if post["u"] not in usernames:
-                    db.posts.delete_one({"_id": post_id})
+                    raise Exception("Author no longer exists")
                 new_post = {
                     "_id": str(post_id),
                     "type": int(post["type"]),
