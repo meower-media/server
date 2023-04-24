@@ -195,7 +195,7 @@ def migrate_from_v1(db):
 			try:
 				if username.lower() in lower_usernames:
 					raise Exception("Duplicate username")
-				user = {
+				users[i] = {
 					"_id": str(username),
 					"lower_username": str(username.lower()),
 					"uuid": str(user.get("uuid", uid.uuid())),
@@ -246,6 +246,7 @@ def migrate_from_v1(db):
 				chat["members"] = list(dict.fromkeys(chat["members"]))
 				chat["invite_code"] = secrets.token_urlsafe(5)
 				chat["created"] = int(time.time())
+				chats[i] = chat
 			except Exception as e:
 				logging.error(f"Failed to migrate chat {chat_id}: {str(e)}")
 				del chats[i]
@@ -301,17 +302,9 @@ def migrate_from_v1(db):
 	try:
 		logging.info("Migrating IP bans...")
 		ip_bans = db.config.find_one({"_id": "IPBanlist"})
-		for ip_address in ip_bans.get("wildcard", []):
-			try:
-				if ip_address == "127.0.0.1":
-					continue
-				db.netlog.update_one({"_id": ip_address}, {"$set": {
-					"banned": True
-				}})
-			except Exception as e:
-				logging.error(f"Failed to migrate IP ban of {ip_address}: {str(e)}")
-		for username, ip_address in ip_bans.get("users", {}).items():
-			db.netlog.update_one({"_id": ip_address}, {"$addToSet": {"users": username}})
+		db.netlog.update_many({"_id": {"$in": ip_bans.get("wildcard", [])}}, {"$set": {
+			"banned": True
+		}})
 	except Exception as e:
 		logging.error(f"Failed to migrate IP bans: {str(e)}")
 
@@ -327,8 +320,6 @@ def migrate_from_v1(db):
 	# Clear unnecessary config items
 	try:
 		logging.info("Clearing unnecessary config items...")
-		for config_name in [config_item["_id"] for config_item in db.config.find({}, projection={"_id": 1})]:
-			if config_name not in ["filter"]:
-				db.config.delete_one({"_id": config_name})
+		db.config.delete_many({"_id": {"$nin": ["filter"]}})
 	except Exception as e:
 		logging.error(f"Failed to clear unnecessary config items: {str(e)}")
