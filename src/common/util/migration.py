@@ -1,4 +1,5 @@
 from datetime import datetime
+from copy import copy
 import os
 import ujson
 import time
@@ -190,7 +191,7 @@ def migrate_from_v1(db):
 		users = list(db.usersv0.find({}))
 		usernames = []
 		lower_usernames = set()
-		for i, user in enumerate(users):
+		for i, user in enumerate(copy(users)):
 			username = str(user.get("_id"))
 			try:
 				if username.lower() in lower_usernames:
@@ -231,9 +232,9 @@ def migrate_from_v1(db):
 	# Migrate chats
 	try:
 		logging.info("Migrating chats...")
-		chats = list(db.chats.find({}, projection={"_id": 1, "owner": 1, "members": 1}))
+		chats = list(db.chats.find({}))
 		chat_ids = []
-		for i, chat in enumerate(chats):
+		for i, chat in enumerate(copy(chats)):
 			chat_id = str(chat.get("_id"))
 			try:
 				if chat["owner"] not in usernames:
