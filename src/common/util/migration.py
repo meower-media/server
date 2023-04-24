@@ -150,7 +150,7 @@ def migrate_from_v0(db):
 			try:
 				if ip_address == "127.0.0.1":
 					continue
-				db.networks.insert_one({
+				db.netlog.insert_one({
 					"_id": ip_address,
 					"banned": True
 				})
@@ -159,7 +159,7 @@ def migrate_from_v0(db):
 		for username, ip_address in ip_bans["users"].items():
 			try:
 				db.users.update_one({"_id": username}, {"$set": {"last_ip": ip_address}})
-				db.networks.update_one({"_id": ip_address}, {
+				db.netlog.update_one({"_id": ip_address}, {
 					"$addToSet": {"users": username},
 					"$set": {"last_user": username}
 				})
@@ -187,14 +187,15 @@ def migrate_from_v1(db):
 	# Migrate users
 	try:
 		logging.info("Migrating users...")
-		usernames = set()
+		users = list(db.usersv0.find({}))
+		usernames = []
 		lower_usernames = set()
-		for user in db.usersv0.find({}):
-			username = str(user["_id"])
+		for i, user in enumerate(users):
+			username = str(user.get("_id"))
 			try:
 				if username.lower() in lower_usernames:
 					raise Exception("Duplicate username")
-				db.users.insert_one({
+				user = {
 					"_id": str(username),
 					"lower_username": str(username.lower()),
 					"uuid": str(user.get("uuid", uid.uuid())),
@@ -213,110 +214,86 @@ def migrate_from_v1(db):
 					"bgm_song": int(user.get("bgm_song", 2)),
 					"pfp_data": int(user.get("pfp_data", 1)),
 					"quote": str(user.get("quote", ""))
-				})
+				}
 			except Exception as e:
 				logging.error(f"Failed to migrate user {username}: {str(e)}")
+				del users[i]
 			else:
-				usernames.add(username)
+				usernames.append(username)
 				lower_usernames.add(username.lower())
 		del lower_usernames
 		db.usersv0.drop()
 		db.usersv1.drop()
+		db.users.insert_many(users)
 	except Exception as e:
 		logging.error(f"Failed to migrate users: {str(e)}")
-	
-	# Migrate networks
-	try:
-		logging.info("Migrating networks...")
-		for network in db.netlog.find({}):
-			ip_address = str(network["_id"])
-			try:
-				db.networks.insert_one(network)
-			except Exception as e:
-				logging.error(f"Failed to migrate network {ip_address}: {str(e)}")
-		db.netlog.drop()
-	except Exception as e:
-		logging.error(f"Failed to migrate networks: {str(e)}")
 
 	# Migrate chats
 	try:
 		logging.info("Migrating chats...")
-		chat_ids = set()
-		for chat in db.chats.find({}):
-			chat_id = str(chat["_id"])
+		chats = list(db.chats.find({}, projection={"_id": 1, "owner": 1, "members": 1}))
+		chat_ids = []
+		for i, chat in enumerate(chats):
+			chat_id = str(chat.get("_id"))
 			try:
 				if chat["owner"] not in usernames:
-					db.chats.delete_one({"_id": chat_id})
-				new_chat = {
-					"_id": str(chat_id),
-					"nickname": str(chat["nickname"]),
-					"owner": str(chat["owner"]),
-					"members": list(set(chat["members"])),
-					"invite_code": secrets.token_urlsafe(5),
-					"created": int(time.time())
-				}
-				for member in new_chat["members"]:
-					if member not in usernames:
-						new_chat["members"].remove(member)
-				if len(new_chat["members"]) == 0:
-					db.chats.delete_one({"_id": chat_id})
-				db.chats.find_one_and_replace({"_id": chat_id}, new_chat)
+					raise Exception("Chat owner no longer exists")
+				if len(chat["members"]) == 0:
+					raise Exception("Members list is empty")
+				for j, username in enumerate(chat["members"]):
+					if username not in usernames:
+						del chat["members"][j]
+				chat["members"] = list(dict.fromkeys(chat["members"]))
+				chat["invite_code"] = secrets.token_urlsafe(5)
+				chat["created"] = int(time.time())
 			except Exception as e:
 				logging.error(f"Failed to migrate chat {chat_id}: {str(e)}")
-				db.chats.delete_one({"_id": chat_id})
+				del chats[i]
 			else:
-				chat_ids.add(chat_id)
+				chat_ids.append(chat_id)
+		db.chats.drop()
+		db.chats.insert_many(chats)
 	except Exception as e:
 		logging.error(f"Failed to migrate chats: {str(e)}")
 
 	# Migrate posts
 	try:
 		logging.info("Migrating posts...")
-		post_ids = set()
-		for post in db.posts.find({}):
-			post_id = str(post["_id"])
-			try:
-				if (post["post_origin"] != "home") and (post["post_origin"] not in chat_ids):
-					raise Exception("Chat no longer exists")
-				if post["u"] not in usernames:
-					raise Exception("Author no longer exists")
-				new_post = {
-					"_id": str(post_id),
-					"type": int(post["type"]),
-					"origin": str(post["post_origin"]),
-					"author": str(post["u"]),
-					"time": int(post["t"]["e"]),
-					"content": str(post["p"])
-				}
-				if "unfiltered_p" in post:
-					new_post["unfiltered_content"] = str(post["unfiltered_p"])
-				if post.get("isDeleted"):
-					new_post["deleted_at"] = int(time.time())
-					new_post["mod_deleted"] = bool(post.get("mod_deleted") == True)
-				db.posts.find_one_and_replace({"_id": post_id}, new_post)
-			except Exception as e:
-				logging.error(f"Failed to migrate post {post_id}: {str(e)}")
-				db.posts.delete_one({"_id": post_id})
-			else:
-				post_ids.add(post_id)
+		db.posts.delete_many({"$or": [
+			{
+				"post_origin": {"$nin": chat_ids}
+			},
+			{
+				"u": {"$nin": usernames}
+			}
+		]})
+		db.posts.update_many({"isDeleted": True}, {"$set": {"deleted_at": int(time.time())}})
+		db.posts.update_many({}, {
+			"$set": {
+				"time": "$t.e"
+			},
+			"$rename": {
+				"post_origin": "origin",
+				"u": "author",
+				"p": "content",
+				"unfiltered_p": "unfiltered_content"
+			},
+			"$unset": {
+				"t": "",
+				"post_id": "",
+				"isDeleted": ""
+			}
+		})
 	except Exception as e:
 		logging.error(f"Failed to migrate posts: {str(e)}")
 
 	# Migrate reports
 	try:
 		logging.info("Migrating reports...")
-		for report in db.reports.find({}):
-			report_id = str(report["_id"])
-			try:
-				if (report_id not in usernames) and (report_id not in post_ids):
-					db.reports.delete_one({"_id": report_id})
-				db.reports.update_one({"_id": report_id}, {"$set": {
-					"score": 0,
-					"created": int(time.time())
-				}})
-			except Exception as e:
-				logging.error(f"Failed to migrate report {report_id}: {str(e)}")
-				db.reports.delete_one({"_id": report_id})
+		db.reports.update_many({}, {"$set": {
+			"score": 0,
+			"created": int(time.time())
+		}})
 	except Exception as e:
 		logging.error(f"Failed to migrate reports: {str(e)}")
 
@@ -324,17 +301,17 @@ def migrate_from_v1(db):
 	try:
 		logging.info("Migrating IP bans...")
 		ip_bans = db.config.find_one({"_id": "IPBanlist"})
-		for ip_address in ip_bans["wildcard"]:
+		for ip_address in ip_bans.get("wildcard", []):
 			try:
 				if ip_address == "127.0.0.1":
 					continue
-				db.networks.update_one({"_id": ip_address}, {"$set": {
+				db.netlog.update_one({"_id": ip_address}, {"$set": {
 					"banned": True
 				}})
 			except Exception as e:
 				logging.error(f"Failed to migrate IP ban of {ip_address}: {str(e)}")
-		for username, ip_address in ip_bans["users"].items():
-			db.networks.update_one({"_id": ip_address}, {"$addToSet": {"users": username}})
+		for username, ip_address in ip_bans.get("users", {}).items():
+			db.netlog.update_one({"_id": ip_address}, {"$addToSet": {"users": username}})
 	except Exception as e:
 		logging.error(f"Failed to migrate IP bans: {str(e)}")
 

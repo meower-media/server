@@ -260,8 +260,8 @@ def get_users_chats(username: str, page: int = 1) -> list[Chat]:
 	query = {"members": {"$all": [username]}}
 	return count_pages("chats", query), [Chat(**chat) for chat in db.chats.find(query,
 												   sort=[("created", -1)],
-												   skip=(((page-1)*25) if page else None),
-												   limit=(25 if page else None))]
+												   skip=(((page-1)*25) if page else 0),
+												   limit=(25 if page else 0))]
 
 
 def get_all_chat_ids(username: str) -> list[str]:

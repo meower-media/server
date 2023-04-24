@@ -11,7 +11,7 @@ from src.common.util import config, full_stack, logging, migration
 DB_COLLECTIONS = {
 	"config",
 	"users",
-	"networks",
+	"netlog",
 	"posts",
 	"chats",
 	"reports",
@@ -44,8 +44,8 @@ def build_indexes():
 						  name="search")
 
 	# Networks
-	db.networks.create_index([("users", ASCENDING)], name="users")
-	db.networks.create_index([("last_used", ASCENDING)],
+	db.netlog.create_index([("users", ASCENDING)], name="users")
+	db.netlog.create_index([("last_used", ASCENDING)],
 							 name="inactive_networks",
 							 expireAfterSeconds=7776000,
 							 partialFilterExpression={"banned": False})

@@ -210,7 +210,7 @@ class User:
 		self.lower_username = new_username.lower()
 
 		# Update all networks
-		db.networks.update_many({"users": old_username}, {"$set": {"users.$": self.username}})
+		db.netlog.update_many({"users": old_username}, {"$set": {"users.$": self.username}})
 
 		# Update all posts
 		db.posts.update_many({"origin": old_username}, {"$set": {"origin": self.username}})
@@ -425,7 +425,7 @@ class User:
 
 	def delete(self):
 		# Update all networks
-		db.networks.update_many({"users": self.username}, {"$pull": {"users": self.username}})
+		db.netlog.update_many({"users": self.username}, {"$pull": {"users": self.username}})
 
 		# Delete all posts
 		db.posts.delete_many({"origin": {"$exists": True}, "deleted_at": None, "author": self.username})
@@ -433,7 +433,7 @@ class User:
 		# Update all chats
 		_, user_chats = chats.get_users_chats(self.username, page=None)
 		for chat in user_chats:
-			chat.remove_member(self.username)
+			chat.remove_member(self.username, "Server")
 
 		# Close report
 		reports.close_report(self.username, None)

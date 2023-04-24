@@ -43,7 +43,7 @@ class Network:
 			self.users.append(username)
 		self.last_user = username
 		self.last_used = int(time.time())
-		db.networks.update_one({"_id": self.ip}, {
+		db.netlog.update_one({"_id": self.ip}, {
 			"$addToSet": {"users": username},
 			"$set": {"last_user": self.last_user, "last_used": self.last_used}
 		})
@@ -54,7 +54,7 @@ class Network:
 	def set_ban_state(self, banned: bool):
 		# Set ban status
 		self.banned = banned
-		db.networks.update_one({"_id": self.ip}, {"$set": {"banned": self.banned}})
+		db.netlog.update_one({"_id": self.ip}, {"$set": {"banned": self.banned}})
 
 		# Kick users if network was banned
 		if self.banned:
@@ -64,7 +64,7 @@ class Network:
 			})
 	
 	def delete(self):
-		db.networks.delete_one({"_id": self.ip})
+		db.netlog.delete_one({"_id": self.ip})
 
 
 def get_iphub_data(ip_address: str) -> dict:
@@ -83,7 +83,7 @@ def get_iphub_data(ip_address: str) -> dict:
 
 def get_network(ip_address: str) -> Network:
 	# Get network from database
-	network = db.networks.find_one({"_id": ip_address})
+	network = db.netlog.find_one({"_id": ip_address})
 
 	# Create network if it doesn't exist or update network if it doesn't have IPHub data
 	if not network:
@@ -96,13 +96,13 @@ def get_network(ip_address: str) -> Network:
 			"country": iphub_data.get("countryName"),
 			"banned": False
 		}
-		db.networks.insert_one(network)
+		db.netlog.insert_one(network)
 	elif "country" not in network:
 		iphub_data = get_iphub_data(ip_address)
 		if ("block" in iphub_data) and ("countryName" in iphub_data):
 			network["proxy"] = (iphub_data.get("block") == 1)
 			network["country"] = iphub_data.get("countryName")
-			db.networks.update_one({"_id": ip_address}, {"$set": {
+			db.netlog.update_one({"_id": ip_address}, {"$set": {
 				"proxy": network["proxy"],
 				"country": network["country"]
 			}})
