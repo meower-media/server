@@ -218,7 +218,7 @@ def migrate_from_v1(db):
 				}
 			except Exception as e:
 				logging.error(f"Failed to migrate user {username}: {str(e)}")
-				del users[i]
+				users.remove(user)
 			else:
 				usernames.append(username)
 				lower_usernames.add(username.lower())
@@ -250,7 +250,7 @@ def migrate_from_v1(db):
 				chats[i] = chat
 			except Exception as e:
 				logging.error(f"Failed to migrate chat {chat_id}: {str(e)}")
-				del chats[i]
+				chats.remove(chat)
 			else:
 				chat_ids.append(chat_id)
 		db.chats.drop()
