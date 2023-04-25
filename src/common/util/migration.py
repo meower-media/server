@@ -220,12 +220,13 @@ def migrate_from_v1(db):
 				logging.error(f"Failed to migrate user {username}: {str(e)}")
 				users.remove(user)
 			else:
+				print(username)
 				usernames.append(username)
 				lower_usernames.add(username.lower())
 		del lower_usernames
+		db.users.insert_many(users)
 		db.usersv0.drop()
 		db.usersv1.drop()
-		db.users.insert_many(users)
 	except Exception as e:
 		logging.error(f"Failed to migrate users: {str(e)}")
 
