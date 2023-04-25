@@ -218,12 +218,15 @@ def migrate_from_v1(db):
 				}
 			except Exception as e:
 				logging.error(f"Failed to migrate user {username}: {str(e)}")
-				users.remove(user)
+				users[i] = None
 			else:
 				print(username)
 				usernames.append(username)
 				lower_usernames.add(username.lower())
 		del lower_usernames
+		for i, user in enumerate(copy(users)):
+			if user is None:
+				del users[i]
 		db.users.insert_many(users)
 		db.usersv0.drop()
 		db.usersv1.drop()
@@ -251,9 +254,12 @@ def migrate_from_v1(db):
 				chats[i] = chat
 			except Exception as e:
 				logging.error(f"Failed to migrate chat {chat_id}: {str(e)}")
-				chats.remove(chat)
+				chats[i] = None
 			else:
 				chat_ids.append(chat_id)
+		for i, chat in enumerate(copy(chats)):
+			if chat is None:
+				del chats[i]
 		db.chats.drop()
 		db.chats.insert_many(chats)
 	except Exception as e:
