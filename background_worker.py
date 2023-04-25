@@ -7,9 +7,7 @@ from src.common.database import db
 
 def scheduled_account_deletions():
 	_users = db.users.find({"delete_after": {"$lt": int(time.time())}})
-	print(_users)
 	for user in _users:
-		print(user)
 		users.User(**user).delete()
 
 
