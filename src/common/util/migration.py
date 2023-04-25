@@ -273,22 +273,22 @@ def migrate_from_v1(db):
 			}
 		]})
 		db.posts.update_many({"isDeleted": True}, {"$set": {"deleted_at": int(time.time())}})
-		db.posts.update_many({}, [{
-			"$set": {
+		db.posts.update_many({}, [
+			{"$set": {
 				"time": "$t.e"
-			},
-			"$rename": {
+			}},
+			{"$rename": {
 				"post_origin": "origin",
 				"u": "author",
 				"p": "content",
 				"unfiltered_p": "unfiltered_content"
-			},
-			"$unset": {
+			}},
+			{"$unset": {
 				"t": "",
 				"post_id": "",
 				"isDeleted": ""
-			}
-		}])
+			}}
+		])
 	except Exception as e:
 		logging.error(f"Failed to migrate posts: {str(e)}")
 
