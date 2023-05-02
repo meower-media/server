@@ -30,7 +30,8 @@ CODES = {
 	"IDRequired": "E:116 | Username required",
 	"Invalid": "E:118 | Invalid command",
 	"IPBanned": "E:119 | IP Blocked",
-	"Disabled": "E:122 | Command disabled by sysadmin"
+	"Disabled": "E:122 | Command disabled by sysadmin",
+	"IllegalIP": "E:123 | Illegal IP"
 }
 COMMANDS = {
 	"ip",

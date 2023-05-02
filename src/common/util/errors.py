@@ -39,3 +39,6 @@ class UserBanned(Exception):
 
 class IPBanned(Exception):
 	cl_code = "IPBanned"
+
+class IllegalIP(Exception):
+	cl_code = "IllegalIP"

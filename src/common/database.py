@@ -46,9 +46,12 @@ def build_indexes():
 	# Networks
 	db.netlog.create_index([("users", ASCENDING)], name="users")
 	db.netlog.create_index([("last_used", ASCENDING)],
-							 name="inactive_networks",
-							 expireAfterSeconds=7776000,
-							 partialFilterExpression={"banned": False})
+							name="inactive_networks",
+							expireAfterSeconds=7776000,
+							partialFilterExpression={"banned": False, "range_banned": False})
+	db.netlog.create_index([("range", ASCENDING)], name="ranges")
+	db.netlog.create_index([("range", ASCENDING), ("range_banned", ASCENDING)],
+							name="range_bans")
 
 	# Posts
 	db.posts.create_index([("origin", ASCENDING), ("deleted_at", ASCENDING),

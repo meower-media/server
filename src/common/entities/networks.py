@@ -1,7 +1,8 @@
+import ipaddress
 import requests
 import time
 
-from src.common.util import config, events
+from src.common.util import config, errors, events
 from src.common.database import db
 
 
@@ -82,6 +83,15 @@ def get_iphub_data(ip_address: str) -> dict:
 
 
 def get_network(ip_address: str) -> Network:
+	# Get IP range
+	ip_obj = ipaddress.ip_address(ip_address)
+	if ip_obj.version == 4:
+		ip_range = ipaddress.IPv4Network(ip_obj.exploded + "/24")
+	elif ip_obj.version == 6:
+		ip_range = ipaddress.IPv4Network(ip_obj.exploded + "/32")
+	else:
+		raise errors.IllegalIP
+
 	# Get network from database
 	network = db.netlog.find_one({"_id": ip_address})
 
@@ -90,11 +100,13 @@ def get_network(ip_address: str) -> Network:
 		iphub_data = get_iphub_data(ip_address)
 		network = {
 			"_id": ip_address,
+			"range": ip_range,
 			"users": [],
 			"last_user": None,
 			"proxy": (iphub_data.get("block") == 1),
 			"country": iphub_data.get("countryName"),
-			"banned": False
+			"banned": False,
+			"range_banned": False
 		}
 		db.netlog.insert_one(network)
 	elif "country" not in network:
@@ -107,5 +119,10 @@ def get_network(ip_address: str) -> Network:
 				"country": network["country"]
 			}})
 	
+	# Sync IP range ban
+	if (not network.get("range_banned")) and (db.netlog.count_documents({"range": ip_range, "range_banned": True}) > 0):
+		network["range_banned"] = True
+		db.netlog.update_one({"_id": ip_address}, {"$set": {"range_banned": True}})
+
 	# Return network object
 	return Network(**network)
