@@ -722,28 +722,7 @@ class CloudLink(API):
                                                             self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["Syntax"], "listener": listener_id}))
                                                         else:
                                                             self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["Syntax"]}))
-                                                elif msg["val"]["cmd"] == "ip":
-                                                    try:
-                                                        if "val" in msg["val"]:
-                                                            if self.statedata["ulist"]["objs"][client["id"]]["ip"] == None: # Prevent the client from changing IP
-                                                                self.statedata["ulist"]["objs"][client["id"]]["ip"] = msg["val"]["val"] # Set the client's IP
-                                                                if self.debug:
-                                                                    print("Client {0} reports IP {1}".format(client["id"], self.statedata["ulist"]["objs"][client["id"]]["ip"]))
-                                                                #self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["OK"]}))
-                                                        else:
-                                                            if self.debug:
-                                                                print('Error: Packet missing parameters')
-                                                            if listener_detected:
-                                                                self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["Syntax"], "listener": listener_id}))
-                                                            else:
-                                                                self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["Syntax"]}))
-                                                    except Exception as e:
-                                                        if self.debug:
-                                                            print('Error: Failed to set client IP')
-                                                        if listener_detected:
-                                                            self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["InternalServerError"], "listener": listener_id}))
-                                                        else:
-                                                            self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["InternalServerError"]}))
+                                            
                                                 else:
                                                     if "val" in msg["val"]:
                                                         if len(self._get_username_of_obj(client)) == 0:
@@ -1011,7 +990,7 @@ class CloudLink(API):
                     print("New connection: {0}".format(str(client['id'])))
 
                 # Add the client to the ulist object in memory.
-                self.statedata["ulist"]["objs"][client["id"]] = {"object": client, "username": "", "ip": None, "type": None}
+                self.statedata["ulist"]["objs"][client["id"]] = {"object": client, "username": "", "ip": client["handler"].ip, "type": None}
 
                 # Send the MOTD if enabled.
                 if self.statedata["motd_enable"]:
