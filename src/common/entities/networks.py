@@ -86,9 +86,9 @@ def get_network(ip_address: str) -> Network:
 	# Get IP range
 	ip_obj = ipaddress.ip_address(ip_address)
 	if ip_obj.version == 4:
-		ip_range = ipaddress.IPv4Network(ip_obj.exploded + "/24")
+		ip_range = ipaddress.IPv4Network(ip_obj.exploded + "/24", strict=False)
 	elif ip_obj.version == 6:
-		ip_range = ipaddress.IPv4Network(ip_obj.exploded + "/32")
+		ip_range = ipaddress.IPv6Network(ip_obj.exploded + "/32", strict=False)
 	else:
 		raise errors.IllegalIP
 
