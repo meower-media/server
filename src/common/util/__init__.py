@@ -81,4 +81,4 @@ def validate(data: dict, expected: dict[str, tuple[type, int, int]], optional: l
 
 config = Config()
 version = "0.5.0-beta"
-build_time = 1680654547
+build_time = 1683123390
