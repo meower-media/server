@@ -10,6 +10,7 @@ class Network:
 	def __init__(
 		self,
 		_id: str,
+		range: str = None,
 		users: list = [],
 		last_user: str = None,
 		proxy: bool = None,
@@ -18,6 +19,7 @@ class Network:
 		last_used: int = None
 	):
 		self.ip = _id
+		self.range = range
 		self.users = users
 		self.last_user = last_user
 		self.proxy = proxy
