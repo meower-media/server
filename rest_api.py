@@ -69,13 +69,7 @@ def index():
 
 @app.route('/ip', methods = ['GET']) # Get the Cloudflare IP address
 def ip_tracer():
-	if request.method == "GET":
-		if "Cf-Connecting-Ip" in request.headers:
-			return str(request.headers["Cf-Connecting-Ip"]), 200
-		else:
-			return str(request.remote_addr)
-	else:
-		return {"error": True, "type": "notAllowed"}, 405
+	return "", 410
 
 @app.route('/favicon.ico', methods = ['GET']) # Favicon, my ass. We need no favicon for an API.
 def favicon_my_ass():
