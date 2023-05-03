@@ -265,7 +265,7 @@ def migrate_from_v1(db):
 		logging.info("Migrating posts...")
 		db.posts.delete_many({"$or": [
 			{
-				"post_origin": {"$nin": (["home"] + chat_ids)}
+				"post_origin": {"$nin": (["home", "inbox"] + chat_ids)}
 			},
 			{
 				"u": {"$nin": usernames}
