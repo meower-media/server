@@ -16,6 +16,7 @@ class Network:
 		proxy: bool = None,
 		country: str = None,
 		banned: bool = False,
+		range_banned: bool = False,
 		last_used: int = None
 	):
 		self.ip = _id
@@ -25,6 +26,7 @@ class Network:
 		self.proxy = proxy
 		self.country = country
 		self.banned = banned
+		self.range_banned = range_banned
 		self.last_used = last_used
 
 	@property
