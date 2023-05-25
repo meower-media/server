@@ -448,7 +448,7 @@ class WebSocketHandler(StreamRequestHandler):
         self.valid_client = True
         # patch by meower
         
-        self.ip = headers.get('CF-Connecting-IP') or self.client_address[0]
+        self.ip = headers.get('CF-Connecting-IP', self.client_address[0])
         # end patch by meower
 
         self.server._new_client_(self)
