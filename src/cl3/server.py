@@ -114,7 +114,7 @@ class server:
         client.user_id = None
         client.username = None
         self.clients.add(client)
-        await self.send_to_client(client, {"cmd": "ulist", "val": self.ulist})
+        await self.send_to_client(client, {"cmd": "ulist", "val": ""})
         try:
             async for message in client:
                 if len(message) > 1000:
@@ -153,7 +153,7 @@ class server:
                 del self._user_ids[client.user_id]
             if client.username in self._usernames:
                 del self._usernames[client.username]
-                await self.broadcast({"cmd": "ulist", "val": self.ulist})
+                
 
             del client
 

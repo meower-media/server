@@ -4,6 +4,7 @@ import time
 from src.util import status
 from src.entities import users, accounts, networks, sessions, infractions, posts, chats, messages, notifications
 from src.database import db
+from src.util import sucurity
 
 LEGACY_DEVICE = {
     "user_agent": "Unknown",
@@ -33,6 +34,9 @@ class CL3Commands:
         await self.cl.send_code(client, "OK", listener)
     
     async def get_ulist(self, client, val, listener):
+        ulist = ""
+        if hasattr( client, username):
+            ulist = f"{client.username};"
         await self.cl.send_to_client(client, {"cmd": "ulist", "val": self.cl.ulist}, listener)
 
     # Accounts and security

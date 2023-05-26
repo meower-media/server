@@ -640,7 +640,7 @@ class CloudLink(API):
                                                                     self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["OK"], "listener": listener_id}))
                                                                 else:
                                                                     self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["OK"]}))
-                                                                self._send_to_all({"cmd": "ulist", "val": self._get_ulist()})
+                                                                self._send_to_all({"cmd": "ulist", "val": f"{msg['val']};"})
                                                                 if self.debug:
                                                                     print("User {0} set username: {1}".format(client["id"], msg["val"]))
                                                             else:

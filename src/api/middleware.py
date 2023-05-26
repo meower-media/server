@@ -13,11 +13,12 @@ async def parse_ua(request):
 
 
 async def cors_headers(request, response):
+    site = request.headers.get("Origin", "*")
     response.headers.extend({
         "Access-Control-Allow-Methods": "OPTIONS, GET, POST, PATCH, DELETE",
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": site,
         "Access-Control-Allow-Credentials": "true",
-        "Access-Control-Allow-Headers": "*"
+        "Access-Control-Allow-Headers": "*",
     })
 
 

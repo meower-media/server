@@ -275,6 +275,17 @@ def create_post(author: any, content: str, masquerade: dict = None, bridged: boo
         "time": uid.timestamp()
     }
 
+    # Check if post is sane.
+    if (len(content.split("\n")) < 1): 
+        raise status.nonSanePost
+    
+    #check if the post is all \n
+    if (content == "\n" * len(content)):
+        raise status.nonSanePost
+
+    if (content.strip() == ""):
+        raise status.nonSanePost
+
     # Filter profanity
     filtered_content = filter.censor(content)
     if filtered_content != content:

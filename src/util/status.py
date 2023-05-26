@@ -54,6 +54,11 @@ class invalidCaptcha(SanicException):
     http_status = 403
     message = "Invalid captcha"
 
+class nonSanePost(SanicException):
+    code = 11005
+    http_status = 403
+    message = "Post is not sane"
+
 
 ### 12000-12999 -- Resource conflict ###
 class usernameAlreadyTaken(SanicException):

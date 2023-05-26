@@ -21,6 +21,7 @@ async def v0_get_user(request, username: str):
         return json({"error": True, "type": "Internal"}, status=500)
     else:
         resp = user.legacy_public
+        resp["is_legacy_pfp"] = True
         resp["error"] = False
         return json(resp)
 
@@ -60,9 +61,13 @@ async def v1_get_user(request, user_id: str):
     user = users.get_user(user_id, return_deleted=False)
 
     if request.ctx.user and (request.ctx.user.id == user.id):
-        return json(user.client)
+        data = user.client
+        data["is_legacy_pfp"] = False
+        return json(data)
     else:
-        return json(user.public)
+        data = user.public
+        data["is_legacy_pfp"] = False
+        return json(data)
 
 
 @v1.get("/following")
