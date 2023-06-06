@@ -36,11 +36,9 @@ class Files:
         self.db["netlog"].create_index("users")
         self.db["usersv0"].create_index("lower_username")
 
-        self.db["posts"].create_index([("post_origin", ASCENDING), ("isDeleted", ASCENDING), ("t.e", DESCENDING)], name="default", partialFilterExpression={"isDeleted": False})
+        self.db["posts"].create_index([("post_origin", ASCENDING), ("isDeleted", ASCENDING), ("t.e", DESCENDING), ("p", ASCENDING)], name="default", partialFilterExpression={"isDeleted": False})
 
         self.db["posts"].create_index([("post_origin", ASCENDING), ("isDeleted", ASCENDING), ("t.e", DESCENDING), ("u", ASCENDING)], name="inbox", partialFilterExpression={"post_origin": "inbox", "isDeleted": False})
-
-        self.db["posts"].create_index([("post_origin", ASCENDING), ("isDeleted", ASCENDING), ("t.e", DESCENDING), ("p", ASCENDING)], name="content_search", partialFilterExpression={"isDeleted": False})
 
         self.db["posts"].create_index([("post_origin", ASCENDING), ("u", ASCENDING), ("isDeleted", ASCENDING), ("t.e", DESCENDING)], name="user_search", partialFilterExpression={"isDeleted": False})
 
