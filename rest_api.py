@@ -176,7 +176,7 @@ def get_reports():
     if (request.user == None) or (request.lvl < 1):
         return {"error": True, "type": "Unauthorized"}, 401
 
-    payload = meower.getIndex(location="reports", query={}, truncate=True, page=page)
+    payload = meower.getIndex(location="reports", query={}, truncate=True, sort="_id", page=page)
     supporter.log("Loaded index, data {0}".format(payload))
     try:
         tmp_payload = {"error": False, "autoget": [], "page#": payload["page#"], "pages": payload["pages"]}
@@ -219,7 +219,7 @@ def get_inbox():
     if request.user is None:
         return {"error": True, "type": "Unauthorized"}, 401
 
-    payload = meower.getIndex(location="posts", query={"post_origin": "inbox", "u": {"$in": [request.user, "Server"]}, "isDeleted": False}, truncate=True, page=page)
+    payload = meower.getIndex(location="posts", query={"post_origin": "inbox", "isDeleted": False, "u": {"$in": [request.user, "Server"]}}, truncate=True, page=page)
     if not autoget:
         for i in range(len(payload["index"])):
             payload["index"][i] = payload["index"][i]["_id"]
@@ -259,7 +259,7 @@ def search_home():
     if len(query) > 360:
         query = query[:360]
 
-    payload = meower.getIndex(location="posts", query={"post_origin": "home", "p": {"$regex": query}, "isDeleted": False}, truncate=True, page=page)
+    payload = meower.getIndex(location="posts", query={"post_origin": "home", "isDeleted": False, "p": {"$regex": query}}, truncate=True, page=page)
     if not autoget:
         for i in range(len(payload["index"])):
             payload["index"][i] = payload["index"][i]["_id"]
