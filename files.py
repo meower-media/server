@@ -1,4 +1,4 @@
-from pymongo import MongoClient
+from pymongo import MongoClient, ASCENDING, DESCENDING, TEXT
 import time
 from uuid import uuid4
 
@@ -27,7 +27,7 @@ class Files:
             self.log("Connected to database")
 
         # Create database collections
-        for item in ["config", "usersv0", "usersv1", "netlog", "posts", "chats", "reports"]:
+        for item in ["config", "usersv0", "netlog", "posts", "chats", "reports"]:
             if not item in self.db.list_collection_names():
                 self.log("Creating collection {0}".format(item))
                 self.db.create_collection(name=item)
@@ -35,11 +35,14 @@ class Files:
         # Create collection indexes
         self.db["netlog"].create_index("users")
         self.db["usersv0"].create_index("lower_username")
-        self.db["posts"].create_index("u")
-        self.db["posts"].create_index("post_origin")
-        self.db["posts"].create_index("type")
-        self.db["posts"].create_index("p")
-        self.db["chats"].create_index("members")
+
+        self.db["posts"].create_index([("post_origin", ASCENDING), ("isDeleted", ASCENDING), ("t.e", DESCENDING), ("p", ASCENDING)], name="default", partialFilterExpression={"isDeleted": False})
+
+        self.db["posts"].create_index([("post_origin", ASCENDING), ("isDeleted", ASCENDING), ("t.e", DESCENDING), ("u", ASCENDING)], name="inbox", partialFilterExpression={"post_origin": "inbox", "isDeleted": False})
+
+        self.db["posts"].create_index([("post_origin", ASCENDING), ("u", ASCENDING), ("isDeleted", ASCENDING), ("t.e", DESCENDING)], name="user_search", partialFilterExpression={"isDeleted": False})
+
+        self.db["chats"].create_index([("members", 1), ("last_active", 1)])
         
         # Create reserved accounts
         for username in ["Server", "Deleted", "Meower", "Admin", "username"]:

@@ -708,7 +708,7 @@ class Meower:
                 if FileCheck and FileRead:
                     if accountData["lvl"] >= 1:
                         # Delete all posts
-                        post_index = self.getIndex("posts", {"post_origin": "home", "u": str(val), "isDeleted": False}, truncate=False)
+                        post_index = self.getIndex("posts", {"post_origin": "home", "u": val, "isDeleted": False}, truncate=False)
                         for post in post_index["index"]:
                             post["isDeleted"] = True
                             self.filesystem.write_item("posts", post["_id"], post)
@@ -1263,7 +1263,9 @@ class Meower:
                                         self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": val}})
 
                                         # Create moderator alert
-                                        if payload["post_origin"] != "inbox":
+                                        if payload["post_origin"] == "inbox":
+                                            self.completeReport(payload["_id"], None)
+                                        else:
                                             self.createPost(post_origin="inbox", user=payload["u"], content="One of your posts were removed by a moderator because it violated the Meower terms of service! If you think this is a mistake, please report this message and we will look further into it. Post: '{0}'".format(payload["p"]))
 
                                             # Give report feedback
@@ -1303,7 +1305,7 @@ class Meower:
             if type(val) == str:
                 if not len(val) > 20:
                     val = self.supporter.wordfilter(val)
-                    result = self.filesystem.create_item("chats", str(uuid.uuid4()), {"nickname": val, "owner": client, "members": [client]})
+                    result = self.filesystem.create_item("chats", str(uuid.uuid4()), {"nickname": val, "owner": client, "members": [client], "last_active": int(time.time())})
                     if result:
                         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                     else:
@@ -1367,7 +1369,7 @@ class Meower:
                 page = int(val["page"])
             else:
                 page = 1
-            chat_index = self.getIndex(location="chats", query={"members": {"$all": [client]}}, truncate=True, page=page, sort="nickname")
+            chat_index = self.getIndex(location="chats", query={"members": {"$all": [client]}}, truncate=True, page=page, sort="last_active")
             chat_index["all_chats"] = []
             for i in range(len(chat_index["index"])):
                 chat_index["all_chats"].append(chat_index["index"][i])
@@ -1399,7 +1401,8 @@ class Meower:
                                         "chatid": chatdata["_id"],
                                         "nickname": chatdata["nickname"],
                                         "owner": chatdata["owner"],
-                                        "members": chatdata["members"]
+                                        "members": chatdata["members"],
+                                        "last_active": chatdata.get("last_active", 0)
                                     }
                                 }
                                 self.sendPacket({"cmd": "direct", "val": payload, "id": client})
@@ -1514,6 +1517,7 @@ class Meower:
                         if chatid == "livechat":
                             result = self.createPost(post_origin=chatid, user=client, content=post)
                             if result:
+                                self.filesystem.db["chats"].update_one({"_id": chatid}, {"$set": {"last_active": int(time.time())}})
                                 self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                                 self.supporter.ratelimit(client)
                             else:
@@ -1571,6 +1575,9 @@ class Meower:
                                                 # Inbox message to say the user was added to the group chat
                                                 self.createPost("inbox", username, "You have been added to the group chat '{0}' by @{1}!".format(chatdata["nickname"], client))
 
+                                                # Chat message to say the user was added to the group chat
+                                                self.createPost(chatid, "Server", "@{0} added @{1} to the group chat.".format(client, username))
+
                                                 # Tell client user was added
                                                 self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                                             else:
@@ -1622,6 +1629,9 @@ class Meower:
                                         # Inbox message to say the user was removed from the group chat
                                         self.createPost("inbox", username, "You have been removed from the group chat '{0}' by @{1}!".format(chatdata["nickname"], client))
 
+                                        # Chat message to say the user was removed from the group chat
+                                        self.createPost(chatid, "Server", "@{0} removed @{1} from the group chat.".format(client, username))
+
                                         # Tell client user was added
                                         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                                     else:
@@ -1656,7 +1666,7 @@ class Meower:
                 else:
                     page = 1
                 
-                inbox_index = self.getIndex(location="posts", query={"post_origin": "inbox", "u": {"$in": [client, "Server"]}, "isDeleted": False}, page=page)
+                inbox_index = self.getIndex(location="posts", query={"post_origin": "inbox", "isDeleted": False, "u": {"$in": [client, "Server"]}}, page=page)
                 for i in range(len(inbox_index["index"])):
                     inbox_index["index"][i] = inbox_index["index"][i]["_id"]
                 inbox_index["index"].reverse()
@@ -1741,7 +1751,7 @@ class Meower:
                                 FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
                                 if FileCheck and FileRead:
                                     if accountData["lvl"] == 0:
-                                        all_posts = self.getIndex(location="posts", query={"u": client}, truncate=False)["index"]
+                                        all_posts = self.getIndex(location="posts", query={"post_origin": {"$exists": True}, "u": client}, truncate=False)["index"]
                                         for post in all_posts:
                                             self.filesystem.delete_item("posts", post["_id"])
                                             self.completeReport(post["_id"], None)
