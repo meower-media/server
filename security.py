@@ -43,7 +43,7 @@ class Security:
                         "mode": True,
                         "sfx": True,
                         "debug": False,
-                        "bgm": True,
+                        "bgm": False,
                         "bgm_song": 2,
                         "layout": "new",
                         "pfp_data": 1,
