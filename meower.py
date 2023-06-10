@@ -574,7 +574,7 @@ class Meower:
                     else:
                         page = 1
 
-                    post_index = self.getIndex(location="posts", query={"post_origin": "home", "u": val["query"], "isDeleted": False}, truncate=True, page=page)
+                    post_index = self.getIndex(location="posts", query={"post_origin": "home", "isDeleted": False, "u": val["query"]}, truncate=True, page=page)
                     for i in range(len(post_index["index"])):
                         post_index["index"][i] = post_index["index"][i]["_id"]
                     post_index["index"].reverse()
@@ -708,7 +708,7 @@ class Meower:
                 if FileCheck and FileRead:
                     if accountData["lvl"] >= 1:
                         # Delete all posts
-                        post_index = self.getIndex("posts", {"post_origin": "home", "u": val, "isDeleted": False}, truncate=False)
+                        post_index = self.getIndex("posts", {"post_origin": "home", "isDeleted": False, "u": val}, truncate=False)
                         for post in post_index["index"]:
                             post["isDeleted"] = True
                             self.filesystem.write_item("posts", post["_id"], post)
@@ -1155,7 +1155,7 @@ class Meower:
                     if accountData["lvl"] >= 3:
                         if self.filesystem.does_item_exist("usersv0", val):
                             # Delete all posts
-                            post_index = self.getIndex("posts", {"u": str(val), "isDeleted": False}, truncate=False)
+                            post_index = self.getIndex("posts", {"post_origin": {"$exists": True}, "isDeleted": False, "u": val}, truncate=False)
                             for post in post_index["index"]:
                                 post["isDeleted"] = True
                                 self.filesystem.write_item("posts", post["_id"], post)
@@ -1751,13 +1751,13 @@ class Meower:
                                 FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
                                 if FileCheck and FileRead:
                                     if accountData["lvl"] == 0:
-                                        all_posts = self.getIndex(location="posts", query={"post_origin": {"$exists": True}, "u": client}, truncate=False)["index"]
+                                        all_posts = self.getIndex(location="posts", query={"post_origin": {"$exists": True}, "isDeleted": {"$exists": True}, "u": client}, truncate=False)["index"]
                                         for post in all_posts:
                                             self.filesystem.delete_item("posts", post["_id"])
                                             self.completeReport(post["_id"], None)
                                             if post["post_origin"] != "inbox":
                                                 self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": post["_id"]}})
-                                        chat_index = self.getIndex(location="chats", query={"members": {"$all": [client]}}, truncate=False)["index"]
+                                        chat_index = self.getIndex(location="chats", query={"members": {"$all": [client]}}, truncate=False, sort="last_active")["index"]
                                         for chat in chat_index:
                                             if chat["owner"] == client:
                                                 self.filesystem.delete_item("chats", chat["_id"])

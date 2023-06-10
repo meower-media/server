@@ -259,7 +259,7 @@ def search_home():
     if len(query) > 360:
         query = query[:360]
 
-    payload = meower.getIndex(location="posts", query={"post_origin": "home", "isDeleted": False, "p": {"$regex": query}}, truncate=True, page=page)
+    payload = meower.getIndex(location="posts", query={"post_origin": "home", "isDeleted": False, "$text": {"$search": query}}, truncate=True, page=page)
     if not autoget:
         for i in range(len(payload["index"])):
             payload["index"][i] = payload["index"][i]["_id"]
@@ -299,7 +299,7 @@ def search_users():
     if len(query) > 20:
         query = query[:20]
 
-    payload = meower.getIndex(location="usersv0", query={"lower_username": {"$regex": query.lower()}}, truncate=True, page=page, sort="lower_username")
+    payload = meower.getIndex(location="usersv0", query={"lower_username": {"$regex": query.lower()}}, truncate=True, page=page, sort="created")
     if not autoget:
         for i in range(len(payload["index"])):
             payload["index"][i] = payload["index"][i]["_id"]
@@ -345,7 +345,7 @@ def get_user_posts(username):
     if "autoget" in args:
         autoget = True
 
-    payload = meower.getIndex(location="posts", query={"post_origin": "home", "u": username, "isDeleted": False}, truncate=True, page=page)
+    payload = meower.getIndex(location="posts", query={"post_origin": "home", "isDeleted": False, "u": username}, truncate=True, page=page)
     if not autoget:
         for i in range(len(payload["index"])):
             payload["index"][i] = payload["index"][i]["_id"]
