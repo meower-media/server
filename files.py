@@ -33,12 +33,24 @@ class Files:
                 self.db.create_collection(name=item)
         
         # Create collection indexes
-        self.db["netlog"].create_index([("users", ASCENDING)], name="users")
-        self.db["usersv0"].create_index([("lower_username", ASCENDING), ("created", DESCENDING)], name="lower_username")
-        self.db["posts"].create_index([("post_origin", ASCENDING), ("isDeleted", ASCENDING), ("t.e", DESCENDING), ("u", ASCENDING)], name="default", partialFilterExpression={"isDeleted": False})
-        self.db["posts"].create_index([("post_origin", ASCENDING), ("isDeleted", ASCENDING), ("t.e", DESCENDING), ("p", TEXT)], name="content_search", partialFilterExpression={"isDeleted": False})
-        self.db["posts"].create_index([("post_origin", ASCENDING), ("isDeleted", ASCENDING), ("u", ASCENDING), ("t.e", DESCENDING)], name="user_search", partialFilterExpression={"isDeleted": False})
-        self.db["chats"].create_index([("members", ASCENDING), ("last_active", DESCENDING)], name="user_chats")
+        try:
+            self.db["netlog"].create_index([("users", ASCENDING)], name="users")
+        except: pass
+        try:
+            self.db["usersv0"].create_index([("lower_username", ASCENDING), ("created", DESCENDING)], name="lower_username")
+        except: pass
+        try:
+            self.db["posts"].create_index([("post_origin", ASCENDING), ("isDeleted", ASCENDING), ("t.e", DESCENDING), ("u", ASCENDING)], name="default", partialFilterExpression={"isDeleted": False})
+        except: pass
+        try:
+            self.db["posts"].create_index([("post_origin", ASCENDING), ("isDeleted", ASCENDING), ("t.e", DESCENDING), ("p", TEXT)], name="content_search", partialFilterExpression={"isDeleted": False})
+        except: pass
+        try:
+            self.db["posts"].create_index([("post_origin", ASCENDING), ("isDeleted", ASCENDING), ("u", ASCENDING), ("t.e", DESCENDING)], name="user_search", partialFilterExpression={"isDeleted": False})
+        except: pass
+        try:
+            self.db["chats"].create_index([("members", ASCENDING), ("last_active", DESCENDING)], name="user_chats")
+        except: pass
         
         # Create reserved accounts
         for username in ["Server", "Deleted", "Meower", "Admin", "username"]:
