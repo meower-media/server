@@ -687,6 +687,11 @@ class Meower:
                     # Return to the client it's data
                     self.sendPacket({"cmd": "direct", "val": "", "id": client}, listener_detected = listener_detected, listener_id = listener_id)
                     self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+
+                    # Log action
+                    logging_chat = os.getenv("MOD_LOGGING_CHAT")
+                    if logging_chat and (logging_chat != ""):
+                        self.createPost(post_origin=logging_chat, user="Server", content=f"@{client} cleared all posts on home page #{page}")
                 else:
                     self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
             else:
@@ -721,6 +726,11 @@ class Meower:
                         # Return to the client it's data
                         self.sendPacket({"cmd": "direct", "val": "", "id": client}, listener_detected = listener_detected, listener_id = listener_id)
                         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+
+                        # Log action
+                        logging_chat = os.getenv("MOD_LOGGING_CHAT")
+                        if logging_chat and (logging_chat != ""):
+                            self.createPost(post_origin=logging_chat, user="Server", content=f"@{client} cleared all of @{val}'s posts")
                     else:
                         self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
                 else:
@@ -754,10 +764,14 @@ class Meower:
                                     self.completeReport(val, True)
                                     
                                     # Send alert
-                                    
                                     self.createPost(post_origin="inbox", user=val["username"], content="Message from a moderator: {0}".format(val["p"]))
 
                                     self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+
+                                    # Log action
+                                    logging_chat = os.getenv("MOD_LOGGING_CHAT")
+                                    if logging_chat and (logging_chat != ""):
+                                        self.createPost(post_origin=logging_chat, user="Server", content=f"@{client} sent an alert to @{val['username']}: {val['p']}")
                                 else:
                                     # Account not found
                                     self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
@@ -792,6 +806,11 @@ class Meower:
                     if type(val) == str:
                         self.createPost(post_origin="inbox", user="Server", content=val)
                         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+
+                        # Log action
+                        logging_chat = os.getenv("MOD_LOGGING_CHAT")
+                        if logging_chat and (logging_chat != ""):
+                            self.createPost(post_origin=logging_chat, user="Server", content=f"@{client} made an announcement: {val}")
                     else:
                         # Bad datatype
                         self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
@@ -916,6 +935,11 @@ class Meower:
                                 
                                 # Tell client it kicked the user
                                 self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+
+                                # Log action
+                                logging_chat = os.getenv("MOD_LOGGING_CHAT")
+                                if logging_chat and (logging_chat != ""):
+                                    self.createPost(post_origin=logging_chat, user="Server", content=f"@{client} kicked @{val}")
                             else:
                                 self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                         else:
@@ -1087,6 +1111,11 @@ class Meower:
                                 # Tell client it banned the user
                                 self.sendPacket({"cmd": "direct", "val": "", "id": client}, listener_detected = listener_detected, listener_id = listener_id)
                                 self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+
+                                # Log action
+                                logging_chat = os.getenv("MOD_LOGGING_CHAT")
+                                if logging_chat and (logging_chat != ""):
+                                    self.createPost(post_origin=logging_chat, user="Server", content=f"@{client} banned @{val}")
                             else:
                                 # raise an internal error.
                                 self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
@@ -1124,6 +1153,11 @@ class Meower:
                                 # Tell client it pardoned the user
                                 self.sendPacket({"cmd": "direct", "val": "", "id": client}, listener_detected = listener_detected, listener_id = listener_id)
                                 self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+
+                                # Log action
+                                logging_chat = os.getenv("MOD_LOGGING_CHAT")
+                                if logging_chat and (logging_chat != ""):
+                                    self.createPost(post_origin=logging_chat, user="Server", content=f"@{client} unbanned @{val}")
                             else:
                                 # raise an internal error.
                                 self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
@@ -1174,6 +1208,11 @@ class Meower:
                                 # Tell client it terminated the user
                                 self.sendPacket({"cmd": "direct", "val": "", "id": client}, listener_detected = listener_detected, listener_id = listener_id)
                                 self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+
+                                # Log action
+                                logging_chat = os.getenv("MOD_LOGGING_CHAT")
+                                if logging_chat and (logging_chat != ""):
+                                    self.createPost(post_origin=logging_chat, user="Server", content=f"@{client} terminated @{val}")
                             else:
                                 self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                         else:
@@ -1214,6 +1253,11 @@ class Meower:
                             self.cl.kickClient(username)
                         except:
                             pass
+
+                    # Log action
+                    logging_chat = os.getenv("MOD_LOGGING_CHAT")
+                    if logging_chat and (logging_chat != ""):
+                        self.createPost(post_origin=logging_chat, user="Server", content=f"@{client} enabled repair mode")
                 else:
                     self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
             else:
@@ -1270,6 +1314,11 @@ class Meower:
 
                                             # Give report feedback
                                             self.completeReport(payload["_id"], True)
+
+                                        # Log action
+                                        logging_chat = os.getenv("MOD_LOGGING_CHAT")
+                                        if logging_chat and (logging_chat != ""):
+                                            self.createPost(post_origin=logging_chat, user="Server", content=f"@{client} deleted the post '{payload['_id']}' in '{payload['post_origin']}': {payload['p']}")
 
                                         # Return to the client the post was deleted
                                         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
