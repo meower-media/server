@@ -1200,7 +1200,7 @@ class Meower:
                             if FileCheck and FileRead and FileWrite:
                                 self.log("Terminating {0}".format(val))
                                 # Kick the user
-                                self.cl.kickClient(val, status="Banned")
+                                self.supporter.kickUser(val, status="Banned")
 
                                 # Give report feedback
                                 self.completeReport(val, True)
