@@ -507,31 +507,28 @@ class Meower:
                                     if client in chatdata["members"]:
                                         hasPermission = True
                         if hasPermission:
-                                if payload["isDeleted"] and accountData["lvl"] < 1:
-                                    payload = {
-                                        "mode": "post",
-                                        "payload": {
-                                            "isDeleted": True
-                                        }
-                                    }
-                                else:
-                                    payload = {
-                                        "mode": "post",
-                                        "payload": payload
-                                    }
+                            if payload["isDeleted"] and accountData["lvl"] < 1:
+                                # Post is deleted
+                                self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
+                            else:
+                                payload = {
+                                    "mode": "post",
+                                    "payload": payload
+                                }
 
-                                self.log("{0} getting post {1}".format(client, val))
+                            self.log("{0} getting post {1}".format(client, val))
 
-                                # Relay post to client
-                                self.sendPacket({"cmd": "direct", "val": payload, "id": client})
-                                
-                                # Tell client message was sent
-                                self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                            # Relay post to client
+                            self.sendPacket({"cmd": "direct", "val": payload, "id": client})
+                            
+                            # Tell client message was sent
+                            self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                         else:
-                            self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
+                            # Client doesn't have access to post
+                            self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
                     else:
                         if ((not FileCheck) and FileRead):
-                            # Account not found
+                            # Post not found
                             self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
                         else:
                             # Some other error, raise an internal error.
@@ -1457,7 +1454,8 @@ class Meower:
                                 self.sendPacket({"cmd": "direct", "val": payload, "id": client})
                                 self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                             else:
-                                self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
+                                # User isn't in chat
+                                self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
                         else:
                             # Some other error, raise an internal error.
                             self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
@@ -1493,7 +1491,8 @@ class Meower:
                                 self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                             
                             else:
-                                self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
+                                # User isn't in chat
+                                self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
                         else:
                             # Some other error, raise an internal error.
                             self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)

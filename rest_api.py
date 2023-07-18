@@ -77,21 +77,23 @@ def favicon_my_ass():
 
 @app.route('/posts', methods=["GET"])
 def get_post():
-    post_id = ""
-    args = request.args
-    if "id" in args:
-        post_id = args.get("id")
-        filecheck, fileget, filedata = fetch_post_from_storage(post_id)
-        if filecheck and fileget:
-            filedata["error"] = False
-            return filedata, 200
-        else:
-            if filecheck and (not fileget):
-                return {"error": True, "type": "notFound"}, 404
-            else:
-                return {"error": True, "type": "Internal"}, 500
-    else:
+    post_id = request.args.get("id")
+    if not post_id:
         return {"error": True, "type": "noQueryString"}, 200
+    
+    result, post_data = filesystem.load_item("posts", post_id)
+    if (not result) or (post_data.get("isDeleted")):
+        return {"error": True, "type": "notFound"}, 404
+    elif post_data.get("post_origin") != "home":
+        if request.user is None:
+            return {"error": True, "type": "notFound"}, 404
+
+        fileread, filedata = filesystem.load_item("chats", post_data["post_origin"])
+        if (not fileread) or (request.user not in filedata["members"]):
+            return {"error": True, "type": "notFound"}, 404
+
+    post_data["error"] = False
+    return post_data, 200
 
 @app.route('/posts/<chatid>', methods=["GET"])
 def get_mychat_posts(chatid):
@@ -113,10 +115,7 @@ def get_mychat_posts(chatid):
         return {"error": True, "type": "Unauthorized"}, 401
 
     fileread, filedata = filesystem.load_item("chats", chatid)
-    if fileread:
-        if request.user not in filedata["members"]:
-            return {"error": True, "type": "Forbidden"}, 403
-    else:
+    if (not fileread) or (request.user not in filedata["members"]):
         return {"error": True, "type": "notFound"}, 404
 
     payload = meower.getIndex(location="posts", query={"post_origin": chatid, "isDeleted": False}, truncate=True, page=page)
