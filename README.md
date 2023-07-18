@@ -42,13 +42,12 @@ Currently supported functions of the API:
 * /statistics - Shows Meower's statistics (users, posts, and chats)
 ### Trust keys and access control
 
-In development, Meower is configured to use "meower" as a CloudLink Trust key. If you notice a forked server using this key, please request for it to be removed. This key is intended for development purposes only.
+In development, Meower is configured to use "meower" as a CloudLink Trust key.
 
 Meower is configured to use CloudLink's Trusted Access feature, which implements the following security features:
 1. IP blocker feature
 2. Client kicking
 3. Trust keys
-4. Protection from maliciously modified clients
 
 ## Contributing to the source
 
