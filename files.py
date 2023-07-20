@@ -111,14 +111,11 @@ class Files:
         self.log("Files initialized!")
 
     def does_item_exist(self, collection, id):
-        if collection in self.db.list_collection_names():
-            if self.db[collection].find_one({"_id": id}) != None:
-                return True
-            else:
-                return False
+        if self.db[collection].count_documents({"_id": id}) > 0:
+            return True
         else:
             return False
-             
+    
     def create_item(self, collection, id, data):
         if collection in self.db.list_collection_names():
             if not self.does_item_exist(collection, id):
@@ -133,56 +130,36 @@ class Files:
             return False
 
     def update_item(self, collection, id, data):
-        if collection in self.db.list_collection_names():
-            if self.does_item_exist(collection, id):
-                self.db[collection].update_one({"_id": id}, {"$set": data})
-                return True
-            else:
-                return False
+        if self.does_item_exist(collection, id):
+            self.db[collection].update_one({"_id": id}, {"$set": data})
+            return True
         else:
             return False
 
     def write_item(self, collection, id, data):
-        if collection in self.db.list_collection_names():
-            if self.does_item_exist(collection, id):
-                data["_id"] = id
-                self.db[collection].find_one_and_replace({"_id": id}, data)
-                return True
-            else:
-                return False
+        if self.does_item_exist(collection, id):
+            data["_id"] = id
+            self.db[collection].find_one_and_replace({"_id": id}, data)
+            return True
         else:
             return False
 
     def load_item(self, collection, id):
-        if collection in self.db.list_collection_names():
-            if self.does_item_exist(collection, id):
-                return True, self.db[collection].find_one({"_id": id})
-            else:
-                return False, None
+        item = self.db[collection].find_one({"_id": id})
+        if item:
+            return True, item
         else:
             return False, None
 
     def find_items(self, collection, query):
-        if collection in self.db.list_collection_names():
-            payload = []
-            for item in self.db[collection].find(query):
-                payload.append(item["_id"])
-            return payload
-        else:
-            return []
+        return [item["_id"] for item in self.db[collection].find(query, projection={"_id": 1})]
 
     def count_items(self, collection, query):
-        if collection in self.db.list_collection_names():
-            return self.db[collection].count_documents(query)
-        else:
-            return 0
+        return self.db[collection].count_documents(query)
 
     def delete_item(self, collection, id):
-        if collection in self.db.list_collection_names():
-            if self.does_item_exist(collection, id):
-                self.db[collection].delete_one({"_id": id})
-                return True
-            else:
-                return False
+        if self.does_item_exist(collection, id):
+            self.db[collection].delete_one({"_id": id})
+            return True
         else:
             return False
