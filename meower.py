@@ -1831,7 +1831,11 @@ class Meower:
                                         self.completeReport(client, None)
                                         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                                         time.sleep(1)
-                                        self.cl.kickClient(client)
+                                        # Disconnect the user
+                                        try:
+                                            self.supporter.kickUser(client, "LoggedOut")
+                                        except:
+                                            self.cl._closed_connection_server(client, self.cl)
                                     else:
                                         # User cannot delete account as an admin
                                         self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
