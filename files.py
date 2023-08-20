@@ -21,13 +21,8 @@ class Files:
         self.errorhandler = errorhandler
 
         mongo_ip = os.getenv("MONGO_IP", "mongodb://127.0.0.1:27017")
-        self.log("Connecting to database '{0}'\n(If it seems like the server is stuck or the server randomly crashes, it probably means it couldn't connect to the database)".format(mongo_ip))
-        self.db = MongoClient(
-            mongo_ip,
-            username=os.getenv("MONGO_USERNAME", None),
-            password=os.getenv("MONGO_PASSWORD", None), 
-            authsource=os.getenv("MONGO_AUTHSOURCE", None)
-        )["meowerserver"]
+        self.log("Connecting to database...\n(If it seems like the server is stuck or the server randomly crashes, it probably means it couldn't connect to the database)")
+        self.db = MongoClient(mongo_ip)["meowerserver"]
 
         # Check connection status
         if self.db.client.get_database("meowerserver") == None:
