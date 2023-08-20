@@ -412,7 +412,11 @@ class Meower:
                     if FileCheck and FileRead and FileWrite:
 
                         # Sync states between multiple sessions
-                        self.sendPacket({"cmd": "sync_state", "val": val, "id": client})
+                        payload = {
+                            "mode": "update_config",
+                            "payload": val
+                        }
+                        self.sendPacket({"cmd": "direct", "val": payload, "id": client})
 
                         # OK
                         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
