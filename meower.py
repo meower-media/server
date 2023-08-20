@@ -1779,9 +1779,9 @@ class Meower:
             if FileCheck and FileRead and FileWrite:
                 # Disconnect the user
                 try:
-                    self.supporter.kickUser(val, "LoggedOut")
+                    self.supporter.kickUser(client, "LoggedOut")
                 except:
-                    self.cl._closed_connection_server(self.cl._get_obj_of_username(val), self.cl)
+                    self.cl._closed_connection_server(client, self.cl)
             else:
                 self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
         else:
