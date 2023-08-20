@@ -194,7 +194,7 @@ class API:
                         self.wss.send_message(client, json.dumps(msg))
                     except Exception as e:
                         if self.debug:
-                            print("Error on sendPacket (server): {0}".format(full_stack()))
+                            print("Error on sendPacket (server): {0}".format(e))
                     
                 elif ("id" in msg) and (type(msg["id"]) == str) and (msg["cmd"] not in ["gmsg", "gvar"]):
                     id = msg["id"]

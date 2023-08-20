@@ -119,7 +119,9 @@ class Main:
                 "get_chat_data",
                 "get_chat_posts",
                 "add_to_chat",
-                "remove_from_chat"
+                "remove_from_chat",
+                "kick_all",
+                "force_kick"
             ])
             if cmd in commands:
                 getattr(self.meower, cmd)(client, val, listener_detected, listener_id)

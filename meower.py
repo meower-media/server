@@ -23,7 +23,7 @@ class Meower:
         result, self.supporter.status = self.filesystem.load_item("config", "status")
         if not result:
             self.log("Failed to load status, server will enable repair mode!")
-            self.supporter.status = {"repair_mode": True, "is_deprecated": False}
+            self.supporter.status = {"repair_mode": True, "is_deprecated": True}
         self.log("Meower initialized!")
     
     # Some Meower-library specific utilities needed
@@ -923,6 +923,76 @@ class Meower:
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
     
+    def kick_all(self, client, val, listener_detected, listener_id):
+        # Check if the client is authenticated
+        if self.supporter.isAuthenticated(client):
+            FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
+            if FileCheck and FileRead:
+                if accountData["lvl"] == 4:
+                    # Kick all online users
+                    self.log("Kicking all clients")
+
+                    for client in self.cl.wss.clients:
+                        self.cl.kickClient(client)
+
+                else:
+                    self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
+            else:
+                if ((not FileCheck) and FileRead):
+                    # Account not found
+                    self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
+                else:
+                    # Some other error, raise an internal error.
+                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+        else:
+            # Not authenticated
+            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
+
+    def force_kick(self, client, val, listener_detected, listener_id):
+        # Check if the client is authenticated
+        if self.supporter.isAuthenticated(client):
+            FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
+            if FileCheck and FileRead:
+                if accountData["lvl"] >= 1:
+
+                    # Forcibly kill all locked out/bugged sessions under that username - This is for extreme cases of account lockup only!
+                    if not self.cl._get_obj_of_username(val):
+
+                        # Return status to the client
+                        self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
+                        return
+                    
+                    # Why do I hear boss music?
+                    for session in self.cl._get_obj_of_username(val):
+                        self.log("Forcing killing session {0}".format(session['id']))
+                        try:
+                           # Attempt to disconnect session - Most of the time this will result in a broken pipe error
+                            self.cl.kickClient(session)
+                        
+                        except Exception as e:
+                            self.log("Session {0} force kill exception: {1} (If this is a BrokenPipe error, this is expected to occur)".format(session['id'], e))
+
+                        try:
+                            # If it is a broken pipe, forcibly free the session from memory
+                            self.cl._closed_connection_server(session, self.cl)
+                        except Exception as e:
+                            self.log("Session {0} force kill exception: {1}".format(session['id'], e))
+                    
+                    # Return status to the client
+                    self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                else:
+                    self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
+            else:
+                if ((not FileCheck) and FileRead):
+                    # Account not found
+                    self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
+                else:
+                    # Some other error, raise an internal error.
+                    self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+        else:
+            # Not authenticated
+            self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
+
     def kick(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
         if self.supporter.isAuthenticated(client):
@@ -1240,30 +1310,44 @@ class Meower:
         else:
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-    
+
     def repair_mode(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
         if self.supporter.isAuthenticated(client):
             FileCheck, FileRead, accountData = self.accounts.get_account(client, True, True)
             if FileCheck and FileRead:
-                if accountData["lvl"] >= 4:
+                if accountData["lvl"] == 4:
                     self.log("Enabling repair mode")
+
+                    result, payload = self.filesystem.load_item("config", "status")
+
+                    if not result:
+                        # Raise an internal error.
+                        self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                        return
+
                     # Save repair mode status to database and memory
-                    self.filesystem.write_item("config", "status", {"repair_mode": True, "is_deprecated": False})
-                    self.supporter.status = {"repair_mode": True, "is_deprecated": False}
+                    payload["repair_mode"] = True
+                    self.filesystem.write_item("config", "status", payload)
+                    self.supporter.status = payload
+
                     # Tell client it enabled repair mode
                     self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                     
-                    # Kick all online users
-                    self.log("Kicking all clients")
-                    for username in self.cl.getUsernames():
-                        # Disconnect the user
-                        self.supporter.kickUser(username, "RepairMode")
+                    time.sleep(1)
 
                     # Log action
                     logging_chat = os.getenv("MOD_LOGGING_CHAT")
                     if logging_chat and (logging_chat != ""):
                         self.createPost(post_origin=logging_chat, user="Server", content=f"@{client} enabled repair mode")
+
+                    time.sleep(1)
+
+                    # Kick all online users
+                    self.log("Kicking all clients")
+                    for client in self.cl.wss.clients:
+                        self.cl.kickClient(client)
+                    
                 else:
                     self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
             else:

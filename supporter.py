@@ -344,7 +344,11 @@ class Supporter:
                         # Tell client it's going to get kicked
                         self.sendPacket({"cmd": "direct", "val": self.cl.codes[status], "id": client})
                         time.sleep(1)
-                        client["handler"].send_close(1000, bytes('', encoding='utf-8'))
+                        try:
+                            client["handler"].send_close(1000, bytes('', encoding='utf-8'))
+                        except Exception as e:
+                            self.log("Client {0} Broken pipe error: {1}".format(client['id'], e))
+                            self.cl._closed_connection_server(client, self.cl)
                     Thread(target=run, args=(client,)).start()
             
             # Update userlists
