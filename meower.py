@@ -1777,7 +1777,11 @@ class Meower:
         if self.supporter.isAuthenticated(client):
             FileCheck, FileRead, FileWrite = self.accounts.update_setting(client, {"tokens": []}, forceUpdate=True)
             if FileCheck and FileRead and FileWrite:
-                self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                # Disconnect the user
+                try:
+                    self.supporter.kickUser(val, "LoggedOut")
+                except:
+                    self.cl._closed_connection_server(self.cl._get_obj_of_username(val), self.cl)
             else:
                 self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
         else:

@@ -47,6 +47,7 @@ class Supporter:
             self.cl.codes["ChatExists"] = "E:021 | Chat exists"
             self.cl.codes["ChatNotFound"] = "E:022 | Chat not found"
             self.cl.codes["ChatFull"] = "E:023 | Chat full"
+            self.cl.codes["LoggedOut"] = "I:024 | Logged out"
         
         # Create permitted lists of characters
         self.permitted_chars_username = []
