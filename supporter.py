@@ -5,6 +5,7 @@ import traceback
 import sys
 import string
 from threading import Thread
+from copy import copy
 
 """
 
@@ -109,30 +110,47 @@ class Supporter:
                 self.cl.sendPacket(payload)
     
     def get_client_statedata(self, client): # "steals" information from the CloudLink module to get better client data
-        if not self.cl == None:
-            if type(client) == str:
-                client = self.cl._get_obj_of_username(client)
-            if not client == None:
-                if client['id'] in self.cl.statedata["ulist"]["objs"]:
-                    tmp = self.cl.statedata["ulist"]["objs"][client['id']]
-                    return tmp
-                else:
-                    return None
+        if not self.cl:
+            return []
+    
+        if type(client) is str:
+            tmp = client
+            client = []
+            for session in self.cl._get_obj_of_username(tmp):
+                client.append(session["id"])
+        elif type(client) is dict:
+            client = [client['id']]
+        elif type(client) is int:
+            client = [client]
+        else:
+            raise Exception("client is not a supported datatype")
+        
+        statedata = []
+        for session in client:
+            if session in self.cl.statedata["ulist"]["objs"]:
+                statedata.append(self.cl.statedata["ulist"]["objs"][session])
+        return statedata
     
     def modify_client_statedata(self, client, key, newvalue): # WARN: Use with caution: DO NOT DELETE UNNECESSARY KEYS!
-        if not self.cl == None:
-            if type(client) == str:
-                client = self.cl._get_obj_of_username(client)
-            if not client == None:
-                if client['id'] in self.cl.statedata["ulist"]["objs"]:
-                    try:
-                        self.cl.statedata["ulist"]["objs"][client['id']][key] = newvalue
-                        return True
-                    except:
-                        self.log("{0}".format(self.full_stack()))
-                        return False
-                else:
-                    return False
+        if not self.cl:
+            return False
+    
+        if type(client) is str:
+            tmp = client
+            client = []
+            for session in self.cl._get_obj_of_username(tmp):
+                client.append(session["id"])
+        elif type(client) is dict:
+            client = [client['id']]
+        elif type(client) is int:
+            client = [client]
+        else:
+            raise Exception("client is not a supported datatype")
+        
+        for session in client:
+            if session in self.cl.statedata["ulist"]["objs"]:
+                self.cl.statedata["ulist"]["objs"][session][key] = newvalue
+        return True
     
     def delete_client_statedata(self, client, key): # WARN: Use with caution: DO NOT DELETE UNNECESSARY KEYS!
         if not self.cl == None:
@@ -256,8 +274,17 @@ class Supporter:
         return message
     
     def isAuthenticated(self, client):
-        if not self.cl == None:
-            return self.get_client_statedata(client)["authed"]
+        if not self.cl:
+            return None
+        
+        tmp = self.get_client_statedata(client)
+
+        if len(tmp) > 1:
+            # this will only occur if there are multiple valid sessions
+            return True
+
+        # this will occur if there is only one session present
+        return tmp[0]["authed"]
     
     def setAuthenticatedState(self, client, value):
         if not self.cl == None:
@@ -286,7 +313,12 @@ class Supporter:
         if not self.cl == None:
             # really janky code that automatically sets user ID
             self.modify_client_statedata(client, "username", username)
-            self.cl.statedata["ulist"]["usernames"][username] = client["id"]
+
+            # multisession
+            if not username in self.cl.statedata["ulist"]["usernames"]:
+                self.cl.statedata["ulist"]["usernames"][username] = []
+            self.cl.statedata["ulist"]["usernames"][username].append(client["id"])
+            
             self.sendPacket({"cmd": "ulist", "val": self.cl._get_ulist()})
             self.log("{0} autoID given".format(username))
     
@@ -295,19 +327,27 @@ class Supporter:
             if username in self.cl.getUsernames():
                 self.log("Kicking {0}".format(username))
 
-                # Tell client it's going to get kicked
-                self.sendPacket({"cmd": "direct", "val": self.cl.codes[status], "id": username})
-
                 # Unauthenticate client
-                client = self.cl.statedata["ulist"]["objs"][self.cl.statedata["ulist"]["usernames"][username]]["object"]
-                self.cl._closed_connection_server(client, None)
-                self.sendPacket({"cmd": "ulist", "val": self.cl._get_ulist()})
+                sessions = copy(self.cl.statedata["ulist"]["usernames"][username])
+                self.log("{0}'s sessions: {1}".format(username, sessions))
                 
-                # Thread final closing
-                def run(client):
-                    time.sleep(1)
-                    client["handler"].send_close(1000, bytes('', encoding='utf-8'))
-                Thread(target=run, args=(client,)).start()
+                # Process multi session
+                for session in sessions:
+                    self.log("Closing {0}'s session: {1}".format(username, session))
+
+                    # Grab object
+                    client = self.cl.statedata["ulist"]["objs"][session]["object"]
+
+                    # Thread final closing
+                    def run(client):
+                        # Tell client it's going to get kicked
+                        self.sendPacket({"cmd": "direct", "val": self.cl.codes[status], "id": client})
+                        time.sleep(1)
+                        client["handler"].send_close(1000, bytes('', encoding='utf-8'))
+                    Thread(target=run, args=(client,)).start()
+            
+            # Update userlists
+            self.sendPacket({"cmd": "ulist", "val": self.cl._get_ulist()})
     
     def check_for_spam(self, type, client, burst=1, seconds=1):
         # Check if type and client are in ratelimit dictionary

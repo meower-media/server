@@ -201,12 +201,6 @@ class Meower:
                                     FileCheck, FileRead, ValidAuth, Banned = self.accounts.authenticate(username, password)
                                     if FileCheck and FileRead:
                                         if ValidAuth:
-                                            try:
-                                                self.supporter.kickUser(username, status="IDConflict") # Kick bad clients missusing the username
-                                            except:
-                                                self.cl._closed_connection_server(self.cl._get_obj_of_username(val), self.cl)
-
-
                                             self.filesystem.create_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]), {"users": [], "last_user": username})
                                             status, netlog = self.filesystem.load_item("netlog", str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"]))
                                             if status:
@@ -416,6 +410,10 @@ class Meower:
                     self.log("{0} updating config".format(client))
                     FileCheck, FileRead, FileWrite = self.accounts.update_setting(client, val)
                     if FileCheck and FileRead and FileWrite:
+
+                        # Sync states between multiple sessions
+                        self.sendPacket({"cmd": "sync_state", "val": val, "id": client})
+
                         # OK
                         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                     else:
@@ -842,11 +840,12 @@ class Meower:
                                 FileRead, netlog = self.filesystem.load_item("netlog", val)
                                 if FileRead:
                                     for user in netlog["users"]:
-                                        if user in self.cl.getUsernames() and (self.cl.statedata["ulist"]["objs"][self.cl.statedata["ulist"]["usernames"][user]]["ip"] == val):
-                                            try:
-                                                self.supporter.kickUser(user, "Blocked")
-                                            except:
-                                                self.cl._closed_connection_server(self.cl._get_obj_of_username(user), self.cl)
+                                        for multisession in self.cl.statedata["ulist"]["usernames"][user]:
+                                            if user in self.cl.getUsernames() and (self.cl.statedata["ulist"]["objs"][self.cl.statedata["ulist"]["usernames"][user][multisession]]["ip"] == val):
+                                                try:
+                                                    self.supporter.kickUser(user, "Blocked")
+                                                except:
+                                                    self.cl._closed_connection_server(self.cl._get_obj_of_username(user), self.cl)
                                 
                             result = self.filesystem.write_item("config", "IPBanlist", payload)
                             if result:

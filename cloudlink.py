@@ -201,13 +201,14 @@ class API:
                     del msg["id"]
                     if id in self.statedata["ulist"]["usernames"]:
                         try:
-                            client = self.statedata["ulist"]["objs"][self.statedata["ulist"]["usernames"][id]]["object"]
-                            if self.debug:
-                                print('Sending {0} to {1}'.format(msg, id))
-                            if self._get_client_type(client) == "scratch":
-                                if ("val" in msg) and (type(msg["val"]) == dict):
-                                    msg["val"] = json.dumps(msg["val"])
-                            self.wss.send_message(client, json.dumps(msg))
+                            for multisession in self.statedata["ulist"]["usernames"][id]:
+                                client = self.statedata["ulist"]["objs"][multisession]["object"]
+                                if self.debug:
+                                    print('Sending {0} to {1}'.format(msg, id))
+                                if self._get_client_type(client) == "scratch":
+                                    if ("val" in msg) and (type(msg["val"]) == dict):
+                                        msg["val"] = json.dumps(msg["val"])
+                                self.wss.send_message(client, json.dumps(msg))
                         except Exception as e:
                             if self.debug:
                                 print("Error on sendPacket (server): {0}".format(e))
@@ -452,7 +453,10 @@ class CloudLink(API):
     
     def _get_obj_of_username(self, client): # Helps mitigate packet spoofing
         if client in self.statedata["ulist"]["usernames"]:
-            return self.statedata["ulist"]["objs"][self.statedata["ulist"]["usernames"][client]]["object"]
+            objects = list()
+            for session in self.statedata["ulist"]["usernames"][client]:
+                objects.append(self.statedata["ulist"]["objs"][session]["object"])
+            return objects 
         else:
             return None
     
@@ -463,10 +467,17 @@ class CloudLink(API):
             return ""
     
     def _get_ip_of_obj(self, obj): # Returns the IP address of a client object
-        if obj["id"] in self.statedata["ulist"]["objs"]:
-            return self.statedata["ulist"]["objs"][obj["id"]]["ip"]
+        if type(obj) == list:
+            ips = list()
+            for session in obj:
+                if session["id"] in self.statedata["ulist"]["objs"]:
+                    ips.append(self.statedata["ulist"]["objs"][session["id"]]["ip"])
+            return ips
         else:
-            return ""
+            if obj["id"] in self.statedata["ulist"]["objs"]:
+                return self.statedata["ulist"]["objs"][obj["id"]]["ip"]
+            else:
+                return ""
     
     def _is_obj_trusted(self, obj): # Checks if a client is trusted on the link
         if self.statedata["secure_enable"]:
@@ -1027,11 +1038,14 @@ class CloudLink(API):
         if not type(client) == type(None):
             try:
                 if self.debug:
-                    if self.statedata["ulist"]["objs"][client['id']]["username"] == "":
-                        print("Connection closed: {0}".format(str(client['id'])))
+                    if client['id'] in self.statedata["ulist"]["objs"]:
+                        if self.statedata["ulist"]["objs"][client['id']]["username"] == "":
+                            print("Connection closed: {0}".format(str(client['id'])))
+                        else:
+                            print("Connection closed: {0} ({1})".format(str(client['id']), str(self.statedata["ulist"]["objs"][client['id']]["username"])))
                     else:
-                        print("Connection closed: {0} ({1})".format(str(client['id']), str(self.statedata["ulist"]["objs"][client['id']]["username"])))
-                
+                        print("Connection closed: {0}".format(str(client['id'])))
+
                 if not self.callback_function["on_close"] == None:
                     try:
                         self.callback_function["on_close"](client)
@@ -1040,9 +1054,17 @@ class CloudLink(API):
                             print("Error on _closed_connection_server: {0}".format(e))
                 
                 # Remove entries from username list and userlist objects
-                if self.statedata["ulist"]["objs"][client['id']]["username"] in self.statedata["ulist"]["usernames"]:
-                    del self.statedata["ulist"]["usernames"][self.statedata["ulist"]["objs"][client['id']]["username"]]
-                del self.statedata["ulist"]["objs"][client['id']]
+                if client['id'] in self.statedata["ulist"]["objs"]:
+                    username = self.statedata["ulist"]["objs"][client['id']]["username"]
+                    if username in self.statedata["ulist"]["usernames"]:
+                        
+                        # multisession handling
+                        if client['id'] in self.statedata["ulist"]["usernames"][username]:
+                            self.statedata["ulist"]["usernames"][username].remove(client['id'])
+                        if len(self.statedata["ulist"]["usernames"][username]) == 0:
+                            del self.statedata["ulist"]["usernames"][username]
+                    
+                    del self.statedata["ulist"]["objs"][client['id']]
 
                 if self.statedata["secure_enable"]:
                     if client in self.statedata["trusted"]:
