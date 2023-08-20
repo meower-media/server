@@ -455,7 +455,8 @@ class CloudLink(API):
         if client in self.statedata["ulist"]["usernames"]:
             objects = list()
             for session in self.statedata["ulist"]["usernames"][client]:
-                objects.append(self.statedata["ulist"]["objs"][session]["object"])
+                if session in self.statedata["ulist"]["objs"]:
+                    objects.append(self.statedata["ulist"]["objs"][session]["object"])
             return objects 
         else:
             return None
