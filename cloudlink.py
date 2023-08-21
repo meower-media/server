@@ -579,27 +579,27 @@ class CloudLink(API):
                                             if True:
                                                 if not client == self._get_obj_of_username(msg["id"]):
                                                     try:
-                                                        otherclient = self._get_obj_of_username(msg["id"])
-                                                        if not len(self._get_username_of_obj(client)) == 0:
-                                                            msg["origin"] = self._get_username_of_obj(client)
-                                                            if (self._get_client_type(otherclient) == "scratch") and (self._is_json(msg["val"])):
-                                                                tmp_val = json.dumps(msg["val"])
-                                                            else:
-                                                                tmp_val = msg["val"]
+                                                        for otherclient in self._get_obj_of_username(msg["id"]):
+                                                            if not len(self._get_username_of_obj(client)) == 0:
+                                                                msg["origin"] = self._get_username_of_obj(client)
+                                                                if (self._get_client_type(otherclient) == "scratch") and (self._is_json(msg["val"])):
+                                                                    tmp_val = json.dumps(msg["val"])
+                                                                else:
+                                                                    tmp_val = msg["val"]
 
-                                                            if self.debug:
-                                                                print('Sending {0} to {1}'.format(msg, msg["id"]))
-                                                            del msg["id"]
-                                                            self.wss.send_message(otherclient, json.dumps({"cmd": "pmsg", "val": tmp_val, "origin": msg["origin"]}))
-                                                            if listener_detected:
-                                                                self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["OK"], "listener": listener_id}))
+                                                                if self.debug:
+                                                                    print('Sending {0} to {1}'.format(msg, msg["id"]))
+                                                                del msg["id"]
+                                                                self.wss.send_message(otherclient, json.dumps({"cmd": "pmsg", "val": tmp_val, "origin": msg["origin"]}))
+                                                                if listener_detected:
+                                                                    self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["OK"], "listener": listener_id}))
+                                                                else:
+                                                                    self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["OK"]}))
                                                             else:
-                                                                self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["OK"]}))
-                                                        else:
-                                                            if listener_detected:
-                                                                self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["IDRequired"], "listener": listener_id}))
-                                                            else:
-                                                                self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["IDRequired"]}))
+                                                                if listener_detected:
+                                                                    self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["IDRequired"], "listener": listener_id}))
+                                                                else:
+                                                                    self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["IDRequired"]}))
                                                     except Exception as e:
                                                         if self.debug:
                                                             print("Error on _server_packet_handler: {0}".format(e))
@@ -818,26 +818,26 @@ class CloudLink(API):
                                             if not len(str(msg["name"])) > 1000:
                                                 if not client == self._get_obj_of_username(msg["id"]):
                                                     try:
-                                                        otherclient = self._get_obj_of_username(msg["id"])
-                                                        if not len(self._get_username_of_obj(client)) == 0:
-                                                            msg["origin"] = self._get_username_of_obj(client)
-                                                            if (self._get_client_type(otherclient) == "scratch") and ((self._is_json(msg["val"])) or (type(msg["val"]) == dict)):
-                                                                tmp_val = json.dumps(msg["val"])
+                                                        for otherclient in self._get_obj_of_username(msg["id"]):
+                                                            if not len(self._get_username_of_obj(client)) == 0:
+                                                                msg["origin"] = self._get_username_of_obj(client)
+                                                                if (self._get_client_type(otherclient) == "scratch") and ((self._is_json(msg["val"])) or (type(msg["val"]) == dict)):
+                                                                    tmp_val = json.dumps(msg["val"])
+                                                                else:
+                                                                    tmp_val = msg["val"]
+                                                                if self.debug:
+                                                                    print('Sending {0} to {1}'.format(msg, msg["id"]))
+                                                                del msg["id"]
+                                                                self.wss.send_message(otherclient, json.dumps({"cmd": "pvar", "val": tmp_val, "name": msg["name"], "origin": msg["origin"]}))
+                                                                if listener_detected:
+                                                                    self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["OK"], "listener": listener_id}))
+                                                                else:
+                                                                    self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["OK"]}))
                                                             else:
-                                                                tmp_val = msg["val"]
-                                                            if self.debug:
-                                                                print('Sending {0} to {1}'.format(msg, msg["id"]))
-                                                            del msg["id"]
-                                                            self.wss.send_message(otherclient, json.dumps({"cmd": "pvar", "val": tmp_val, "name": msg["name"], "origin": msg["origin"]}))
-                                                            if listener_detected:
-                                                                self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["OK"], "listener": listener_id}))
-                                                            else:
-                                                                self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["OK"]}))
-                                                        else:
-                                                            if listener_detected:
-                                                                self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["IDRequired"], "listener": listener_id}))
-                                                            else:
-                                                                self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["IDRequired"]}))
+                                                                if listener_detected:
+                                                                    self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["IDRequired"], "listener": listener_id}))
+                                                                else:
+                                                                    self.wss.send_message(client, json.dumps({"cmd": "statuscode", "val": self.codes["IDRequired"]}))
                                                     except Exception as e:
                                                         if self.debug:
                                                             print("Error on _server_packet_handler: {0}".format(e))
