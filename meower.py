@@ -284,6 +284,10 @@ class Meower:
                     ip = str(self.cl.statedata["ulist"]["objs"][client["id"]]["ip"])
                     
                     if ((type(username) == str) and (type(password) == str)):
+                        if (len(username) < 1) or (len(password) < 8):
+                            # Below minimum length
+                            return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
+
                         if not (len(username) > 20) or (password > 255):
                             if not self.supporter.checkForBadCharsUsername(username):
                                 # Check if the IP is a VPN/proxy
