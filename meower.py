@@ -957,8 +957,8 @@ class Meower:
                     if not self.cl._get_obj_of_username(val):
 
                         # if the username is stuck in memory, delete it
-                        if val in self.statedata["ulist"]["usernames"]: 
-                            del self.statedata["ulist"]["usernames"][val]
+                        if val in self.cl.statedata["ulist"]["usernames"]: 
+                            del self.cl.statedata["ulist"]["usernames"][val]
                             self.cl._send_to_all({"cmd": "ulist", "val": self.cl._get_ulist()})
                             self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
                         else:
