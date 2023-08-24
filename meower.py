@@ -956,8 +956,13 @@ class Meower:
                     # Forcibly kill all locked out/bugged sessions under that username - This is for extreme cases of account lockup only!
                     if not self.cl._get_obj_of_username(val):
 
-                        # Return status to the client
-                        self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
+                        # if the username is stuck in memory, delete it
+                        if val in self.statedata["ulist"]["usernames"]: 
+                            del self.statedata["ulist"]["usernames"][val]
+                            self.cl._send_to_all({"cmd": "ulist", "val": self.cl._get_ulist()})
+                            self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+                        else:
+                            self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
                         return
                     
                     # Why do I hear boss music?
@@ -1430,9 +1435,6 @@ class Meower:
                 # Post not found
                 self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
         else:
-
-
-
             # Not authenticated
             self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
     
