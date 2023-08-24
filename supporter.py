@@ -169,30 +169,12 @@ class Supporter:
                 else:
                     return False
     
-    def log_peak_users(self):
-        if not self.cl == None:
-            current_users = len(self.cl.getUsernames())
-            if current_users > self.peak_users_logger["count"]:
-                today = datetime.now()
-                self.peak_users_logger = {
-                    "count": current_users,
-                    "timestamp": self.timestamp(1)
-                }
-                self.log("New peak in # of concurrent users: {0}".format(current_users))
-                #self.create_system_message("Yay! New peak in # of concurrent users: {0}".format(current_users))
-                payload = {
-                    "mode": "peak",
-                    "payload": self.peak_users_logger
-                }
-                self.sendPacket({"cmd": "direct", "val": payload})
-    
     def on_close(self, client):
         if not self.cl == None:
             if type(client) == dict:
                 self.log("{0} Disconnected.".format(client["id"]))
             elif type(client) == str:
                 self.log("{0} Logged out.".format(self.cl._get_username_of_obj(client)))
-            self.log_peak_users()
     
     def on_connect(self, client):
         if not self.cl == None:

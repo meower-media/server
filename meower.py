@@ -234,9 +234,6 @@ class Meower:
                                             
                                             # Tell the client it is authenticated
                                             self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                                            
-                                            # Log peak users
-                                            self.supporter.log_peak_users()
                                         else:
                                             self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
                                     else:
@@ -341,9 +338,6 @@ class Meower:
                                             
                                             # Tell the client it is authenticated
                                             self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-                                            
-                                            # Log peak users
-                                            self.supporter.log_peak_users()
 
                                             # Send welcome message
                                             self.createPost(post_origin="inbox", user=username, content="Welcome to Meower! We welcome you with open arms! You can get started by making friends in the global chat or home, or by searching for people and adding them to a group chat. We hope you have fun!")
