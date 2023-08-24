@@ -196,7 +196,7 @@ class Meower:
                     
                     if ((type(username) == str) and (type(password) == str)):
                         if not self.supporter.checkForBadCharsUsername(username):
-                            if not (self.supporter.check_for_spam("login", ip, burst=5, seconds=60)) or (self.supporter.check_for_spam("login", username, burst=5, seconds=60)):
+                            if not (self.supporter.check_for_spam("login", ip, burst=25, seconds=60)) or (self.supporter.check_for_spam("login", username, burst=25, seconds=60)):
                                 FileCheck, FileRead, ValidAuth, Banned = self.accounts.authenticate(username, password)
                                 if FileCheck and FileRead:
                                     if ValidAuth:
@@ -467,7 +467,7 @@ class Meower:
         if self.supporter.isAuthenticated(client):
             if type(val) == str:
                 if not len(val) > 4000:
-                    if not self.supporter.check_for_spam("posts", client, burst=6, seconds=5):
+                    if not self.supporter.check_for_spam("posts", client, burst=10, seconds=5):
                         # Create post
                         result = self.createPost(post_origin="home", user=client, content=val)
                         if result:
@@ -1652,7 +1652,7 @@ class Meower:
                 post = val["p"]
                 chatid = val["chatid"]
                 if (not len(post) > 2000) and (not len(chatid) > 50):
-                    if not self.supporter.check_for_spam("posts", client, burst=6, seconds=5):
+                    if not self.supporter.check_for_spam("posts", client, burst=10, seconds=5):
                         if chatid == "livechat":
                             result = self.createPost(post_origin=chatid, user=client, content=post)
                             if result:
@@ -1696,7 +1696,7 @@ class Meower:
                     username = val["username"]
                     chatid = val["chatid"]
                     
-                    if not self.supporter.check_for_spam("update_chat", client, burst=5, seconds=3):
+                    if not self.supporter.check_for_spam("update_chat", client, burst=10, seconds=3):
                         # Read chat UUID's nickname
                         FileRead, chatdata = self.filesystem.load_item("chats", chatid)
                         if FileRead:
@@ -1754,7 +1754,7 @@ class Meower:
                     username = val["username"]
                     chatid = val["chatid"]
                     
-                    if not self.supporter.check_for_spam("update_chat", client, burst=5, seconds=3):
+                    if not self.supporter.check_for_spam("update_chat", client, burst=10, seconds=3):
                         # Read chat UUID's nickname
                         result, chatdata = self.filesystem.load_item("chats", chatid)
                         if result:
@@ -1830,7 +1830,7 @@ class Meower:
                     if (type(val["old"]) == str) and (type(val["new"]) == str):
                         old_password = val["old"]
                         new_password = val["new"]
-                        if not self.supporter.check_for_spam("password-change", client, burst=2, seconds=120):         
+                        if not self.supporter.check_for_spam("password-change", client, burst=1, seconds=60):         
                             if (len(old_password) <= 255) and (len(new_password) <= 255):
                                 # Check old password
                                 FileCheck, FileRead, ValidAuth, Banned = self.accounts.authenticate(client, old_password)
@@ -1885,7 +1885,7 @@ class Meower:
         if self.supporter.isAuthenticated(client):
             if type(val) == str:
                 if len(val) <= 255:
-                    if not self.supporter.check_for_spam("login", client, burst=5, seconds=60):
+                    if not self.supporter.check_for_spam("login", client, burst=1, seconds=60):
                         # Check old password
                         FileCheck, FileRead, ValidAuth, Banned = self.accounts.authenticate(client, val)
                         if FileCheck and FileRead:
