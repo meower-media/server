@@ -23,6 +23,55 @@ Dependencies:
 
 """
 
+
+COMMANDS = {
+    "ping",
+    "version_chk", 
+    "get_ulist", 
+    "authpswd", 
+    "gen_account", 
+    "get_profile", 
+    "update_config",
+    "change_pswd", 
+    "del_tokens",
+    "del_account",
+    "get_home", 
+    "get_inbox", 
+    "post_home",
+    "get_post", 
+    "get_peak_users", 
+    "search_user_posts",
+    "report",
+    "close_report",
+    "clear_home",
+    "clear_user_posts",
+    "alert",
+    "announce",
+    "block",
+    "unblock",
+    "kick",
+    "get_user_ip",
+    "get_ip_data",
+    "get_user_data",
+    "ban",
+    "pardon",
+    "terminate",
+    "repair_mode",
+    "delete_post",
+    "post_chat",
+    "set_chat_state",
+    "create_chat",
+    "leave_chat",
+    "get_chat_list",
+    "get_chat_data",
+    "get_chat_posts",
+    "add_to_chat",
+    "remove_from_chat",
+    "kick_all",
+    "force_kick"
+}
+
+
 class Main:
     def __init__(self, debug=False):
         # Initalize libraries
@@ -77,53 +126,7 @@ class Main:
     
     def handle_packet(self, cmd, ip, val, listener_detected, listener_id, client, clienttype):
         try:
-            commands = set([
-                "ping",
-                "version_chk", 
-                "get_ulist", 
-                "authpswd", 
-                "gen_account", 
-                "get_profile", 
-                "update_config",
-                "change_pswd", 
-                "del_tokens",
-                "del_account",
-                "get_home", 
-                "get_inbox", 
-                "post_home",
-                "get_post", 
-                "get_peak_users", 
-                "search_user_posts",
-                "report",
-                "close_report",
-                "clear_home",
-                "clear_user_posts",
-                "alert",
-                "announce",
-                "block",
-                "unblock",
-                "kick",
-                "get_user_ip",
-                "get_ip_data",
-                "get_user_data",
-                "ban",
-                "pardon",
-                "terminate",
-                "repair_mode",
-                "delete_post",
-                "post_chat",
-                "set_chat_state",
-                "create_chat",
-                "leave_chat",
-                "get_chat_list",
-                "get_chat_data",
-                "get_chat_posts",
-                "add_to_chat",
-                "remove_from_chat",
-                "kick_all",
-                "force_kick"
-            ])
-            if cmd in commands:
+            if cmd in COMMANDS:
                 getattr(self.meower, cmd)(client, val, listener_detected, listener_id)
             else:
                 # Catch-all error code
