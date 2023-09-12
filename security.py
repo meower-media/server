@@ -7,6 +7,35 @@ Meower Security Module
 This module provides account management and authentication services.
 """
 
+class Permissions:
+    SYSADMIN = 1
+    
+    DELETE_POSTS = 2
+
+    VIEW_ALTS = 4
+    VIEW_INBOXES = 8
+    CLEAR_USER_QUOTES = 16
+    CLEAR_USER_POSTS = 32
+    SEND_ALERTS = 64
+    KICK_USERS = 128
+    VIEW_BAN_STATES = 256
+    EDIT_BAN_STATES = 512
+    IMPERSONATE_USERS = 1024
+    DELETE_USERS = 2048
+
+    VIEW_IPS = 4096
+    BLOCK_IPS = 8192
+
+    VIEW_CHATS = 16384
+    EDIT_CHATS = 32768
+
+    VIEW_NOTES = 65536
+    EDIT_NOTES = 131072
+
+    SEND_ANNOUNCEMENTS = 262144
+
+    VIEW_AUDIT_LOG = 524288
+
 class Security:
     def __init__(self, files, supporter, logger, errorhandler):
         self.bc = bcrypt
@@ -51,9 +80,14 @@ class Security:
                         "email": "",
                         "pswd": hashed_pw.decode(),
                         "tokens": [],
-                        "lvl": 0,
-                        "banned": False,
-                        "last_ip": None
+                        "permissions": 0,
+                        "ban": {
+                            "state": "None",
+                            "expires": 0,
+                            "reason": ""
+                        },
+                        "last_ip": None,
+                        "last_seen": int(time.time())
                     }
                 )
                 return True, result
@@ -77,39 +111,48 @@ class Security:
         """
         
         if type(username) == str:
-            if self.files.does_item_exist("usersv0", str(username)):
-                self.log("Reading account: {0}".format(username))
-                result, accountData = self.files.load_item("usersv0", str(username))
-                
-                if omitSensitive: # Purge sensitive data and remove user settings
-                    for sensitive in [
-                        "unread_inbox",
-                        "theme",
-                        "mode",
-                        "sfx",
-                        "debug",
-                        "bgm",
-                        "bgm_song",
-                        "layout",
-                        "email",
-                        "pswd",
-                        "tokens",
-                        "last_ip"
-                    ]:
-                        if sensitive in accountData:
-                            del accountData[sensitive]
-                
-                if isClient:
-                    if "pswd" in accountData:
-                        del accountData["pswd"]
-                    if "tokens" in accountData:
-                        del accountData["tokens"]
-                    if "last_ip" in accountData:
-                        del accountData["last_ip"]
-                
-                return True, result, accountData
-            else:
+            self.log("Reading account: {0}".format(username))
+            result, accountData = self.files.load_item("usersv0", str(username))
+            if not result:
                 return False, True, None
+
+            accountData["lvl"] = 0
+
+            if accountData["ban"]["state"] == "PermBan":
+                accountData["banned"] = True
+            elif (accountData["ban"]["state"] == "TempBan") and (accountData["ban"]["expires"] > time.time()):
+                accountData["banned"] = True
+            else:
+                accountData["banned"] = False
+
+            if omitSensitive: # Purge sensitive data and remove user settings
+                for sensitive in [
+                    "unread_inbox",
+                    "theme",
+                    "mode",
+                    "sfx",
+                    "debug",
+                    "bgm",
+                    "bgm_song",
+                    "layout",
+                    "email",
+                    "pswd",
+                    "tokens",
+                    "ban",
+                    "last_ip"
+                ]:
+                    if sensitive in accountData:
+                        del accountData[sensitive]
+            
+            if isClient:
+                if "pswd" in accountData:
+                    del accountData["pswd"]
+                if "tokens" in accountData:
+                    del accountData["tokens"]
+                if "last_ip" in accountData:
+                    del accountData["last_ip"]
+            
+            return True, result, accountData
         else:
             self.log("Error on get_account: Expected str for username, got {0}".format(type(username)))
             return False, False, None
@@ -127,40 +170,31 @@ class Security:
         |  False  |   False  |  False   | Exception
         """
         
-        if type(username) == str:
-            if self.files.does_item_exist("usersv0", str(username)):
-                self.log("Authenticating account: {0}".format(username))
-                FileRead, accountData = self.files.load_item("usersv0", str(username))
-                if FileRead:
-                    if type(accountData) == dict:
-                        if accountData["banned"] == True:
-                            return True, True, False, True
-                        if password in accountData["tokens"]:
-                            self.log("Authenticating {0}: True".format(username))
-                            accountData["tokens"].remove(password)
-                            self.update_setting(username, {"tokens": accountData["tokens"]}, forceUpdate=True)
-                            return True, True, True, False
-                        else:
-                            hashed_pw = accountData["pswd"]
-                            pswd_bytes = bytes(password, "utf-8")
-                            hashed_pw_bytes = bytes(hashed_pw, "utf-8")
-                            try:
-                                result = self.bc.checkpw(pswd_bytes, hashed_pw_bytes)
-                                self.log("Authenticating {0}: {1}".format(username, result))
-                                return True, True, result, False
-                            except Exception as e:
-                                self.log("Error on authenticate: {0}".format(e))
-                                return True, True, False, False
-                    else:
-                        self.log("Error on get_account: Expected str for username, got {0}".format(type(username)))
-                        return False, False, False, False
+        self.log("Authenticating account: {0}".format(username))
+        _, account_exists, accountData = self.get_account(username)
+        if account_exists:
+            if type(accountData) == dict:
+                if password in accountData["tokens"]:
+                    self.log("Authenticating {0}: True".format(username))
+                    accountData["tokens"].remove(password)
+                    self.update_setting(username, {"tokens": accountData["tokens"]}, forceUpdate=True)
+                    return True, True, True, accountData["banned"]
                 else:
-                    return True, False, False, False
+                    hashed_pw = accountData["pswd"]
+                    pswd_bytes = bytes(password, "utf-8")
+                    hashed_pw_bytes = bytes(hashed_pw, "utf-8")
+                    try:
+                        result = self.bc.checkpw(pswd_bytes, hashed_pw_bytes)
+                        self.log("Authenticating {0}: {1}".format(username, result))
+                        return True, True, result, accountData["banned"]
+                    except Exception as e:
+                        self.log("Error on authenticate: {0}".format(e))
+                        return True, True, False, accountData["banned"]
             else:
-                return False, True, False, False
+                self.log("Error on get_account: Expected str for username, got {0}".format(type(username)))
+                return False, False, False, False
         else:
-            self.log("Error on get_account: Expected str for username, got {0}".format(type(username)))
-            return False, False, False, False
+            return False, True, False, False
     
     def change_password(self, username, newpassword, strength=12):
         """
@@ -196,47 +230,44 @@ class Security:
             else:
                 return False, True, False
         else:
-            self.log("Error on get_account: Expected str for username, oldpassword and newpassword, got {0} for username and {1} for newpassword".format(type(username), type(newpassword)))
+            self.log("Error on change_password: Expected str for username, oldpassword and newpassword, got {0} for username and {1} for newpassword".format(type(username), type(newpassword)))
             return False, False, False
     
     def account_exists(self, username, ignore_case=False):
         if type(username) == str:
             if ignore_case:
-                payload = self.files.find_items("usersv0", {"lower_username": str(username).lower()})
-                if len(payload) == 0:
-                    return False
-                else:
-                    return True
+                return (self.files.db.usersv0.count_documents({"lower_username": username.lower()}, limit=1) > 0)
             else:
                 return self.files.does_item_exist("usersv0", str(username))
         else:
             self.log("Error on account_exists: Expected str for username, got {0}".format(type(username)))
             return False
     
-    def is_account_banned(self, username):
-        """
-        Returns 2 booleans, plus a payload.
-        
-        | FileCheck | FileRead | Banned | Definiton
-        |---------|----------|----------|-----------------
-        |  True   |   True   |   True   | Account exists and read, account banned
-        |  True   |   True   |   False  | Account exists and read, account NOT banned
-        |  True   |   False  |   False  | Account exists, read error
-        |  False  |   True   |   False  | Account does not exist
-        |  False  |   False  |   False  |  Exception
-        """
-        
+    def get_ban_state(self, username):        
         if type(username) == str:
-            if self.files.does_item_exist("usersv0", str(username)):
-                self.log("Reading account: {0}".format(username))
-                result, accountData = self.files.load_item("usersv0", str(username))
-                return True, result, accountData["banned"]
+            accountData = self.files.db.usersv0.find_one({"lower_username": username.lower()}, projection={"ban": 1})
+            if not accountData:
+                return "None"
+            elif (accountData["ban"]["state"] in {"TempRestriction", "TempSuspension", "TempBan"}) and (accountData["ban"]["expires"] < time.time()):
+                return "None"
             else:
-                return False, True, None
+                return accountData["ban"]["state"]
         else:
-            self.log("Error on get_account: Expected str for username, got {0}".format(type(username)))
-            return False, False, None
+            self.log("Error on get_ban_state: Expected str for username, got {0}".format(type(username)))
+            return "None"
     
+    def get_permissions(self, username):
+        if type(username) == str:
+            accountData = self.files.db.usersv0.find_one({"lower_username": username.lower()}, projection={"permissions": 1})
+            if accountData:
+                print(accountData)
+                return accountData["permissions"]
+            else:
+                return 0
+        else:
+            self.log("Error on get_permissions: Expected str for username, got {0}".format(type(username)))
+            return 0
+
     def update_setting(self, username, newdata, forceUpdate=False):
         """
         Returns 3 booleans.
@@ -260,7 +291,7 @@ class Security:
                             if forceUpdate:
                                 accountData[key] = value
                             else:
-                                if key not in ["lvl", "pswd", "banned", "email", "last_ip", "lower_username", "uuid", "tokens", "created"]:
+                                if key not in {"permissions", "pswd", "ban", "email", "last_ip", "last_seen", "lower_username", "uuid", "tokens", "created"}:
                                     if key in accountData.keys():
                                         if ((type(value) == str) and (len(value) <= 360)) or ((type(value) == int) and (len(str(value)) <= 360)) or ((type(value) == float) and (len(str(value)) <= 360)) or (type(value) == bool) or (type(value) == None):
                                             if type(value) == str:
@@ -280,3 +311,18 @@ class Security:
         else:
             self.log("Error on get_account: Expected str for username and dict for newdata, got {0} for username and {1} for newdata".format(type(username), type(newdata)))
             return False, False, False
+
+    def has_permission(self, user_permissions, permission):
+        if ((user_permissions & Permissions.SYSADMIN) == Permissions.SYSADMIN):
+            return True
+        else:
+            return ((user_permissions & permission) == permission)
+
+    def has_any_permission(self, user_permissions, permissions_list):
+        if ((user_permissions & Permissions.SYSADMIN) == Permissions.SYSADMIN):
+            return True
+        else:
+            for permission in permissions_list:
+                if ((user_permissions & permission) == permission):
+                    return True
+            return False

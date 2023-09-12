@@ -72,7 +72,7 @@ class API:
                     self.statedata["secure_enable"] = False
                     self.statedata["secure_keys"] = []
                 if not "ip_blocklist" in self.statedata:
-                    self.statedata["ip_blocklist"] = [""]
+                    self.statedata["ip_blocklist"] = set({""})
                 
                 self.statedata = {
                     "ulist": {
@@ -311,9 +311,9 @@ class API:
     
     def loadIPBlocklist(self, blist): # Loads a list of IP addresses to block
         if type(blist) == list:
-            if not '' in blist:
+            if "" not in blist:
                 blist.append("")
-            self.statedata["ip_blocklist"] = blist
+            self.statedata["ip_blocklist"] = set(blist)
             if self.debug:
                 print("Loaded {0} blocked IPs into the blocklist!".format(len(self.statedata["ip_blocklist"])-1))
     
@@ -321,8 +321,8 @@ class API:
         if self.state == 1:
             if self.statedata["secure_enable"]:
                 if type(ip) == str:
-                    if not ip in self.statedata["ip_blocklist"]:
-                        self.statedata["ip_blocklist"].append(ip)
+                    if ip not in self.statedata["ip_blocklist"]:
+                        self.statedata["ip_blocklist"].add(ip)
                         if self.debug:
                             print("Blocked IP {0}!".format(ip))
         else:
@@ -346,7 +346,7 @@ class API:
             if self.statedata["secure_enable"]:
                 tmp = self.statedata["ip_blocklist"]
                 tmp.remove('')
-                return self.statedata["ip_blocklist"]
+                return list(self.statedata["ip_blocklist"])
         else:
             if self.debug:
                 print("Error: Cannot use the IP Blocklist get function in current state!")
@@ -487,6 +487,7 @@ class CloudLink(API):
             return False
     
     def _is_obj_blocked(self, obj): # Checks if a client is IP blocked
+        print(self.statedata)
         if self.statedata["secure_enable"]:
             return (self._get_ip_of_obj(obj) in self.statedata["ip_blocklist"])
         else:

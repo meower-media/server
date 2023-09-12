@@ -26,7 +26,6 @@ Dependencies:
 
 COMMANDS = {
     "ping",
-    "version_chk", 
     "get_ulist", 
     "authpswd", 
     "gen_account", 
@@ -38,8 +37,7 @@ COMMANDS = {
     "get_home", 
     "get_inbox", 
     "post_home",
-    "get_post", 
-    "get_peak_users", 
+    "get_post",  
     "search_user_posts",
     "report",
     "close_report",
@@ -50,12 +48,8 @@ COMMANDS = {
     "block",
     "unblock",
     "kick",
-    "get_user_ip",
     "get_ip_data",
-    "get_user_data",
     "ban",
-    "pardon",
-    "terminate",
     "repair_mode",
     "delete_post",
     "post_chat",
@@ -64,6 +58,7 @@ COMMANDS = {
     "leave_chat",
     "get_chat_list",
     "get_chat_data",
+    "update_chat",
     "get_chat_posts",
     "add_to_chat",
     "remove_from_chat",
@@ -84,6 +79,7 @@ class Main:
             logger = self.supporter.log,
             errorhandler = self.supporter.full_stack
         )
+        self.supporter.files = self.filesystem
         self.accounts = Security( # Security and account management
             files = self.filesystem,
             supporter = self.supporter,
@@ -102,15 +98,10 @@ class Main:
         )
         
         # Load trust keys
-        result, payload = self.filesystem.load_item("config", "trust_keys")
-        if result:
-            self.cl.trustedAccess(True, payload["index"])
+        self.cl.trustedAccess(True, ["meower"])
         
         # Load IP Banlist
-        ips = []
-        for netlog in self.filesystem.db["netlog"].find({"blocked": True}):
-            ips.append(netlog["_id"])
-        self.cl.loadIPBlocklist(ips)
+        self.cl.loadIPBlocklist([netlog["_id"] for netlog in self.filesystem.db["netlog"].find({"banned": True})])
         
         # Set server MOTD
         self.cl.setMOTD("Meower Social Media Platform Server", True)

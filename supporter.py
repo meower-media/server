@@ -30,8 +30,10 @@ class Supporter:
         self.packet_handler = packet_callback
         self.listener_detected = False
         self.listener_id = None
+
+        self.files = None
         
-        if not self.cl == None:
+        if self.cl:
             # Add custom status codes to CloudLink
             self.cl.codes["KeyNotFound"] = "I:010 | Key Not Found"
             self.cl.codes["PasswordInvalid"] = "I:011 | Invalid Password"
@@ -77,7 +79,7 @@ class Supporter:
             }
         }
         
-        if not self.cl == None:
+        if self.cl:
             # Specify server callbacks
             self.cl.callback("on_packet", self.on_packet)
             self.cl.callback("on_close", self.on_close)
@@ -102,13 +104,11 @@ class Supporter:
         print("{0}: {1}".format(self.timestamp(4), event))
     
     def sendPacket(self, payload, listener_detected=False, listener_id=None):
-        if not self.cl == None:
+        if self.cl:
             if listener_detected:
                 if "id" in payload:
                     payload["listener"] = listener_id
-                self.cl.sendPacket(payload)
-            else:
-                self.cl.sendPacket(payload)
+            self.cl.sendPacket(payload)
     
     def get_client_statedata(self, client): # "steals" information from the CloudLink module to get better client data
         if not self.cl:
@@ -154,7 +154,7 @@ class Supporter:
         return True
     
     def delete_client_statedata(self, client, key): # WARN: Use with caution: DO NOT DELETE UNNECESSARY KEYS!
-        if not self.cl == None:
+        if self.cl:
             if type(client) == str:
                 client = self.cl._get_obj_of_username(client)
             if not client == None:
@@ -170,17 +170,18 @@ class Supporter:
                     return False
     
     def on_close(self, client):
-        if not self.cl == None:
-            if type(client) == dict:
-                self.log("{0} Disconnected.".format(client["id"]))
-            elif type(client) == str:
+        if self.cl:
+            if self.cl._get_username_of_obj(client):
+                if self.files:
+                    self.files.update_item("usersv0", self.cl._get_username_of_obj(client), {"last_seen": int(time.time())})
                 self.log("{0} Logged out.".format(self.cl._get_username_of_obj(client)))
     
     def on_connect(self, client):
-        if not self.cl == None:
+        if self.cl:
             if self.status["repair_mode"]:
                 self.log("Refusing connection from {0} due to repair mode being enabled".format(client["id"]))
                 self.cl.kickClient(client)
+            
             else:
                 self.log("{0} Connected.".format(client["id"]))
                 self.modify_client_statedata(client, "authtype", "")
@@ -190,7 +191,7 @@ class Supporter:
                 self.modify_client_statedata(client, "last_packet", 0)
     
     def on_packet(self, message):
-        if not self.cl == None:
+        if self.cl:
             # CL Turbo Support
             self.listener_detected = ("listener" in message)
             self.listener_id = None
@@ -270,7 +271,7 @@ class Supporter:
         return tmp[0]["authed"]
     
     def setAuthenticatedState(self, client, value):
-        if not self.cl == None:
+        if self.cl:
             self.modify_client_statedata(client, "authed", value)
     
     def checkForBadCharsUsername(self, value):
@@ -293,7 +294,7 @@ class Supporter:
         return badchars
     
     def autoID(self, client, username):
-        if not self.cl == None:
+        if self.cl:
             # really janky code that automatically sets user ID
             self.modify_client_statedata(client, "username", username)
 
@@ -306,7 +307,7 @@ class Supporter:
             self.log("{0} autoID given".format(username))
     
     def kickUser(self, username, status="Kicked"):
-        if not self.cl == None:
+        if self.cl:
             if username in self.cl.getUsernames():
                 self.log("Kicking {0}".format(username))
 
