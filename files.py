@@ -1,6 +1,5 @@
 from pymongo import MongoClient, ASCENDING, DESCENDING, TEXT
 import time
-from uuid import uuid4
 import os
 from dotenv import load_dotenv
 from security import Permissions
@@ -38,11 +37,15 @@ class Files:
         for item in {
             "config",
             "usersv0",
+            "user_settings",
             "netlog",
+            "relationships",
             "posts",
+            "post_revisions",
             "chats",
             "reports",
             "admin_notes",
+            "audit_log"
         }:
             if item not in self.db.list_collection_names():
                 self.log("Creating collection {0}".format(item))
@@ -54,12 +57,10 @@ class Files:
                 [("lower_username", ASCENDING), ("created", DESCENDING)],
                 name="lower_username",
             )
-        except:
-            pass
+        except: pass
         try:
             self.db["netlog"].create_index([("users", ASCENDING)], name="users")
-        except:
-            pass
+        except: pass
         try:
             self.db["netlog"].create_index(
                 [("last_active", ASCENDING)],
@@ -67,16 +68,14 @@ class Files:
                 expireAfterSeconds=7776000,
                 partialFilterExpression={"banned": False},
             )
-        except:
-            pass
+        except: pass
         try:
             self.db["netlog"].create_index(
                 [("banned", ASCENDING)],
                 name="banned",
                 partialFilterExpression={"banned": True},
             )
-        except:
-            pass
+        except: pass
         try:
             self.db["posts"].create_index(
                 [
@@ -85,11 +84,9 @@ class Files:
                     ("t.e", DESCENDING),
                     ("u", ASCENDING),
                 ],
-                name="default",
-                partialFilterExpression={"isDeleted": False},
+                name="default"
             )
-        except:
-            pass
+        except: pass
         try:
             self.db["posts"].create_index(
                 [
@@ -98,23 +95,10 @@ class Files:
                     ("p", TEXT),
                     ("t.e", DESCENDING),
                 ],
-                name="content_search",
+                name="search",
                 partialFilterExpression={"post_origin": "home", "isDeleted": False},
             )
-        except:
-            pass
-        try:
-            self.db["posts"].create_index(
-                [
-                    ("u", ASCENDING),
-                    ("post_origin", ASCENDING),
-                    ("isDeleted", ASCENDING),
-                    ("t.e", DESCENDING),
-                ],
-                name="user_search",
-            )
-        except:
-            pass
+        except: pass
         try:
             self.db["posts"].create_index(
                 [("deleted_at", ASCENDING)],
@@ -122,79 +106,86 @@ class Files:
                 expireAfterSeconds=2592000,
                 partialFilterExpression={"isDeleted": True, "mod_deleted": False},
             )
-        except:
-            pass
+        except: pass
         try:
             self.db["chats"].create_index(
                 [
+                    ("type", ASCENDING),
                     ("members", ASCENDING),
                     ("deleted", ASCENDING),
                     ("last_active", DESCENDING),
                 ],
                 name="user_chats",
             )
-        except:
-            pass
+        except: pass
 
         # Create reserved accounts
         for username in ["Server", "Deleted", "Meower", "Admin", "username"]:
-            self.create_item(
-                "usersv0",
-                username,
-                {
+            try:
+                self.db.usersv0.insert_one({
+                    "_id": username,
                     "lower_username": username.lower(),
+                    "uuid": username,
                     "created": int(time.time()),
-                    "uuid": str(uuid4()),
-                    "unread_inbox": False,
-                    "theme": "",
-                    "mode": None,
-                    "sfx": None,
-                    "debug": None,
-                    "bgm": None,
-                    "bgm_song": None,
-                    "layout": None,
                     "pfp_data": None,
                     "quote": None,
-                    "email": None,
                     "pswd": None,
-                    "tokens": [],
-                    "permissions": 0,
-                    "ban": {"state": "None", "expires": 0, "reason": ""},
-                    "last_ip": None,
+                    "tokens": None,
+                    "permissions": None,
+                    "ban": None,
                     "last_seen": None,
-                },
-            )
+                    "delete_after": None
+                })
+            except: pass
 
         # Create status file
-        self.create_item(
-            "config", "status", {"repair_mode": False, "is_deprecated": False}
-        )
+        try:
+            self.db.config.insert_one({
+                "_id": "status",
+                "repair_mode": False,
+                "registration": False
+            })
+        except: pass
 
         # Create Filter file
-        self.create_item("config", "filter", {"whitelist": [], "blacklist": []})
+        try:
+            self.db.config.insert_one({
+                "_id": "filter",
+                "whitelist": [],
+                "blacklist": []
+            })
+        except: pass
 
         # Migrations
         server = self.db.usersv0.find_one({"_id": "Server"})
-        if "banned" in server:  # big moderation update
+        if "banned" in server:  # moderation update
             self.log(
-                "Running migration for big moderation update...\n\nPlease do not kill the server!"
+                "Running migration for moderation update...\n\nPlease do not kill the server!"
             )
 
             self.log("Updating user admin permissions...")
             level1 = (
-                Permissions.DELETE_POSTS
+                Permissions.VIEW_REPORTS
+                | Permissions.EDIT_REPORTS
+                | Permissions.VIEW_NOTES
+                | Permissions.EDIT_NOTES
+                | Permissions.VIEW_POSTS
+                | Permissions.EDIT_POSTS
                 | Permissions.VIEW_INBOXES
                 | Permissions.CLEAR_USER_QUOTES
                 | Permissions.SEND_ALERTS
                 | Permissions.KICK_USERS
                 | Permissions.VIEW_BAN_STATES
                 | Permissions.EDIT_BAN_STATES
-                | Permissions.VIEW_NOTES
-                | Permissions.EDIT_NOTES
             )
-            level2 = level1 | Permissions.VIEW_ALTS | Permissions.CLEAR_USER_POSTS
+            level2 = (
+                level1
+                | Permissions.VIEW_ALTS
+                | Permissions.CLEAR_USER_POSTS
+            )
             level3 = (
                 level2
+                | Permissions.DELETE_USERS
                 | Permissions.VIEW_IPS
                 | Permissions.BLOCK_IPS
                 | Permissions.VIEW_CHATS
@@ -257,59 +248,12 @@ class Files:
 
         self.log("Files initialized!")
 
-    def does_item_exist(self, collection, id):
-        if self.db[collection].count_documents({"_id": id}) > 0:
-            return True
-        else:
-            return False
-
-    def create_item(self, collection, id, data):
-        if collection in self.db.list_collection_names():
-            if not self.does_item_exist(collection, id):
-                data["_id"] = id
-                self.db[collection].insert_one(data)
-                return True
+    def get_total_pages(self, collection, query):
+        item_count = self.db[collection].count_documents(query)
+        if (item_count % 25) == 0:
+            if (item_count < 25):
+                return 1
             else:
-                self.log("{0} already exists in {1}".format(id, collection))
-                return False
+                return (item_count // 25)
         else:
-            self.log("{0} collection doesn't exist".format(collection))
-            return False
-
-    def update_item(self, collection, id, data, upsert: bool = False):
-        if upsert or self.does_item_exist(collection, id):
-            self.db[collection].update_one({"_id": id}, {"$set": data}, upsert=upsert)
-            return True
-        else:
-            return False
-
-    def write_item(self, collection, id, data):
-        if self.does_item_exist(collection, id):
-            data["_id"] = id
-            self.db[collection].find_one_and_replace({"_id": id}, data)
-            return True
-        else:
-            return False
-
-    def load_item(self, collection, id):
-        item = self.db[collection].find_one({"_id": id})
-        if item:
-            return True, item
-        else:
-            return False, None
-
-    def find_items(self, collection, query):
-        return [
-            item["_id"]
-            for item in self.db[collection].find(query, projection={"_id": 1})
-        ]
-
-    def count_items(self, collection, query):
-        return self.db[collection].count_documents(query)
-
-    def delete_item(self, collection, id):
-        if self.does_item_exist(collection, id):
-            self.db[collection].delete_one({"_id": id})
-            return True
-        else:
-            return False
+            return (item_count // 25)+1

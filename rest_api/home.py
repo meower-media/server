@@ -1,0 +1,71 @@
+from flask import Blueprint, current_app as app, request, abort
+from pydantic import BaseModel, Field
+import pymongo
+
+
+home_bp = Blueprint("home_bp", __name__, url_prefix="/home")
+
+
+class PostBody(BaseModel):
+    content: str = Field(min_length=1, max_length=4000)
+
+    class Config:
+        validate_assignment = True
+        str_strip_whitespace = True
+
+
+@home_bp.get("")
+def get_home_posts():
+    # Get page
+    page = 1
+    if request.user:
+        try:
+            page = int(request.args["page"])
+        except: pass
+
+    # Get posts
+    query = {"post_origin": "home", "isDeleted": False}
+    posts = list(app.files.db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
+
+    # Return posts
+    payload = {
+        "error": False,
+        "page#": page,
+        "pages": (app.files.get_total_pages("posts", query) if request.user else 1)
+    }
+    if "autoget" in request.args:
+        payload["autoget"] = posts
+    else:
+        payload["index"] = [post["_id"] for post in posts]
+    return payload, 200
+
+
+@home_bp.post("")
+def create_home_post():
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Check ratelimit
+    if app.supporter.ratelimited(f"post:{request.user}"):
+        abort(429)
+
+    # Ratelimit
+    app.supporter.ratelimit(f"post:{request.user}", 6, 5)
+
+    # Get body
+    try:
+        body = PostBody(**request.json)
+    except: abort(400)
+
+    # Check ban state
+    if app.security.get_ban_state(request.user) in {"TempSuspension", "PermSuspension"}:
+        return {"error": True, "type": "accountBanned"}, 403
+
+    # Create post
+    FileWrite, post = app.supporter.createPost("home", request.user, body.content)
+    if not FileWrite:
+        abort(500)
+
+    # Return new post
+    return post, 200

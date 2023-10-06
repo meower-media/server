@@ -180,6 +180,47 @@ class API:
     def sendPacket(self, msg): # User-friendly message sender for both server and client.
         try:
             if self.state == 1:
+                if ("id" in msg):
+                    if isinstance(msg["id"], list):
+                        clients = msg["id"]
+                    else:
+                        clients = [msg["id"]]
+                    
+                    del msg["id"]
+                    stringified_msg = json.dumps(msg)
+
+                    for client in clients:
+                        if isinstance(client, dict): # Server is probably passing along the memory object for reference
+                            if self.debug:
+                                print("Info on sendPacket: Server passed along memory object:", client["id"], "will try to send packet directly")
+                            try:
+                                if self.debug:
+                                    print('Sending {0} to {1}'.format(stringified_msg, client["id"]))
+                                self.wss.send_message(client, stringified_msg)
+                            except Exception as e:
+                                if self.debug:
+                                    print("Error on sendPacket (server): {0}".format(e))
+                        elif isinstance(client, str) and (msg["cmd"] not in ["gmsg", "gvar"]):
+                            if client in self.statedata["ulist"]["usernames"]:
+                                try:
+                                    for multisession in self.statedata["ulist"]["usernames"][client]:
+                                        client = self.statedata["ulist"]["objs"][multisession]["object"]
+                                        if self.debug:
+                                            print('Sending {0} to {1}'.format(stringified_msg, client))
+                                        self.wss.send_message(client, stringified_msg)
+                                except Exception as e:
+                                    if self.debug:
+                                        print("Error on sendPacket (server): {0}".format(e))
+                else:
+                    try:
+                        if self.debug:
+                            print('Sending "{0}" to all clients'.format(json.dumps(msg)))
+                        self._send_to_all(msg)
+                    except Exception as e:
+                        if self.debug:
+                            print("Error on sendPacket (server): {0}".format(e))
+
+                """
                 if ("id" in msg) and (type(msg["id"]) == dict): # Server is probably passing along the memory object for reference
                     if self.debug:
                         print("Info on sendPacket: Server passed along memory object:", msg["id"]["id"], "will try to send packet directly")
@@ -220,6 +261,7 @@ class API:
                     except Exception as e:
                             if self.debug:
                                 print("Error on sendPacket (server): {0}".format(e))
+                """
             elif self.state == 2:
                 try:
                     if self.debug:
@@ -487,7 +529,6 @@ class CloudLink(API):
             return False
     
     def _is_obj_blocked(self, obj): # Checks if a client is IP blocked
-        print(self.statedata)
         if self.statedata["secure_enable"]:
             return (self._get_ip_of_obj(obj) in self.statedata["ip_blocklist"])
         else:

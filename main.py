@@ -25,45 +25,40 @@ Dependencies:
 
 
 COMMANDS = {
+    # Networking/client utilities
     "ping",
-    "get_ulist", 
-    "authpswd", 
-    "gen_account", 
-    "get_profile", 
+    "get_ulist",
+
+    # Accounts and security
+    "authpswd",
+    "gen_account",
+    "get_profile",
     "update_config",
-    "change_pswd", 
+    "change_pswd",
     "del_tokens",
     "del_account",
-    "get_home", 
-    "get_inbox", 
-    "post_home",
-    "get_post",  
-    "search_user_posts",
-    "report",
-    "close_report",
-    "clear_home",
-    "clear_user_posts",
-    "alert",
-    "announce",
-    "block",
-    "unblock",
-    "kick",
-    "get_ip_data",
-    "ban",
-    "repair_mode",
-    "delete_post",
-    "post_chat",
-    "set_chat_state",
+
+    # Group chats/DMs
     "create_chat",
     "leave_chat",
     "get_chat_list",
     "get_chat_data",
-    "update_chat",
-    "get_chat_posts",
     "add_to_chat",
     "remove_from_chat",
-    "kick_all",
-    "force_kick"
+    "set_chat_state",
+
+    # Posts
+    "get_home",
+    "post_home",
+    "search_user_posts",
+    "get_inbox",
+    "get_chat_posts",
+    "post_chat",
+    "get_post",
+    "delete_post",
+
+    # Moderation/administration
+    "report"
 }
 
 
@@ -80,7 +75,7 @@ class Main:
             errorhandler = self.supporter.full_stack
         )
         self.supporter.files = self.filesystem
-        self.accounts = Security( # Security and account management
+        self.security = Security( # Security and account management
             files = self.filesystem,
             supporter = self.supporter,
             logger = self.supporter.log,
@@ -93,21 +88,25 @@ class Main:
             cl = self.cl,
             logger = self.supporter.log,
             errorhandler = self.supporter.full_stack,
-            accounts = self.accounts,
+            security = self.security,
             files = self.filesystem
         )
         
         # Load trust keys
         self.cl.trustedAccess(True, ["meower"])
         
-        # Load IP Banlist
-        self.cl.loadIPBlocklist([netlog["_id"] for netlog in self.filesystem.db["netlog"].find({"banned": True})])
-        
         # Set server MOTD
         self.cl.setMOTD("Meower Social Media Platform Server", True)
         
         # Run REST API
-        Thread(target=rest_api_app.run, kwargs={"host": "0.0.0.0", "port": 3001, "debug": False, "use_reloader": False}).start()
+        rest_api_app.cl = self.cl
+        rest_api_app.supporter = self.supporter
+        rest_api_app.files = self.filesystem
+        rest_api_app.security = self.security
+        rest_api_app.log = self.supporter.log
+        rest_api_thread = Thread(target=rest_api_app.run, kwargs={"host": "0.0.0.0", "port": 3001, "debug": False, "use_reloader": False})
+        rest_api_thread.daemon = True
+        rest_api_thread.start()
 
         # Run CloudLink server
         self.cl.server(port=3000, ip="0.0.0.0")

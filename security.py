@@ -1,316 +1,214 @@
-import bcrypt
+from hashlib import sha256
 import time
-from uuid import uuid4
+import requests
+import os
+import uuid
 
 """
 Meower Security Module
 This module provides account management and authentication services.
 """
 
+SENSITIVE_ACCOUNT_FIELDS = {
+    "pswd",
+    "tokens",
+    "delete_after"
+}
+
+SENSITIVE_ACCOUNT_FIELDS_DB_PROJECTION = {}
+for key in SENSITIVE_ACCOUNT_FIELDS:
+    SENSITIVE_ACCOUNT_FIELDS_DB_PROJECTION[key] = 0
+
+DEFAULT_USER_SETTINGS = {
+    "unread_inbox": True,
+    "theme": "orange",
+    "mode": True,
+    "layout": "new",
+    "sfx": True,
+    "bgm": False,
+    "bgm_song": 2,
+    "debug": False,
+    "hide_blocked_users": False,
+    "active_dms": [],
+    "favorited_chats": []
+}
+
+AUDIT_LOG_TYPES = {
+    "got_notes",
+    "updated_notes",
+
+    "got_user",
+    "got_inbox",
+
+    "cleared_posts",
+    "alerted",
+    "kicked",
+    "force_kicked",
+    "banned",
+
+    "sent_announcement",
+
+    "kicked_all"
+}
+
+
+class UserFlags:
+    SYSTEM = 1
+    DELETED = 2
+
+
 class Permissions:
     SYSADMIN = 1
-    
-    DELETE_POSTS = 2
 
-    VIEW_ALTS = 4
-    VIEW_INBOXES = 8
-    CLEAR_USER_QUOTES = 16
-    CLEAR_USER_POSTS = 32
-    SEND_ALERTS = 64
-    KICK_USERS = 128
-    VIEW_BAN_STATES = 256
-    EDIT_BAN_STATES = 512
-    IMPERSONATE_USERS = 1024
-    DELETE_USERS = 2048
+    VIEW_REPORTS = 2
+    EDIT_REPORTS = 4
 
-    VIEW_IPS = 4096
-    BLOCK_IPS = 8192
+    VIEW_NOTES = 8
+    EDIT_NOTES = 16
 
-    VIEW_CHATS = 16384
-    EDIT_CHATS = 32768
+    VIEW_POSTS = 32
+    DELETE_POSTS = 64
 
-    VIEW_NOTES = 65536
-    EDIT_NOTES = 131072
+    VIEW_ALTS = 128
+    SEND_ALERTS = 256
+    KICK_USERS = 512
+    CLEAR_USER_QUOTES = 1024
+    VIEW_BAN_STATES = 2048
+    EDIT_BAN_STATES = 4096
+    DELETE_USERS = 8192
+
+    VIEW_IPS = 16384
+    BLOCK_IPS = 32768
+
+    VIEW_CHATS = 65536
+    EDIT_CHATS = 131072
 
     SEND_ANNOUNCEMENTS = 262144
 
-    VIEW_AUDIT_LOG = 524288
-
 class Security:
     def __init__(self, files, supporter, logger, errorhandler):
-        self.bc = bcrypt
         self.supporter = supporter
         self.files = files
         self.log = logger
         self.errorhandler = errorhandler
         self.log("Security initialized!")
-    
-    def create_account(self, username, password, strength=12):
-    
-        """
-        Returns 2 booleans.
-        
-        | FileCheck | FileWrite | Definiton
-        |---------|----------|-----------------
-        |  True  |   True   | Account created
-        |  True  |   False  | Account creation error
-        |  False |   True   | Account already exists
-        |  False |   False  | Exception
-        """
-        
-        if (type(password) == str) and (type(username) == str):
-            if not self.account_exists(str(username), ignore_case=True):
-                self.log("Creating account: {0}".format(username))
-                pswd_bytes = bytes(password, "utf-8") # Convert password to bytes
-                hashed_pw = self.bc.hashpw(pswd_bytes, self.bc.gensalt(strength)) # Hash and salt the password
-                result = self.files.create_item("usersv0", str(username), { # Default account data
-                        "lower_username": username.lower(),
-                        "created": int(time.time()),
-                        "uuid": str(uuid4()),
-                        "unread_inbox": False,
-                        "theme": "orange",
-                        "mode": True,
-                        "sfx": True,
-                        "debug": False,
-                        "bgm": False,
-                        "bgm_song": 2,
-                        "layout": "new",
-                        "pfp_data": 1,
-                        "quote": "",
-                        "email": "",
-                        "pswd": hashed_pw.decode(),
-                        "tokens": [],
-                        "permissions": 0,
-                        "ban": {
-                            "state": "None",
-                            "expires": 0,
-                            "reason": ""
-                        },
-                        "last_ip": None,
-                        "last_seen": int(time.time())
-                    }
-                )
-                return True, result
-            else:
-                self.log("Not creating account {0}: Account already exists".format(username))
-                return False, True
-        else:
-            self.log("Error on generate_account: Expected str for username and password, got {0} for username and {1} for password".format(type(username), type(password)))
-            return False, False
-    
-    def get_account(self, username, omitSensitive=False, isClient=False):
-        """
-        Returns 2 booleans, plus a payload.
-        
-        | FileCheck | FileRead | Definiton
-        |---------|----------|-----------------
-        |  True   |   True   | Account exists and read 
-        |  True   |   False  | Account exists, read error
-        |  False  |   True   | Account does not exist
-        |  False  |   False  | Exception
-        """
-        
-        if type(username) == str:
-            self.log("Reading account: {0}".format(username))
-            result, accountData = self.files.load_item("usersv0", str(username))
-            if not result:
-                return False, True, None
 
-            accountData["lvl"] = 0
-
-            if accountData["ban"]["state"] == "PermBan":
-                accountData["banned"] = True
-            elif (accountData["ban"]["state"] == "TempBan") and (accountData["ban"]["expires"] > time.time()):
-                accountData["banned"] = True
-            else:
-                accountData["banned"] = False
-
-            if omitSensitive: # Purge sensitive data and remove user settings
-                for sensitive in [
-                    "unread_inbox",
-                    "theme",
-                    "mode",
-                    "sfx",
-                    "debug",
-                    "bgm",
-                    "bgm_song",
-                    "layout",
-                    "email",
-                    "pswd",
-                    "tokens",
-                    "ban",
-                    "last_ip"
-                ]:
-                    if sensitive in accountData:
-                        del accountData[sensitive]
-            
-            if isClient:
-                if "pswd" in accountData:
-                    del accountData["pswd"]
-                if "tokens" in accountData:
-                    del accountData["tokens"]
-                if "last_ip" in accountData:
-                    del accountData["last_ip"]
-            
-            return True, result, accountData
-        else:
-            self.log("Error on get_account: Expected str for username, got {0}".format(type(username)))
-            return False, False, None
-    
-    def authenticate(self, username, password): 
-        """
-        Returns 3 booleans.
-        
-        | FileCheck | FileRead | ValidAuth | Definiton
-        |---------|----------|----------|-----------------
-        |  True   |   True   |  True    | Account exists, read OK, authentication valid
-        |  True   |   True   |  False   | Account exists, read OK, authentication invalid
-        |  True   |   False  |  False   | Account exists, read error
-        |  False  |   True   |  False   | Account does not exist
-        |  False  |   False  |  False   | Exception
-        """
-        
-        self.log("Authenticating account: {0}".format(username))
-        _, account_exists, accountData = self.get_account(username)
-        if account_exists:
-            if type(accountData) == dict:
-                if password in accountData["tokens"]:
-                    self.log("Authenticating {0}: True".format(username))
-                    accountData["tokens"].remove(password)
-                    self.update_setting(username, {"tokens": accountData["tokens"]}, forceUpdate=True)
-                    return True, True, True, accountData["banned"]
-                else:
-                    hashed_pw = accountData["pswd"]
-                    pswd_bytes = bytes(password, "utf-8")
-                    hashed_pw_bytes = bytes(hashed_pw, "utf-8")
-                    try:
-                        result = self.bc.checkpw(pswd_bytes, hashed_pw_bytes)
-                        self.log("Authenticating {0}: {1}".format(username, result))
-                        return True, True, result, accountData["banned"]
-                    except Exception as e:
-                        self.log("Error on authenticate: {0}".format(e))
-                        return True, True, False, accountData["banned"]
-            else:
-                self.log("Error on get_account: Expected str for username, got {0}".format(type(username)))
-                return False, False, False, False
-        else:
-            return False, True, False, False
-    
-    def change_password(self, username, newpassword, strength=12):
-        """
-        Returns 3 booleans.
-        
-        | FileCheck | FileRead | FileWrite | Definiton
-        |---------|----------|----------|-----------------
-        |  True   |   True   |  True    | Account exists, read OK, password changed
-        |  True   |   False  |  False   | Account exists, read error
-        |  False  |   True   |  False   | Account does not exist
-        |  False  |   False  |  False   | Exception
-        """
-        
-        if (type(username) == str) and (type(newpassword) == str):
-            if self.files.does_item_exist("usersv0", str(username)):
-                self.log("Changing {0} password".format(username))
-                result, accountData = self.files.load_item("usersv0", str(username))
-                if result:
-                    try:
-                        pswd_bytes = bytes(newpassword, "utf-8") # Convert password to bytes
-                        hashed_pw = self.bc.hashpw(pswd_bytes, self.bc.gensalt(strength)) # Hash and salt the password
-                        
-                        accountData["pswd"] = hashed_pw.decode()
-                        
-                        result = self.files.write_item("usersv0", str(username), accountData)
-                        self.log("Change {0} password: {1}".format(username, result))
-                        return True, True, result
-                    except Exception as e:
-                        self.log("Error on authenticate: {0}".format(e))
-                        return True, True, False
-                else:
-                    return True, False, False
-            else:
-                return False, True, False
-        else:
-            self.log("Error on change_password: Expected str for username, oldpassword and newpassword, got {0} for username and {1} for newpassword".format(type(username), type(newpassword)))
-            return False, False, False
-    
     def account_exists(self, username, ignore_case=False):
-        if type(username) == str:
-            if ignore_case:
-                return (self.files.db.usersv0.count_documents({"lower_username": username.lower()}, limit=1) > 0)
-            else:
-                return self.files.does_item_exist("usersv0", str(username))
-        else:
+        if not isinstance(username, str):
             self.log("Error on account_exists: Expected str for username, got {0}".format(type(username)))
             return False
+
+        return (self.files.db.usersv0.count_documents({"lower_username": username.lower()} if ignore_case else {"_id": username}, limit=1) > 0)
     
-    def get_ban_state(self, username):        
-        if type(username) == str:
-            accountData = self.files.db.usersv0.find_one({"lower_username": username.lower()}, projection={"ban": 1})
-            if not accountData:
-                return "None"
-            elif (accountData["ban"]["state"] in {"TempRestriction", "TempSuspension", "TempBan"}) and (accountData["ban"]["expires"] < time.time()):
-                return "None"
+    def get_account(self, username, include_config=False):
+        # Check datatype
+        if not isinstance(username, str):
+            self.log("Error on get_account: Expected str for username, got {0}".format(type(username)))
+            return None
+
+        # Get account
+        account = self.files.db.usersv0.find_one({"lower_username": username.lower()}, projection=SENSITIVE_ACCOUNT_FIELDS_DB_PROJECTION)
+        if not account:
+            return None
+
+        # Make sure there's nothing sensitive on the account obj
+        for key in SENSITIVE_ACCOUNT_FIELDS:
+            if key in account:
+                del account[key]
+
+        # Add lvl and banned
+        account["lvl"] = 0
+        if account["ban"]:
+            if account["ban"]["state"] == "PermBan":
+                account["banned"] = True
+            elif (account["ban"]["state"] == "TempBan") and (account["ban"]["expires"] > time.time()):
+                account["banned"] = True
             else:
-                return accountData["ban"]["state"]
+                account["banned"] = False
         else:
+            account["banned"] = False
+
+        # Include config
+        if include_config:
+            account.update(DEFAULT_USER_SETTINGS)
+            user_settings = self.files.db.user_settings.find_one({"_id": account["_id"]})
+            if user_settings:
+                del user_settings["_id"]
+                account.update(user_settings)
+        else:
+            # Remove ban if not including config
+            del account["ban"]
+
+        return account
+
+    def update_settings(self, username, newdata):
+        # Check datatype
+        if not isinstance(username, str):
+            self.log("Error on update_settings: Expected str for username, got {0}".format(type(username)))
+            return False
+        elif not isinstance(newdata, dict):
+            self.log("Error on update_settings: Expected str for newdata, got {0}".format(type(newdata)))
+            return False
+        
+        # Get user UUID
+        account = self.files.db.usersv0.find_one({"lower_username": username.lower()}, projection={"_id": 1, "uuid": 1})
+        if not account:
+            return False
+        
+        # Init vars
+        updated_user_vals = {}
+        updated_user_settings_vals = {}
+
+        # Update pfp
+        if "pfp_data" in newdata:
+            if isinstance(newdata["pfp_data"], int):
+                updated_user_vals["pfp_data"] = newdata["pfp_data"]
+        
+        # Update quote
+        if "quote" in newdata:
+            if isinstance(newdata["quote"], str) and len(newdata["quote"]) <= 360:
+                updated_user_vals["quote"] = newdata["quote"]
+
+        # Update settings
+        for key, default_val in DEFAULT_USER_SETTINGS.items():
+            if key in newdata:
+                if isinstance(newdata[key], type(default_val)):
+                    if key == "favorited_chats" and len(newdata[key]) > 50:
+                        newdata[key] = newdata[key][:50]
+                    
+                    updated_user_settings_vals[key] = newdata[key]
+
+        # Update database items
+        if len(updated_user_vals) > 0:
+            self.files.db.usersv0.update_one({"_id": account["_id"]}, {"$set": updated_user_vals})
+        if len(updated_user_settings_vals) > 0:
+            self.files.db.user_settings.update_one({"_id": account["_id"]}, {"$set": updated_user_settings_vals}, upsert=True)
+
+        return True
+
+    def get_ban_state(self, username):
+        if not isinstance(username, str):
             self.log("Error on get_ban_state: Expected str for username, got {0}".format(type(username)))
             return "None"
-    
-    def get_permissions(self, username):
-        if type(username) == str:
-            accountData = self.files.db.usersv0.find_one({"lower_username": username.lower()}, projection={"permissions": 1})
-            if accountData:
-                print(accountData)
-                return accountData["permissions"]
-            else:
-                return 0
+
+        account = self.files.db.usersv0.find_one({"lower_username": username.lower()}, projection={"ban": 1})
+        if not account:
+            return "None"
+        elif (account["ban"]["state"] in {"TempRestriction", "TempSuspension", "TempBan"}) and (account["ban"]["expires"] < time.time()):
+            return "None"
         else:
+            return account["ban"]["state"]
+
+    def get_permissions(self, username):
+        if not isinstance(username, str):
             self.log("Error on get_permissions: Expected str for username, got {0}".format(type(username)))
             return 0
 
-    def update_setting(self, username, newdata, forceUpdate=False):
-        """
-        Returns 3 booleans.
-        
-        | FileCheck | FileRead | FileWrite | Definiton
-        |---------|----------|----------|-----------------
-        |  True   |   True   |  True    | Account exists, read OK, settings changed
-        |  True   |   True   |  False   | Account exists, read OK, settings write error
-        |  True   |   False  |  False   | Account exists, read error
-        |  False  |   True   |  False   | Account does not exist
-        |  False  |   False  |  False   | Exception
-        """
-        
-        if (type(username) == str) and (type(newdata) == dict):
-            if self.files.does_item_exist("usersv0", str(username)):
-                self.log("Updating account settings: {0}".format(username))
-                result, accountData = self.files.load_item("usersv0", str(username))
-                if result:
-                    for key, value in newdata.items():
-                        if key in accountData.keys():
-                            if forceUpdate:
-                                accountData[key] = value
-                            else:
-                                if key not in {"permissions", "pswd", "ban", "email", "last_ip", "last_seen", "lower_username", "uuid", "tokens", "created"}:
-                                    if key in accountData.keys():
-                                        if ((type(value) == str) and (len(value) <= 360)) or ((type(value) == int) and (len(str(value)) <= 360)) or ((type(value) == float) and (len(str(value)) <= 360)) or (type(value) == bool) or (type(value) == None):
-                                            if type(value) == str:
-                                                accountData[key] = self.supporter.wordfilter(value)
-                                            else:
-                                                accountData[key] = value
-                                else:
-                                    self.log("Blocking attempt to modify secure key {0}".format(key))
-                    
-                    result = self.files.write_item("usersv0", str(username), accountData)
-                    self.log("Updating {0} account settings: {1}".format(username, result))
-                    return True, True, result
-                else:
-                    return True, False, False
-            else:
-                return False, True, False
+        account = self.files.db.usersv0.find_one({"lower_username": username.lower()}, projection={"permissions": 1})
+        if account:
+            return account["permissions"]
         else:
-            self.log("Error on get_account: Expected str for username and dict for newdata, got {0} for username and {1} for newdata".format(type(username), type(newdata)))
-            return False, False, False
+            return 0
 
     def has_permission(self, user_permissions, permission):
         if ((user_permissions & Permissions.SYSADMIN) == Permissions.SYSADMIN):
@@ -318,11 +216,137 @@ class Security:
         else:
             return ((user_permissions & permission) == permission)
 
-    def has_any_permission(self, user_permissions, permissions_list):
-        if ((user_permissions & Permissions.SYSADMIN) == Permissions.SYSADMIN):
-            return True
-        else:
-            for permission in permissions_list:
-                if ((user_permissions & permission) == permission):
-                    return True
-            return False
+    def delete_account(self, username, purge=False):
+        # Get account
+        account = self.files.db.usersv0.find_one({"_id": username}, projection={"uuid": 1, "flags": 1})
+        if not account:
+            return
+
+        # Add deleted flag
+        account["flags"] |= UserFlags.DELETED
+
+        # Update account
+        self.files.db.usersv0.update_one({"_id": username}, {"$set": {
+            "pfp_data": None,
+            "quote": None,
+            "pswd": None,
+            "tokens": None,
+            "flags": account["flags"],
+            "permissions": None,
+            "ban": None,
+            "last_seen": None,
+            "delete_after": None
+        }})
+
+        # Kick user
+        self.supporter.kickUser(username, status="LoggedOut")
+
+        # Delete user settings
+        self.files.db.user_settings.delete_one({"_id": username})
+
+        # Delete netlogs
+        self.files.db.netlog.delete_many({"_id.user": username})
+
+        # Remove from reports
+        self.files.db.reports.update_many({"reports.user": username}, {"$pull": {
+            "reports": {"user": username}
+        }})
+
+        # Delete relationships
+        self.files.db.relationships.delete_many({"$or": [
+            {"_id.from": username},
+            {"_id.to": username}
+        ]})
+
+        # Update or delete chats
+        for chat in self.files.db.chats.find({
+            "$or": [
+                {"deleted": False},
+                {"deleted": True}
+            ],
+            "members": username
+        }, projection={"type": 1, "owner": 1, "members": 1}):
+            if chat["type"] == 1 or len(chat["members"]) == 1:
+                self.files.db.posts.delete_many({"post_origin": chat["_id"], "isDeleted": False})
+                self.files.db.chats.delete_one({"_id": chat["_id"]})
+            else:
+                if chat["owner"] == username:
+                    chat["owner"] = "Deleted"
+                chat["members"].remove(username)
+                self.files.db.chats.update_one({"_id": chat["_id"]}, {"$set": {
+                    "owner": chat["owner"],
+                    "members": chat["members"]
+                }})
+
+        # Delete posts
+        self.files.db.posts.delete_many({"u": username})
+
+        # Purge user
+        if purge:
+            self.files.db.reports.delete_many({"content_id": username, "type": "user"})
+            self.files.db.admin_notes.delete_one({"_id": account["uuid"]})
+            self.files.db.usersv0.delete_one({"_id": username})
+
+    def get_netinfo(self, ip_address):
+        """
+        Get IP info from IPHub.
+
+        Returns:
+        ```json
+        {
+            "_id": str,
+            "ip": str,
+            "country_code": str,
+            "country_name": str,
+            "asn": int,
+            "isp": str,
+            "vpn": bool
+        }
+        ```
+        """
+
+        # Get IP hash
+        ip_hash = sha256(ip_address.encode()).hexdigest()
+
+        # Get from database or IPHub if not cached
+        netinfo = self.files.db.netinfo.find_one({"_id": ip_hash})
+        if not netinfo:
+            iphub_key = os.getenv("IPHUB_KEY")
+            if iphub_key:
+                iphub_info = requests.get(f"http://v2.api.iphub.info/ip/{ip_address}", headers={
+                    "X-Key": iphub_key
+                }).json()
+                netinfo = {
+                    "_id": ip_hash,
+                    "ip": iphub_info["ip"],
+                    "country_code": iphub_info["countryCode"],
+                    "country_name": iphub_info["countryName"],
+                    "asn": iphub_info["asn"],
+                    "isp": iphub_info["isp"],
+                    "vpn": (iphub_info["block"] == 1),
+                    "last_refreshed": int(time.time())
+                }
+                self.files.db.netinfo.update_one({"_id": ip_hash}, {"$set": netinfo}, upsert=True)
+            else:
+                netinfo = {
+                    "_id": ip_hash,
+                    "ip": ip_address,
+                    "country_code": "Unknown",
+                    "country_name": "Unknown",
+                    "asn": "Unknown",
+                    "isp": "Unknown",
+                    "vpn": False,
+                    "last_refreshed": int(time.time())
+                }
+
+        return netinfo
+    
+    def add_audit_log(self, action_type, mod_username, mod_ip, data):
+        self.files.db.audit_log.insert_one({
+            "_id": str(uuid.uuid4()),
+            "type": action_type,
+            "mod_username": mod_username,
+            "mod_ip": mod_ip,
+            "time": int(time.time()),
+            "data": data
+        })
