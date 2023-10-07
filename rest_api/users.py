@@ -5,7 +5,7 @@ import pymongo
 import uuid
 import time
 
-from security import UserFlags
+from security import UserFlags, Restrictions
 
 
 users_bp = Blueprint("users_bp", __name__, url_prefix="/users/<username>")
@@ -14,7 +14,7 @@ users_bp = Blueprint("users_bp", __name__, url_prefix="/users/<username>")
 class UpdateRelationshipBody(BaseModel):
     state: Literal[
         0,  # no relationship
-        1,  # following (doesn't do anything yet)
+        #1,  # following (doesn't do anything yet)
         2,  # blocking
     ]
 
@@ -171,8 +171,8 @@ def get_dm_chat(username):
         "type": 1
     })
     if not chat:
-        # Check ban state
-        if app.security.get_ban_state(username) in {"TempRestriction", "PermRestriction", "TempSuspension", "PermSuspension"}:
+        # Check restrictions
+        if app.security.is_restricted(request.user, Restrictions.NEW_CHATS):
             return {"error": True, "type": "accountBanned"}, 403
 
         # Create chat

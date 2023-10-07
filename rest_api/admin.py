@@ -27,10 +27,11 @@ class UpdateNotesBody(BaseModel):
         str_strip_whitespace = True
 
 
-class BanObj(BaseModel):
-    state: Literal["None", "TempRestriction", "PermRestriction", "TempSuspension", "PermSuspension", "TempBan", "PermBan", "Protected"]
-    expires: int = Field(ge=0)
-    reason: str = Field(max_length=4000)
+class UpdateUserBanBody(BaseModel):
+    state: Literal["none", "temp_restriction", "perm_restriction", "temp_ban", "perm_ban"]
+    restrictions: int
+    expires: int
+    reason: str
 
     class Config:
         validate_assignment = True
@@ -39,8 +40,6 @@ class BanObj(BaseModel):
 
 class UpdateUserBody(BaseModel):
     permissions: Optional[int] = Field(default=None, ge=0)
-    ban: Optional[BanObj] = None
-    delete_after: Optional[int] = None
 
     class Config:
         validate_assignment = True
@@ -268,7 +267,7 @@ def get_user(username):
             if user_settings:
                 del user_settings["_id"]
                 payload["settings"].update(user_settings)
-        elif app.security.has_permission(request.permissions, Permissions.VIEW_INBOXES):
+        elif app.security.has_permission(request.permissions, Permissions.VIEW_POSTS):
             payload.update({"settings": {"unread_inbox": DEFAULT_USER_SETTINGS}})
             user_settings = app.files.db.user_settings.find_one({"_id": username}, projection={"unread_inbox": 1})
             if user_settings:
@@ -312,6 +311,10 @@ def get_user(username):
 
 @admin_bp.patch('/users/<username>')
 def update_user(username):
+    # Check permissions
+    if not app.security.has_permission(request.permissions, Permissions.SYSADMIN):
+        abort(403)
+
     # Get body
     try:
         body = UpdateUserBody(**request.json)
@@ -323,10 +326,6 @@ def update_user(username):
 
     # Permissions
     if body.permissions is not None:
-        # Check permissions
-        if not app.security.has_permission(request.permissions, Permissions.SYSADMIN):
-            abort(403)
-
         # Update user
         app.files.db.usersv0.update_one({"_id": username}, {"$set": {"permissions": body.permissions}})
 
@@ -341,39 +340,24 @@ def update_user(username):
             }
         }, "id": username})
 
-    # Ban
-    if body.ban is not None:
-        # Check permissions
-        if not app.security.has_permission(request.permissions, Permissions.EDIT_BAN_STATES):
-            abort(403)
-        elif body.ban.state == "Protected" or app.security.get_ban_state(username) == "Protected":
-            if not app.security.has_permission(request.permissions, Permissions.SYSADMIN):
-                abort(403)
-
-        # Update user
-        app.files.db.usersv0.update_one({"_id": username}, {"$set": {"ban": body.ban.model_dump()}})
-
-        # Add log
-        app.security.add_audit_log("banned", request.user, request.ip, {"username": username, "ban": body.ban.model_dump()})
-
-        # Kick client or send updated ban state
-        if (body.ban.state == "PermBan") or (body.ban.state == "TempBan" and body.ban.expires > time.time()):
-            app.supporter.kickUser(username, status="Banned")
-        else:
-            app.supporter.sendPacket({"cmd": "direct", "val": {"mode": "banned", "payload": body.ban.model_dump()}, "id": username})
-
     return {"error": False}, 200
 
 
 @admin_bp.delete('/users/<username>')
 def delete_user(username):
-    # Make sure user exists
-    if not app.security.account_exists(username):
-        abort(404)
+    # Check permissions
+    if not app.security.has_permission(request.permissions, Permissions.DELETE_USERS):
+        abort(403)
 
     # Make sure user exists
     if not app.security.account_exists(username):
         abort(404)
+
+    # Make sure user isn't protected
+    if not app.security.has_permission(request.permissions, Permissions.SYSADMIN):
+        account = app.files.db.usersv0.find_one({"_id": username}, projection={"flags": 1})
+        if (account["flags"] & UserFlags.PROTECTED) == UserFlags.PROTECTED:
+            abort(403)
 
     # Get deletion mode
     deletion_mode = request.args.get("mode")
@@ -393,6 +377,45 @@ def delete_user(username):
         app.security.delete_account(username, purge=True)
     else:
         abort(400)
+
+    return {"error": False}, 200
+
+
+@admin_bp.post('/users/<username>/ban')
+def ban_user(username):
+    # Check permissions
+    if not app.security.has_permission(request.permissions, Permissions.EDIT_BAN_STATES):
+        abort(403)
+
+    # Get body
+    try:
+        body = UpdateUserBanBody(**request.json)
+    except: abort(400)
+
+    # Make sure user exists
+    if not app.security.account_exists(username):
+        abort(404)
+
+    # Make sure user isn't protected
+    if not app.security.has_permission(request.permissions, Permissions.SYSADMIN):
+        account = app.files.db.usersv0.find_one({"_id": username}, projection={"flags": 1})
+        if (account["flags"] & UserFlags.PROTECTED) == UserFlags.PROTECTED:
+            abort(403)
+
+    # Update user
+    app.files.db.usersv0.update_one({"_id": username}, {"$set": {"ban": body.model_dump()}})
+
+    # Add log
+    app.security.add_audit_log("banned", request.user, request.ip, {"username": username, "ban": body.model_dump()})
+
+    # Kick client or send updated ban state
+    if (body.state == "perm_ban") or (body.state == "temp_ban" and body.expires > time.time()):
+        app.supporter.kickUser(username, status="Banned")
+    else:
+        app.supporter.sendPacket({"cmd": "direct", "val": {
+            "mode": "update_config",
+            "payload": {"ban": body.model_dump()},
+        }, "id": username})
 
     return {"error": False}, 200
 
@@ -445,6 +468,12 @@ def clear_user_posts(username, post_origin):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.EDIT_POSTS):
         abort(401)
+
+    # Make sure user isn't protected
+    if not app.security.has_permission(request.permissions, Permissions.SYSADMIN):
+        account = app.files.db.usersv0.find_one({"_id": username}, projection={"flags": 1})
+        if account and (account["flags"] & UserFlags.PROTECTED) == UserFlags.PROTECTED:
+            abort(403)
 
     # Delete posts
     if post_origin == "all":
@@ -499,7 +528,7 @@ def kick_user(username):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.KICK_USERS):
         abort(401)
-
+    
     # Check whether to do a force kick
     if request.args.get("force"):
         force = True
@@ -545,6 +574,12 @@ def clear_quote(username):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.CLEAR_USER_QUOTES):
         abort(401)
+
+    # Make sure user isn't protected
+    if not app.security.has_permission(request.permissions, Permissions.SYSADMIN):
+        account = app.files.db.usersv0.find_one({"_id": username}, projection={"flags": 1})
+        if account and (account["flags"] & UserFlags.PROTECTED) == UserFlags.PROTECTED:
+            abort(403)
 
     # Update user
     app.files.db.usersv0.update_one({"_id": username, "quote": {"$ne": None}}, {"$set": {"quote": ""}})

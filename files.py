@@ -1,7 +1,8 @@
+from dotenv import load_dotenv
 from pymongo import MongoClient, ASCENDING, DESCENDING, TEXT
 import time
 import os
-from dotenv import load_dotenv
+
 from security import Permissions
 
 """
@@ -21,11 +22,15 @@ class Files:
         self.log = logger
         self.errorhandler = errorhandler
 
-        mongo_uri = os.getenv("MONGO_URI", "mongodb://127.0.0.1:27017")
-        self.log(
-            "Connecting to database...\n(If it seems like the server is stuck or the server randomly crashes, it probably means it couldn't connect to the database)"
-        )
-        self.db = MongoClient(mongo_uri)["meowerserver"]
+        self.log("Connecting to database...")
+        try:
+            self.db = MongoClient(os.getenv("MONGO_URI", "mongodb://127.0.0.1:27017"))[os.getenv("MONGO_DB", "meowerserver")]
+            self.db.command("ping")
+        except Exception as e:
+            self.log(f"Failed connecting to database: {e}")
+            exit()
+        else:
+            self.log("Connected to database!")
 
         # Check connection status
         if self.db.client.get_database("meowerserver") == None:
@@ -157,8 +162,8 @@ class Files:
         except: pass
 
         # Migrations
-        server = self.db.usersv0.find_one({"_id": "Server"})
-        if "banned" in server:  # moderation update
+        server_user = self.db.usersv0.find_one({"_id": "Server"})
+        if "banned" in server_user:  # moderation update
             self.log(
                 "Running migration for moderation update...\n\nPlease do not kill the server!"
             )

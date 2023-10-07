@@ -2,6 +2,8 @@ from flask import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
 import pymongo
 
+from security import Restrictions
+
 
 home_bp = Blueprint("home_bp", __name__, url_prefix="/home")
 
@@ -58,8 +60,8 @@ def create_home_post():
         body = PostBody(**request.json)
     except: abort(400)
 
-    # Check ban state
-    if app.security.get_ban_state(request.user) in {"TempSuspension", "PermSuspension"}:
+    # Check restrictions
+    if app.security.is_restricted(request.user, Restrictions.HOME_POSTS):
         return {"error": True, "type": "accountBanned"}, 403
 
     # Create post

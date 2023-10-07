@@ -33,28 +33,11 @@ DEFAULT_USER_SETTINGS = {
     "favorited_chats": []
 }
 
-AUDIT_LOG_TYPES = {
-    "got_notes",
-    "updated_notes",
-
-    "got_user",
-    "got_inbox",
-
-    "cleared_posts",
-    "alerted",
-    "kicked",
-    "force_kicked",
-    "banned",
-
-    "sent_announcement",
-
-    "kicked_all"
-}
-
 
 class UserFlags:
     SYSTEM = 1
     DELETED = 2
+    PROTECTED = 4
 
 
 class Permissions:
@@ -84,6 +67,15 @@ class Permissions:
     EDIT_CHATS = 131072
 
     SEND_ANNOUNCEMENTS = 262144
+
+
+class Restrictions:
+    HOME_POSTS = 1
+    CHAT_POSTS = 2
+    NEW_CHATS = 4
+    EDITING_CHAT_NICKNAMES = 8
+    EDITING_QUOTE = 16
+
 
 class Security:
     def __init__(self, files, supporter, logger, errorhandler):
@@ -119,9 +111,9 @@ class Security:
         # Add lvl and banned
         account["lvl"] = 0
         if account["ban"]:
-            if account["ban"]["state"] == "PermBan":
+            if account["ban"]["state"] == "perm_ban":
                 account["banned"] = True
-            elif (account["ban"]["state"] == "TempBan") and (account["ban"]["expires"] > time.time()):
+            elif (account["ban"]["state"] == "temp_ban") and (account["ban"]["expires"] > time.time()):
                 account["banned"] = True
             else:
                 account["banned"] = False
@@ -186,19 +178,6 @@ class Security:
 
         return True
 
-    def get_ban_state(self, username):
-        if not isinstance(username, str):
-            self.log("Error on get_ban_state: Expected str for username, got {0}".format(type(username)))
-            return "None"
-
-        account = self.files.db.usersv0.find_one({"lower_username": username.lower()}, projection={"ban": 1})
-        if not account:
-            return "None"
-        elif (account["ban"]["state"] in {"TempRestriction", "TempSuspension", "TempBan"}) and (account["ban"]["expires"] < time.time()):
-            return "None"
-        else:
-            return account["ban"]["state"]
-
     def get_permissions(self, username):
         if not isinstance(username, str):
             self.log("Error on get_permissions: Expected str for username, got {0}".format(type(username)))
@@ -215,6 +194,31 @@ class Security:
             return True
         else:
             return ((user_permissions & permission) == permission)
+
+    def is_restricted(self, username, restriction):
+        # Check datatypes
+        if not isinstance(username, str):
+            self.log("Error on is_restricted: Expected str for username, got {0}".format(type(username)))
+            return False
+        elif not isinstance(restriction, int):
+            self.log("Error on is_restricted: Expected int for username, got {0}".format(type(restriction)))
+            return False
+
+        # Get account
+        account = self.files.db.usersv0.find_one({"lower_username": username.lower()}, projection={"ban.state": 1, "ban.restrictions": 1, "ban.expires": 1})
+        if not account:
+            return False
+        
+        # Check type
+        if account["ban"]["state"] == "none":
+            return False
+        
+        # Check expiration
+        if "perm" not in account["ban"]["state"] and account["ban"]["expires"] < int(time.time()):
+            return False
+        
+        # Return whether feature is restricted
+        return (account["ban"]["restrictions"] & restriction) == restriction
 
     def delete_account(self, username, purge=False):
         # Get account

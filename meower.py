@@ -7,7 +7,7 @@ from threading import Thread
 import bcrypt
 import re
 
-from security import UserFlags, Permissions
+from security import UserFlags, Permissions, Restrictions
 
 load_dotenv()  # take environment variables from .env.
 
@@ -128,7 +128,7 @@ class Meower:
         self.files.db.netlog.update_one({"_id": {"ip": ip, "user": username}}, {"$set": {"last_used": int(time.time())}}, upsert=True)
 
         # Check ban
-        if (account["ban"]["state"] == "PermBan") or (account["ban"]["state"] == "TempBan" and account["ban"]["expires"] > time.time()):
+        if (account["ban"]["state"] == "perm_ban") or (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time()):
             self.supporter.ratelimit(f"login:u:{username}:f", 5, 60)
             self.sendPacket({"cmd": "direct", "val": {
                 "mode": "banned",
@@ -258,9 +258,11 @@ class Meower:
             "quote": "",
             "pswd": bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode(),
             "tokens": [token],
+            "flags": 0,
             "permissions": 0,
             "ban": {
-                "state": "None",
+                "state": "none",
+                "restrictions": 0,
                 "expires": 0,
                 "reason": ""
             },
@@ -288,7 +290,7 @@ class Meower:
             "payload": {
                 "username": username,
                 "token": token,
-                "account": {},
+                "account": self.security.get_account(username, True),
                 "relationships": {},
                 "chats": []
             }
@@ -337,11 +339,11 @@ class Meower:
             return self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
 
         # Ratelimit
-        self.supporter.ratelimit(f"config:{client}", 10, 15)
+        self.supporter.ratelimit(f"config:{client}", 10, 5)
 
-        # Delete quote if client is suspended
+        # Delete quote if client is restricted
         if "quote" in val:
-            if self.security.get_ban_state(client) in {"TempSuspension", "PermSuspension"}:
+            if self.security.is_restricted(client, Restrictions.EDITING_QUOTE):
                 del val["quote"]
         
         # Update config
@@ -474,8 +476,8 @@ class Meower:
         # Ratelimit
         self.supporter.ratelimit(f"create_chat:{client}", 5, 30)
 
-        # Check ban state
-        if self.security.get_ban_state(client) in {"TempRestriction", "PermRestriction", "TempSuspension", "PermSuspension"}:
+        # Check restrictions
+        if self.security.is_restricted(client, Restrictions.NEW_CHATS):
             return self.returnCode(client = client, code = "Banned", listener_detected = listener_detected, listener_id = listener_id)
 
         # Check datatype
@@ -598,7 +600,7 @@ class Meower:
             "members": client,
             "type": 0
         }
-        chats = self.files.db.chats.find(query, sort=[("last_active", pymongo.DESCENDING)], skip=(page-1)*25, limit=25)
+        chats = list(self.files.db.chats.find(query, sort=[("last_active", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
 
         # Return chats
         self.sendPacket({"cmd": "direct", "val": {
@@ -650,8 +652,8 @@ class Meower:
         # Ratelimit
         self.supporter.ratelimit(f"update_chat:{client}", 5, 5)
 
-        # Check client ban state
-        if self.security.get_ban_state(client) in {"TempRestriction", "PermRestriction", "TempSuspension", "PermSuspension"}:
+        # Check restrictions
+        if self.security.is_restricted(client, Restrictions.NEW_CHATS):
             return self.returnCode(client = client, code = "Banned", listener_detected = listener_detected, listener_id = listener_id)
 
         # Check val datatype
@@ -911,21 +913,8 @@ class Meower:
         # Ratelimit
         self.supporter.ratelimit(f"post:{client}", 6, 5)
 
-        # Check ban state
-        if self.security.get_ban_state(client) in {"TempSuspension", "PermSuspension"}:
-            # Temporary post for people using out-of-date clients
-            post_id = str(uuid.uuid4())
-            self.sendPacket({"cmd": "direct", "val": {
-                "_id": post_id,
-                "type": 1,
-                "post_origin": "home", 
-                "u": "Server", 
-                "t": self.supporter.timestamp(1).copy(), 
-                "p": "Your post was not sent because your account is currently suspended. Please use the latest client on https://app.meower.org to view the reason for this suspension and duration of the suspension.",
-                "post_id": post_id, 
-                "isDeleted": False
-            }, "id": client})
-
+        # Check restrictions
+        if self.security.is_restricted(client, Restrictions.HOME_POSTS):
             return self.returnCode(client = client, code = "Banned", listener_detected = listener_detected, listener_id = listener_id)
         
         # Create post
@@ -1066,8 +1055,8 @@ class Meower:
         if len(chatid) < 1 or len(chatid) > 50 or len(content) < 1 or len(content) > 4000:
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
 
-        # Check ban state
-        if self.security.get_ban_state(client) in {"TempSuspension", "PermSuspension"}:
+        # Check restrictions
+        if self.security.is_restricted(client, Restrictions.CHAT_POSTS):
             return self.returnCode(client = client, code = "Banned", listener_detected = listener_detected, listener_id = listener_id)
 
         if chatid != "livechat":
@@ -1279,26 +1268,17 @@ class Meower:
         # Tell the client the report was created
         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
 
-        # Auto-remove content and auto-suspend user if report threshold is reached
-        if reportdata["status"] in ["pending", "escalated"]:
+        # Auto-remove post and escalate report if report threshold is reached
+        if content_type == 0 and reportdata["status"] in ["pending", "escalated"]:
             unique_ips = set([report["ip"] for report in reportdata["reports"]])
-            if len(unique_ips) >= 1:
-                # Get user and delete content
-                if content_type == 0:
-                    post = self.files.db.posts.find_one({"_id": content_id, "isDeleted": False}, projection={"u": 1})
-                    if not post:
-                        return
-                    self.files.db.posts.update_one({"_id": content_id}, {"$set": {
-                        "isDeleted": True,
-                        "mod_deleted": True,
-                        "deleted_at": int(time.time())
-                    }})
-                    user = post["u"]
-                elif content_type == 1:
-                    user = content_id
-                else:
-                    return
+            if len(unique_ips) >= 3:
+                self.files.db.posts.update_one({"_id": content_id, "isDeleted": False}, {"$set": {
+                    "isDeleted": True,
+                    "mod_deleted": True,
+                    "deleted_at": int(time.time())
+                }})
 
+                """ probably not for now
                 # Suspend user
                 if self.security.get_ban_state(user) == "None":
                     # Construct ban obj
@@ -1319,3 +1299,4 @@ class Meower:
                         "mode": "banned",
                         "payload": ban_obj
                     }, "id": user})
+                """

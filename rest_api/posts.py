@@ -5,6 +5,8 @@ import pymongo
 import uuid
 import time
 
+from security import Restrictions
+
 
 posts_bp = Blueprint("posts_bp", __name__, url_prefix="/posts")
 
@@ -89,8 +91,10 @@ def update_post():
     if post["post_origin"] == "inbox" or post["u"] != request.user:
         abort(403)
 
-    # Check ban state
-    if app.security.get_ban_state(request.user) in {"TempSuspension", "PermSuspension"}:
+    # Check restrictions
+    if post["post_origin"] == "home" and app.security.is_restricted(request.user, Restrictions.HOME_POSTS):
+        return {"error": True, "type": "accountBanned"}, 403
+    elif post["post_origin"] not in ["home", "inbox"] and app.security.is_restricted(request.user, Restrictions.CHAT_POSTS):
         return {"error": True, "type": "accountBanned"}, 403
 
     # Make sure new content isn't the same as the old content
@@ -262,8 +266,8 @@ def create_chat_post(chat_id):
         body = PostBody(**request.json)
     except: abort(400)
 
-    # Check ban state
-    if app.security.get_ban_state(request.user) in {"TempSuspension", "PermSuspension"}:
+    # Check restrictions
+    if app.security.is_restricted(request.user, Restrictions.CHAT_POSTS):
         return {"error": True, "type": "accountBanned"}, 403
 
     if chat_id != "livechat":

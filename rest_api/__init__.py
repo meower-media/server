@@ -49,7 +49,7 @@ def check_auth():
                 "ban": 1
             })
             if account and account["tokens"] and (token in account["tokens"]):
-                if account["ban"]["state"] == "PermBan" or (account["ban"]["state"] == "TempBan" and account["ban"]["expires"] > time.time()):
+                if account["ban"]["state"] == "perm_ban" or (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time()):
                     abort(401)
                 request.user = account["_id"]
                 request.permissions = account["permissions"]

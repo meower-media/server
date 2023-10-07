@@ -3,6 +3,8 @@ from pydantic import BaseModel, Field
 import uuid
 import time
 
+from security import Restrictions
+
 
 chats_bp = Blueprint("chats_bp", __name__, url_prefix="/chats")
 
@@ -75,8 +77,8 @@ def create_chat():
     # Ratelimit
     app.supporter.ratelimit(f"create_chat:{request.user}", 5, 30)
 
-    # Check ban state
-    if app.security.get_ban_state(request.user) in {"TempRestriction", "PermRestriction", "TempSuspension", "PermSuspension"}:
+    # Check restrictions
+    if app.security.is_restricted(request.user, Restrictions.NEW_CHATS):
         return {"error": True, "type": "accountBanned"}, 403
 
     # Get body
@@ -141,8 +143,8 @@ def update_chat(chat_id):
     # Ratelimit
     app.supporter.ratelimit(f"update_chat:{request.user}", 5, 5)
 
-    # Check ban state
-    if app.security.get_ban_state(request.user) in {"TempSuspension", "PermSuspension"}:
+    # Check restrictions
+    if body.nickname and app.security.is_restricted(request.user, Restrictions.EDITING_CHAT_NICKNAMES):
         return {"error": True, "type": "accountBanned"}, 403
 
     # Get body
@@ -261,8 +263,8 @@ def add_chat_member(chat_id, username):
     # Ratelimit
     app.supporter.ratelimit(f"update_chat:{request.user}", 5, 5)
 
-    # Check ban state
-    if app.security.get_ban_state(request.user) in {"TempRestriction", "PermRestriction", "TempSuspension", "PermSuspension"}:
+    # Check restrictions
+    if app.security.is_restricted(request.user, Restrictions.NEW_CHATS):
         return {"error": True, "type": "accountBanned"}, 403
 
     # Get chat
