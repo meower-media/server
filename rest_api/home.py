@@ -1,4 +1,4 @@
-from flask import Blueprint, current_app as app, request, abort
+from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
 import pymongo
 
@@ -17,7 +17,7 @@ class PostBody(BaseModel):
 
 
 @home_bp.get("")
-def get_home_posts():
+async def get_home_posts():
     # Get page
     page = 1
     if request.user:
@@ -43,7 +43,7 @@ def get_home_posts():
 
 
 @home_bp.post("")
-def create_home_post():
+async def create_home_post():
     # Check authorization
     if not request.user:
         abort(401)
@@ -57,7 +57,7 @@ def create_home_post():
 
     # Get body
     try:
-        body = PostBody(**request.json)
+        body = PostBody(**await request.json)
     except: abort(400)
 
     # Check restrictions

@@ -1,4 +1,4 @@
-from flask import Blueprint, current_app as app, request, abort
+from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
 from base64 import b64decode
@@ -66,14 +66,14 @@ class NetblockBody(BaseModel):
 
 
 @admin_bp.before_request
-def check_admin_perms():
+async def check_admin_perms():
     if request.method != "OPTIONS":
         if (not request.user) or (not request.permissions):
             abort(401)
 
 
 @admin_bp.get("/reports")
-def get_reports():
+async def get_reports():
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.VIEW_REPORTS):
         abort(403)
@@ -125,7 +125,7 @@ def get_reports():
 
 
 @admin_bp.get("/reports/<report_id>")
-def get_report(report_id):
+async def get_report(report_id):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.VIEW_REPORTS):
         abort(403)
@@ -150,14 +150,14 @@ def get_report(report_id):
 
 
 @admin_bp.patch("/reports/<report_id>")
-def update_report(report_id):
+async def update_report(report_id):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.VIEW_REPORTS):
         abort(403)
 
     # Get body
     try:
-        body = UpdateReportBody(**request.json)
+        body = UpdateReportBody(**await request.json)
     except: abort(400)
 
     # Get report
@@ -186,7 +186,7 @@ def update_report(report_id):
 
 
 @admin_bp.get("/notes/<identifier>")
-def get_admin_notes(identifier):
+async def get_admin_notes(identifier):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.VIEW_NOTES):
         abort(403)
@@ -212,14 +212,14 @@ def get_admin_notes(identifier):
 
 
 @admin_bp.put("/notes/<identifier>")
-def edit_admin_note(identifier):
+async def edit_admin_note(identifier):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.EDIT_NOTES):
         abort(403)
 
     # Get body
     try:
-        body = UpdateNotesBody(**request.json)
+        body = UpdateNotesBody(**await request.json)
     except: abort(400)
 
     # Update notes
@@ -240,7 +240,7 @@ def edit_admin_note(identifier):
 
 
 @admin_bp.get("/users/<username>")
-def get_user(username):
+async def get_user(username):
     # Get account    
     account = app.files.db.usersv0.find_one({"lower_username": username.lower()})
     if not account:
@@ -310,14 +310,14 @@ def get_user(username):
 
 
 @admin_bp.patch('/users/<username>')
-def update_user(username):
+async def update_user(username):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.SYSADMIN):
         abort(403)
 
     # Get body
     try:
-        body = UpdateUserBody(**request.json)
+        body = UpdateUserBody(**await request.json)
     except: abort(400)
 
     # Make sure user exists
@@ -344,7 +344,7 @@ def update_user(username):
 
 
 @admin_bp.delete('/users/<username>')
-def delete_user(username):
+async def delete_user(username):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.DELETE_USERS):
         abort(403)
@@ -382,14 +382,14 @@ def delete_user(username):
 
 
 @admin_bp.post('/users/<username>/ban')
-def ban_user(username):
+async def ban_user(username):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.EDIT_BAN_STATES):
         abort(403)
 
     # Get body
     try:
-        body = UpdateUserBanBody(**request.json)
+        body = UpdateUserBanBody(**await request.json)
     except: abort(400)
 
     # Make sure user exists
@@ -421,7 +421,7 @@ def ban_user(username):
 
 
 @admin_bp.get('/users/<username>/posts/<post_origin>')
-def get_user_posts(username, post_origin):
+async def get_user_posts(username, post_origin):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.VIEW_POSTS):
         abort(401)
@@ -464,7 +464,7 @@ def get_user_posts(username, post_origin):
 
 
 @admin_bp.delete('/users/<username>/posts/<post_origin>')
-def clear_user_posts(username, post_origin):
+async def clear_user_posts(username, post_origin):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.EDIT_POSTS):
         abort(401)
@@ -500,14 +500,14 @@ def clear_user_posts(username, post_origin):
 
 
 @admin_bp.post('/users/<username>/inbox')
-def send_alert(username):
+async def send_alert(username):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.SEND_ALERTS):
         abort(401)
 
     # Get body
     try:
-        body = InboxMessageBody(**request.json)
+        body = InboxMessageBody(**await request.json)
     except: abort(400)
 
     # Make sure user exists
@@ -524,7 +524,7 @@ def send_alert(username):
 
 
 @admin_bp.post('/users/<username>/kick')
-def kick_user(username):
+async def kick_user(username):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.KICK_USERS):
         abort(401)
@@ -570,7 +570,7 @@ def kick_user(username):
 
 
 @admin_bp.delete('/users/<username>/quote')
-def clear_quote(username):
+async def clear_quote(username):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.CLEAR_USER_QUOTES):
         abort(401)
@@ -599,7 +599,7 @@ def clear_quote(username):
 
 
 @admin_bp.get('/netinfo/<ip>')
-def get_netinfo(ip):
+async def get_netinfo(ip):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.VIEW_IPS):
         abort(401)
@@ -634,7 +634,7 @@ def get_netinfo(ip):
 
 
 @admin_bp.get('/netblocks/<cidr>')
-def get_netblock(cidr):
+async def get_netblock(cidr):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.VIEW_IPS):
         abort(401)
@@ -656,7 +656,7 @@ def get_netblock(cidr):
 
 
 @admin_bp.put('/netblocks/<cidr>')
-def create_netblock(cidr):
+async def create_netblock(cidr):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.BLOCK_IPS):
         abort(401)
@@ -666,7 +666,7 @@ def create_netblock(cidr):
 
     # Get body
     try:
-        body = NetblockBody(**request.json)
+        body = NetblockBody(**await request.json)
     except: abort(400)
 
     # Construct netblock obj
@@ -711,7 +711,7 @@ def create_netblock(cidr):
 
 
 @admin_bp.delete('/netblocks/<cidr>')
-def delete_netblock(cidr):
+async def delete_netblock(cidr):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.BLOCK_IPS):
         abort(401)
@@ -735,7 +735,7 @@ def delete_netblock(cidr):
 
 
 @admin_bp.get('/announcements')
-def get_announcements():
+async def get_announcements():
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.VIEW_POSTS):
         abort(401)
@@ -767,14 +767,14 @@ def get_announcements():
 
 
 @admin_bp.post('/announcements')
-def send_announcement():
+async def send_announcement():
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.SEND_ANNOUNCEMENTS):
         abort(401)
 
     # Get body
     try:
-        body = InboxMessageBody(**request.json)
+        body = InboxMessageBody(**await request.json)
     except: abort(400)
 
     # Create announcement
@@ -787,7 +787,7 @@ def send_announcement():
 
 
 @admin_bp.post('/server/kick-all')
-def kick_all_clients():
+async def kick_all_clients():
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.SYSADMIN):
         abort(401)
@@ -807,7 +807,7 @@ def kick_all_clients():
 
 
 @admin_bp.post('/server/restart')
-def restart_server():
+async def restart_server():
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.SYSADMIN):
         abort(401)
@@ -827,7 +827,7 @@ def restart_server():
 
 
 @admin_bp.post('/server/enable-repair-mode')
-def enable_repair_mode():
+async def enable_repair_mode():
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.SYSADMIN):
         abort(401)
@@ -853,7 +853,7 @@ def enable_repair_mode():
 
 
 @admin_bp.post('/server/registration/disable')
-def disable_registration():
+async def disable_registration():
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.SYSADMIN):
         abort(401)
@@ -871,7 +871,7 @@ def disable_registration():
 
 
 @admin_bp.post('/server/registration/enable')
-def enable_registration():
+async def enable_registration():
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.SYSADMIN):
         abort(401)

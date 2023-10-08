@@ -1,4 +1,4 @@
-from flask import Blueprint, current_app as app, request, abort
+from quart import Blueprint, current_app as app, request, abort
 import pymongo
 
 
@@ -6,7 +6,7 @@ inbox_bp = Blueprint("inbox_bp", __name__, url_prefix="/inbox")
 
 
 @inbox_bp.get("")
-def get_inbox_posts():
+async def get_inbox_posts():
     # Check authorization
     if not request.user:
         abort(401)

@@ -1,4 +1,4 @@
-from flask import Blueprint, current_app as app, request, abort
+from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel
 from typing import Literal
 import pymongo
@@ -23,7 +23,7 @@ class UpdateRelationshipBody(BaseModel):
 
 
 @users_bp.before_request
-def check_user_exists():
+async def check_user_exists():
     username = request.view_args.get("username")
     user = app.files.db.usersv0.find_one({"lower_username": username.lower()}, projection={"_id": 1, "flags": 1})
     if (not user) or (user["flags"] & UserFlags.DELETED == UserFlags.DELETED):
@@ -32,15 +32,15 @@ def check_user_exists():
         request.view_args["username"] = user["_id"]
 
 
-@users_bp.get("")
-def get_user(username):
+@users_bp.get("/")
+async def get_user(username):
     account = app.security.get_account(username, (request.user and request.user.lower() == username.lower()))
     account["error"] = False
     return account, 200
 
 
 @users_bp.get("/posts")
-def get_posts(username):
+async def get_posts(username):
     # Get page
     page = 1
     try:
@@ -65,7 +65,7 @@ def get_posts(username):
 
 
 @users_bp.get("/relationship")
-def get_relationship(username):
+async def get_relationship(username):
     # Check authorization
     if not request.user:
         abort(401)
@@ -89,7 +89,7 @@ def get_relationship(username):
 
 
 @users_bp.patch("/relationship")
-def update_relationship(username):
+async def update_relationship(username):
     # Check authorization
     if not request.user:
         abort(401)
@@ -107,7 +107,7 @@ def update_relationship(username):
 
     # Get body
     try:
-        body = UpdateRelationshipBody(**request.json)
+        body = UpdateRelationshipBody(**await request.json)
     except: abort(400)
 
     # Get relationship
@@ -148,7 +148,7 @@ def update_relationship(username):
 
 
 @users_bp.get("/dm")
-def get_dm_chat(username):
+async def get_dm_chat(username):
     # Check authorization
     if not request.user:
         abort(401)

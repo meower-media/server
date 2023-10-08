@@ -5,6 +5,7 @@ from files import Files
 from meower import Meower
 from rest_api import app as rest_api_app
 from threading import Thread
+import uvicorn
 
 """
 
@@ -104,7 +105,7 @@ class Main:
         rest_api_app.files = self.filesystem
         rest_api_app.security = self.security
         rest_api_app.log = self.supporter.log
-        rest_api_thread = Thread(target=rest_api_app.run, kwargs={"host": "0.0.0.0", "port": 3001, "debug": False, "use_reloader": False})
+        rest_api_thread = Thread(target=uvicorn.run, args=(rest_api_app,), kwargs={"host": "0.0.0.0", "port": 3001})
         rest_api_thread.daemon = True
         rest_api_thread.start()
 

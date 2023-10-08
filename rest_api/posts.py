@@ -1,4 +1,4 @@
-from flask import Blueprint, current_app as app, request, abort
+from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
 from threading import Thread
 import pymongo
@@ -20,7 +20,7 @@ class PostBody(BaseModel):
 
 
 @posts_bp.get("")
-def get_post():
+async def get_post():
     # Get post ID
     post_id = request.args.get("id")
     if not post_id:
@@ -50,7 +50,7 @@ def get_post():
 
 
 @posts_bp.patch("")
-def update_post():
+async def update_post():
     # Check authorization
     if not request.user:
         abort(401)
@@ -64,7 +64,7 @@ def update_post():
 
     # Get body
     try:
-        body = PostBody(**request.json)
+        body = PostBody(**await request.json)
     except: abort(400)
 
     # Get post ID
@@ -151,7 +151,7 @@ def update_post():
 
 
 @posts_bp.delete("")
-def delete_post():
+async def delete_post():
     # Check authorization
     if not request.user:
         abort(401)
@@ -212,7 +212,7 @@ def delete_post():
 
 
 @posts_bp.get("/<chat_id>")
-def get_chat_posts(chat_id):
+async def get_chat_posts(chat_id):
     # Check authorization
     if not request.user:
         abort(401)
@@ -249,7 +249,7 @@ def get_chat_posts(chat_id):
 
 
 @posts_bp.post("/<chat_id>")
-def create_chat_post(chat_id):
+async def create_chat_post(chat_id):
     # Check authorization
     if not request.user:
         abort(401)
@@ -263,7 +263,7 @@ def create_chat_post(chat_id):
 
     # Get body
     try:
-        body = PostBody(**request.json)
+        body = PostBody(**await request.json)
     except: abort(400)
 
     # Check restrictions

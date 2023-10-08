@@ -1,5 +1,5 @@
-from flask import Flask, request, abort
-from flask_cors import CORS
+from quart import Quart, request, abort
+from quart_cors import cors
 import time
 
 from .home import home_bp
@@ -12,19 +12,20 @@ from .admin import admin_bp
 
 
 # Init app
-app = Flask(__name__, static_folder="static")
-cors = CORS(app, resources=r'*', origins=r'*', allow_headers=r'*', max_age=86400)
+app = Quart(__name__, static_folder="static")
+app.url_map.strict_slashes = False
+cors = cors(app, allow_origin="*")
 
 
 @app.before_request
-def check_repair_mode():
+async def check_repair_mode():
     if request.path != "/" and request.path != "/status":
         if app.supporter.repair_mode:
             return {"error": True, "type": "repairModeEnabled"}, 503
 
 
 @app.before_request
-def check_ip():
+async def check_ip():
     request.ip = (request.headers.get("Cf-Connecting-Ip", request.remote_addr))
     if request.path != "/" and request.path != "/status":
         if app.supporter.blocked_ips.search_best(request.ip):
@@ -32,7 +33,7 @@ def check_ip():
 
 
 @app.before_request
-def check_auth():
+async def check_auth():
     request.user = None
     request.permissions = 0
 
@@ -56,22 +57,22 @@ def check_auth():
 
 
 @app.route('/', methods=['GET'])  # Welcome message
-def index():
+async def index():
 	return "Hello world! The Meower API is working, but it's under construction. Please come back later.", 200
 
 
 @app.route('/ip', methods=['GET'])  # Deprecated
-def ip_tracer():
+async def ip_tracer():
 	return "", 410
 
 
 @app.route('/favicon.ico', methods=['GET']) # Favicon, my ass. We need no favicon for an API.
-def favicon_my_ass():
+async def favicon_my_ass():
 	return "", 200
 
 
 @app.route('/status', methods=["GET"])
-def get_status():
+async def get_status():
     return {
         "scratchDeprecated": True,
         "registrationEnabled": app.supporter.registration,
@@ -82,7 +83,7 @@ def get_status():
 
 
 @app.route('/statistics', methods=["GET"])
-def get_statistics():
+async def get_statistics():
     return {
         "error": False,
         "users": app.files.db.usersv0.estimated_document_count(),
@@ -92,37 +93,37 @@ def get_statistics():
 
 
 @app.errorhandler(400)  # Bad request
-def bad_request(e):
+async def bad_request(e):
 	return {"error": True, "type": "badRequest"}, 400
 
 
 @app.errorhandler(401)  # Unauthorized
-def unauthorized(e):
+async def unauthorized(e):
 	return {"error": True, "type": "Unauthorized"}, 401
 
 
 @app.errorhandler(403)  # Missing permissions
-def missing_permissions(e):
+async def missing_permissions(e):
     return {"error": True, "type": "missingPermissions"}, 403
 
 
 @app.errorhandler(404)  # We do need a 404 handler.
-def not_found(e):
+async def not_found(e):
 	return {"error": True, "type": "notFound"}, 404
 
 
 @app.errorhandler(405)  # Method not allowed
-def method_not_allowed(e):
+async def method_not_allowed(e):
 	return {"error": True, "type": "methodNotAllowed"}, 405
 
 
 @app.errorhandler(429)  # Too many requests
-def too_many_requests(e):
+async def too_many_requests(e):
 	return {"error": True, "type": "tooManyRequests"}, 429
 
 
 @app.errorhandler(500)  # Internal
-def internal(e):
+async def internal(e):
 	return {"error": True, "type": "Internal"}, 500
 
 

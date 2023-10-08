@@ -1,4 +1,4 @@
-from flask import Blueprint, current_app as app, request, abort
+from quart import Blueprint, current_app as app, request, abort
 import pymongo
 
 
@@ -6,7 +6,7 @@ search_bp = Blueprint("search_bp", __name__, url_prefix="/search")
 
 
 @search_bp.get("/home")
-def search_home():
+async def search_home():
     # Get query
     q = request.args.get("q")
     if not q:
@@ -38,7 +38,7 @@ def search_home():
 
 
 @search_bp.get("/users")
-def search_users():
+async def search_users():
     # Get query
     q = request.args.get("q")
     if not q:

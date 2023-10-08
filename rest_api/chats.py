@@ -1,4 +1,4 @@
-from flask import Blueprint, current_app as app, request, abort
+from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
 import uuid
 import time
@@ -18,7 +18,7 @@ class ChatBody(BaseModel):
 
 
 @chats_bp.get("")
-def get_chats():
+async def get_chats():
     # Check authorization
     if not request.user:
         abort(401)
@@ -65,7 +65,7 @@ def get_chats():
 
 
 @chats_bp.post("")
-def create_chat():
+async def create_chat():
     # Check authorization
     if not request.user:
         abort(401)
@@ -83,7 +83,7 @@ def create_chat():
 
     # Get body
     try:
-        body = ChatBody(**request.json)
+        body = ChatBody(**await request.json)
     except: abort(400)
     
     # Make sure the requester isn't in too many chats
@@ -115,7 +115,7 @@ def create_chat():
 
 
 @chats_bp.get("/<chat_id>")
-def get_chat(chat_id):
+async def get_chat(chat_id):
     # Check authorization
     if not request.user:
         abort(401)
@@ -131,7 +131,7 @@ def get_chat(chat_id):
 
 
 @chats_bp.patch("/<chat_id>")
-def update_chat(chat_id):
+async def update_chat(chat_id):
     # Check authorization
     if not request.user:
         abort(401)
@@ -143,14 +143,14 @@ def update_chat(chat_id):
     # Ratelimit
     app.supporter.ratelimit(f"update_chat:{request.user}", 5, 5)
 
+    # Get body
+    try:
+        body = ChatBody(**await request.json)
+    except: abort(400)
+
     # Check restrictions
     if body.nickname and app.security.is_restricted(request.user, Restrictions.EDITING_CHAT_NICKNAMES):
         return {"error": True, "type": "accountBanned"}, 403
-
-    # Get body
-    try:
-        body = ChatBody(**request.json)
-    except: abort(400)
 
     # Get chat
     chat = app.files.db.chats.find_one({"_id": chat_id, "members": request.user, "deleted": False})
@@ -188,7 +188,7 @@ def update_chat(chat_id):
 
 
 @chats_bp.delete("/<chat_id>")
-def leave_chat(chat_id):
+async def leave_chat(chat_id):
     # Check authorization
     if not request.user:
         abort(401)
@@ -251,7 +251,7 @@ def leave_chat(chat_id):
 
 
 @chats_bp.put("/<chat_id>/members/<username>")
-def add_chat_member(chat_id, username):
+async def add_chat_member(chat_id, username):
     # Check authorization
     if not request.user:
         abort(401)
@@ -329,7 +329,7 @@ def add_chat_member(chat_id, username):
 
 
 @chats_bp.delete("/<chat_id>/members/<username>")
-def remove_chat_member(chat_id, username):
+async def remove_chat_member(chat_id, username):
     # Check authorization
     if not request.user:
         abort(401)
@@ -382,7 +382,7 @@ def remove_chat_member(chat_id, username):
 
 
 @chats_bp.post("/<chat_id>/members/<username>/transfer")
-def transfer_chat_ownership(chat_id, username):
+async def transfer_chat_ownership(chat_id, username):
     # Check authorization
     if not request.user:
         abort(401)
