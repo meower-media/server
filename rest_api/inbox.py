@@ -5,7 +5,7 @@ import pymongo
 inbox_bp = Blueprint("inbox_bp", __name__, url_prefix="/inbox")
 
 
-@inbox_bp.get("")
+@inbox_bp.get("/")
 async def get_inbox_posts():
     # Check authorization
     if not request.user:

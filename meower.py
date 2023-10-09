@@ -22,7 +22,7 @@ class Meower:
         self.sendPacket = self.supporter.sendPacket
 
         # Load netblocks
-        for netblock in self.files.db.netblock.find({"enabled": True}, projection={"_id": 1, "type": 1}):
+        for netblock in self.files.db.netblock.find({}):
             try:
                 if netblock["type"] == 0:
                     self.supporter.blocked_ips.add(netblock["_id"])
@@ -162,25 +162,9 @@ class Meower:
         # Set client authenticated state
         self.supporter.autoID(client, username) # Give the client an AutoID
         self.supporter.setAuthenticatedState(client, True) # Make the server know that the client is authed
-        
-        # Get account
-        account = self.security.get_account(username, True)
 
         # Get relationships
         relationships = {r["_id"]["to"]: r["state"] for r in self.files.db.relationships.find({"_id.from": username})}
-
-        # Get chats
-        chats = list(self.files.db.chats.find({
-            "deleted": False,
-            "members": username,
-            "$or": [
-                {"type": 0},
-                {
-                    "type": 1,
-                    "_id": {"$in": account["active_dms"] + account["favorited_chats"]}
-                }
-            ]
-        }, hint="user_chats"))
 
         # Return info to sender
         self.sendPacket({"cmd": "direct", "val": {
@@ -188,9 +172,8 @@ class Meower:
             "payload": {
                 "username": username,
                 "token": token,
-                "account": account,
-                "relationships": relationships,
-                "chats": chats
+                "account": self.security.get_account(username, True),
+                "relationships": relationships
             }
         }, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
         
@@ -291,8 +274,7 @@ class Meower:
                 "username": username,
                 "token": token,
                 "account": self.security.get_account(username, True),
-                "relationships": {},
-                "chats": []
+                "relationships": {}
             }
         }, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
         
@@ -1224,9 +1206,10 @@ class Meower:
         content_type = val.get("type")
         content_id = val.get("id")
         reason = val.get("reason", "No reason specified")
+        comment = val.get("comment", "")
 
         # Check type, ID, reason, and comment datatypes
-        if (not isinstance(content_type, int)) or (not isinstance(content_id, str)) or (not isinstance(reason, str)):
+        if (not isinstance(content_type, int)) or (not isinstance(content_id, str)) or (not isinstance(reason, str)) or (not isinstance(comment, str)):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
         
         # Make sure the content exists
@@ -1240,38 +1223,41 @@ class Meower:
             return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
         
         # Create report
-        reportdata = self.files.db.reports.find_one({
+        report = self.files.db.reports.find_one({
             "content_id": content_id,
-            "type": {0: "post", 1: "user"}[content_type],
-            "status": {"$in": ["pending", "escalated"]}
+            "status": "pending",
+            "type": {0: "post", 1: "user"}[content_type]
         })
-        if not reportdata:
-            reportdata = {
+        if not report:
+            report = {
                 "_id": str(uuid.uuid4()),
                 "type": {0: "post", 1: "user"}[content_type],
                 "content_id": content_id,
                 "status": "pending",
+                "escalated": False,
                 "reports": []
             }
-        for report in reportdata["reports"]:
-            if report["user"] == client:
-                reportdata["reports"].remove(report)
+        for _report in report["reports"]:
+            if _report["user"] == client:
+                report["reports"].remove(_report)
                 break
-        reportdata["reports"].append({
+        report["reports"].append({
             "user": client,
             "ip": self.supporter.get_client_statedata(client)[0]["ip"],
             "reason": reason,
+            "comment": comment,
             "time": int(time.time())
         })
-        self.files.db.reports.update_one({"_id": reportdata["_id"]}, {"$set": reportdata}, upsert=True)
+        self.files.db.reports.update_one({"_id": report["_id"]}, {"$set": report}, upsert=True)
 
         # Tell the client the report was created
         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
 
-        # Auto-remove post and escalate report if report threshold is reached
-        if content_type == 0 and reportdata["status"] in ["pending", "escalated"]:
-            unique_ips = set([report["ip"] for report in reportdata["reports"]])
+        # Automatically remove post and escalate report if report threshold is reached
+        if content_type == 0 and report["status"] == "pending" and (not report["escalated"]):
+            unique_ips = set([_report["ip"] for _report in report["reports"]])
             if len(unique_ips) >= 3:
+                self.files.db.reports.update_one({"_id": report["_id"]}, {"$set": {"escalated": True}})
                 self.files.db.posts.update_one({"_id": content_id, "isDeleted": False}, {"$set": {
                     "isDeleted": True,
                     "mod_deleted": True,

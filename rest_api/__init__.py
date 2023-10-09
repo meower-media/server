@@ -1,4 +1,4 @@
-from quart import Quart, request, abort
+from quart import Quart, request
 from quart_cors import cors
 import time
 
@@ -14,64 +14,62 @@ from .admin import admin_bp
 # Init app
 app = Quart(__name__, static_folder="static")
 app.url_map.strict_slashes = False
-cors = cors(app, allow_origin="*")
+cors(app, allow_origin="*")
 
 
 @app.before_request
 async def check_repair_mode():
-    if request.path != "/" and request.path != "/status":
-        if app.supporter.repair_mode:
-            return {"error": True, "type": "repairModeEnabled"}, 503
+    if app.supporter.repair_mode and request.path != "/status":
+        return {"error": True, "type": "repairModeEnabled"}, 503
 
 
 @app.before_request
 async def check_ip():
     request.ip = (request.headers.get("Cf-Connecting-Ip", request.remote_addr))
-    if request.path != "/" and request.path != "/status":
-        if app.supporter.blocked_ips.search_best(request.ip):
-            return {"error": True, "type": "ipBlocked"}, 403
+    if request.path != "/status" and app.supporter.blocked_ips.search_best(request.ip):
+        return {"error": True, "type": "ipBlocked"}, 403
 
 
 @app.before_request
 async def check_auth():
+    # Init request user and permissions
     request.user = None
     request.permissions = 0
 
-    if ("username" in request.headers) and ("token" in request.headers):
-        # Get username and token
-        username = request.headers.get("username")
-        token = request.headers.get("token")
-        if not (len(username) < 1 or len(username) > 20 or len(token) < 1 or len(token) > 100):
-            # Authenticate request
-            account = app.files.db.usersv0.find_one({"lower_username": username.lower()}, projection={
-                "_id": 1,
-                "tokens": 1,
-                "permissions": 1,
-                "ban": 1
-            })
-            if account and account["tokens"] and (token in account["tokens"]):
-                if account["ban"]["state"] == "perm_ban" or (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time()):
-                    abort(401)
-                request.user = account["_id"]
-                request.permissions = account["permissions"]
+    # Get token
+    token = request.headers.get("token")
+
+    # Authenticate request
+    if token and request.path != "/status":
+        account = app.files.db.usersv0.find_one({"tokens": token}, projection={
+            "_id": 1,
+            "permissions": 1,
+            "ban.state": 1,
+            "ban.expires": 1
+        })
+        if account:
+            if account["ban"]["state"] == "perm_ban" or (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time()):
+                return {"error": True, "type": "accountBanned"}, 403
+            request.user = account["_id"]
+            request.permissions = account["permissions"]
 
 
-@app.route('/', methods=['GET'])  # Welcome message
+@app.get("/")  # Welcome message
 async def index():
 	return "Hello world! The Meower API is working, but it's under construction. Please come back later.", 200
 
 
-@app.route('/ip', methods=['GET'])  # Deprecated
+@app.get("/ip")  # Deprecated
 async def ip_tracer():
 	return "", 410
 
 
-@app.route('/favicon.ico', methods=['GET']) # Favicon, my ass. We need no favicon for an API.
+@app.get("/favicon.ico")  # Favicon, my ass. We need no favicon for an API.
 async def favicon_my_ass():
 	return "", 200
 
 
-@app.route('/status', methods=["GET"])
+@app.get("/status")
 async def get_status():
     return {
         "scratchDeprecated": True,
@@ -82,7 +80,7 @@ async def get_status():
     }, 200
 
 
-@app.route('/statistics', methods=["GET"])
+@app.get("/statistics")
 async def get_statistics():
     return {
         "error": False,

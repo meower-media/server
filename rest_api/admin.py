@@ -13,7 +13,7 @@ admin_bp = Blueprint("admin_bp", __name__, url_prefix="/admin")
 
 
 class UpdateReportBody(BaseModel):
-    status: Literal["pending", "escalated", "no_action_taken", "action_taken"]
+    status: Literal["no_action_taken", "action_taken"]
 
     class Config:
         validate_assignment = True
@@ -57,9 +57,7 @@ class InboxMessageBody(BaseModel):
 
 
 class NetblockBody(BaseModel):
-    type: int = Field(ge=0, le=1)
-    notes: str
-    expires: Optional[int] = Field(default=None, ge=0)
+    type: int = Literal[0, 1]
 
     class Config:
         validate_assignment = True
@@ -80,11 +78,8 @@ async def get_reports():
 
     # Construct query
     query = {}
-    sort = [("time", pymongo.DESCENDING)]
     if "status" in request.args:
         query["status"] = request.args["status"]
-        if query["status"] == "pending" or query["status"] == "escalated":
-            sort = [("score", pymongo.DESCENDING)]
     if "type" in request.args:
         query["type"] = request.args["type"]
 
@@ -95,7 +90,10 @@ async def get_reports():
     except: pass
 
     # Get reports
-    reports = list(app.files.db.reports.find(query, projection={"reports.ip": 0}, sort=sort, skip=(page-1)*25, limit=25))
+    reports = list(app.files.db.reports.find(query, projection={"reports.ip": 0}, sort=[
+        ("escalated", pymongo.DESCENDING),
+        ("time", pymongo.DESCENDING)
+    ], skip=(page-1)*25, limit=25))
 
     # Get content
     for report in reports:
@@ -152,7 +150,7 @@ async def get_report(report_id):
 @admin_bp.patch("/reports/<report_id>")
 async def update_report(report_id):
     # Check permissions
-    if not app.security.has_permission(request.permissions, Permissions.VIEW_REPORTS):
+    if not app.security.has_permission(request.permissions, Permissions.EDIT_REPORTS):
         abort(403)
 
     # Get body
@@ -167,7 +165,8 @@ async def update_report(report_id):
 
     # Update report
     report["status"] = body.status
-    app.files.db.reports.update_one({"_id": report_id}, {"$set": {"status": body.status}})
+    report["escalated"] = False
+    app.files.db.reports.update_one({"_id": report_id}, {"$set": {"status": body.status, "escalated": False}})
 
     # Get content
     if report["type"] == "post":
@@ -177,7 +176,46 @@ async def update_report(report_id):
 
     # Add log
     app.security.add_audit_log("updated_report", request.user, request.ip, {
-        "report_id": report_id, "status": body.status
+        "report_id": report_id,
+        "status": body.status,
+        "escalated": False
+    })
+
+    # Return report
+    report["error"] = False
+    return report, 200
+
+
+@admin_bp.post("/reports/<report_id>/escalate")
+async def escalate_report(report_id):
+    # Check permissions
+    if not app.security.has_permission(request.permissions, Permissions.EDIT_REPORTS):
+        abort(403)
+
+    # Get report
+    report = app.files.db.reports.find_one({"_id": report_id}, projection={"reports.ip": 0})
+    if not report:
+        abort(404)
+
+    # Update report
+    report["status"] = "pending"
+    report["escalated"] = True
+    app.files.db.reports.update_one({"_id": report_id}, {"$set": {
+        "status": "pending",
+        "escalated": True
+    }})
+
+    # Get content
+    if report["type"] == "post":
+        report["content"] = app.files.db.posts.find_one({"_id": report.pop("content_id")})
+    elif report["type"] == "user":
+        report["content"] = app.security.get_account(report.get("content_id"))
+
+    # Add log
+    app.security.add_audit_log("updated_report", request.user, request.ip, {
+        "report_id": report_id,
+        "status": "pending",
+        "escalated": True
     })
 
     # Return report
@@ -239,6 +277,78 @@ async def edit_admin_note(identifier):
     return notes, 200
 
 
+@admin_bp.get("/posts/<post_id>")
+async def get_post(post_id):
+    # Check permissions
+    if not app.security.has_permission(request.permissions, Permissions.VIEW_POSTS):
+        abort(403)
+    
+    # Get post
+    post = app.files.db.posts.find_one({"_id": post_id})
+    if not post:
+        abort(404)
+
+    # Get post revisions
+    post["revisions"] = list(app.files.db.post_revisions.find({"post_id": post_id}, sort=[("time", pymongo.DESCENDING)]))
+
+    # Return post
+    post["error"] = False
+    return post, 200
+
+
+@admin_bp.delete("/posts/<post_id>")
+async def delete_post(post_id):
+    # Check permissions
+    if not app.security.has_permission(request.permissions, Permissions.DELETE_POSTS):
+        abort(403)
+    
+    # Get post
+    post = app.files.db.posts.find_one({"_id": post_id})
+    if not post:
+        abort(404)
+
+    # Update post
+    post["isDeleted"] = True
+    post["deleted_at"] = int(time.time())
+    post["mod_deleted"] = True
+    app.files.db.posts.update_one({"_id": post_id}, {"$set": {
+        "isDeleted": True,
+        "deleted_at": int(time.time()),
+        "mod_deleted": True
+    }})
+
+    # Return updated post
+    post["error"] = False
+    return post, 200
+
+
+@admin_bp.post("/posts/<post_id>/restore")
+async def restore_post(post_id):
+    # Check permissions
+    if not app.security.has_permission(request.permissions, Permissions.DELETE_POSTS):
+        abort(403)
+    
+    # Get post
+    post = app.files.db.posts.find_one({"_id": post_id})
+    if not post:
+        abort(404)
+
+    # Update post
+    post["isDeleted"] = False
+    if "deleted_at" in post:
+        del post["deleted_at"]
+    if "mod_deleted" in post:
+        del post["mod_deleted"]
+    app.files.db.posts.update_one({"_id": post_id}, {
+        "$set": {"isDeleted": False},
+        "$unset": {"deleted_at": "", "mod_deleted": ""}
+    })
+
+    # Return updated post
+    post["error"] = False
+    return post, 200
+
+
 @admin_bp.get("/users/<username>")
 async def get_user(username):
     # Get account    
@@ -268,7 +378,7 @@ async def get_user(username):
                 del user_settings["_id"]
                 payload["settings"].update(user_settings)
         elif app.security.has_permission(request.permissions, Permissions.VIEW_POSTS):
-            payload.update({"settings": {"unread_inbox": DEFAULT_USER_SETTINGS}})
+            payload.update({"settings": {"unread_inbox": DEFAULT_USER_SETTINGS["unread_inbox"]}})
             user_settings = app.files.db.user_settings.find_one({"_id": username}, projection={"unread_inbox": 1})
             if user_settings:
                 del user_settings["_id"]
@@ -610,9 +720,9 @@ async def get_netinfo(ip):
     # Get netblocks
     netblocks = []
     for radix_node in app.supporter.blocked_ips.search_covering(ip):
-        netblocks.append(app.files.db.netblock.find_one({"_id": radix_node.prefix}))
+        netblocks.append({"_id": radix_node.prefix, "type": 0})
     for radix_node in app.supporter.registration_blocked_ips.search_covering(ip):
-        netblocks.append(app.files.db.netblock.find_one({"_id": radix_node.prefix}))
+        netblocks.append({"_id": radix_node.prefix, "type": 1})
 
     # Get netlogs
     netlogs = [{
@@ -631,6 +741,31 @@ async def get_netinfo(ip):
         "netblocks": netblocks,
         "netlogs": netlogs
     }, 200
+
+
+@admin_bp.get('/netblocks')
+async def get_netblocks():
+    # Check permissions
+    if not app.security.has_permission(request.permissions, Permissions.VIEW_IPS):
+        abort(401)
+
+    # Get netblocks
+    netblocks = list(app.files.db.netblock.find({}))
+
+    # Add log
+    app.security.add_audit_log("got_netblocks", request.user, request.ip, {})
+
+    # Return netblocks
+    payload = {
+        "error": False,
+        "page#": 1,
+        "pages": 1
+    }
+    if "autoget" in request.args:
+        payload["autoget"] = netblocks
+    else:
+        payload["index"] = [netblock["_id"] for netblock in netblocks]
+    return payload, 200
 
 
 @admin_bp.get('/netblocks/<cidr>')
@@ -672,10 +807,7 @@ async def create_netblock(cidr):
     # Construct netblock obj
     netblock = {
         "_id": cidr,
-        "type": body.type,
-        "notes": body.notes,
-        "created": int(time.time()),
-        "expires": body.expires
+        "type": body.type
     }
 
     # Remove from Radix
@@ -686,12 +818,15 @@ async def create_netblock(cidr):
 
     # Add to Radix
     if body.type == 0:
-        app.supporter.blocked_ips.add(cidr)
+        radix_node = app.supporter.blocked_ips.add(cidr)
     elif body.type == 1:
-        app.supporter.registration_blocked_ips.add(cidr)
+        radix_node = app.supporter.registration_blocked_ips.add(cidr)
+
+    # Modify netblock with new Radix node prefix
+    netblock["_id"] = radix_node.prefix
 
     # Add netblock to database
-    app.files.db.netblock.update_one({"_id": cidr}, {"$set": netblock}, upsert=True)
+    app.files.db.netblock.update_one({"_id": netblock["_id"]}, {"$set": netblock}, upsert=True)
 
     # Kick clients
     if body.type == 0:

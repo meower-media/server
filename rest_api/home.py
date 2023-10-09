@@ -16,7 +16,7 @@ class PostBody(BaseModel):
         str_strip_whitespace = True
 
 
-@home_bp.get("")
+@home_bp.get("/")
 async def get_home_posts():
     # Get page
     page = 1
@@ -42,7 +42,7 @@ async def get_home_posts():
     return payload, 200
 
 
-@home_bp.post("")
+@home_bp.post("/")
 async def create_home_post():
     # Check authorization
     if not request.user:
@@ -55,14 +55,14 @@ async def create_home_post():
     # Ratelimit
     app.supporter.ratelimit(f"post:{request.user}", 6, 5)
 
+    # Check restrictions
+    if app.security.is_restricted(request.user, Restrictions.HOME_POSTS):
+        return {"error": True, "type": "accountBanned"}, 403
+
     # Get body
     try:
         body = PostBody(**await request.json)
     except: abort(400)
-
-    # Check restrictions
-    if app.security.is_restricted(request.user, Restrictions.HOME_POSTS):
-        return {"error": True, "type": "accountBanned"}, 403
 
     # Create post
     FileWrite, post = app.supporter.createPost("home", request.user, body.content)

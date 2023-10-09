@@ -19,7 +19,7 @@ class PostBody(BaseModel):
         str_strip_whitespace = True
 
 
-@posts_bp.get("")
+@posts_bp.get("/")
 async def get_post():
     # Get post ID
     post_id = request.args.get("id")
@@ -49,7 +49,7 @@ async def get_post():
     return post, 200
 
 
-@posts_bp.patch("")
+@posts_bp.patch("/")
 async def update_post():
     # Check authorization
     if not request.user:
@@ -150,7 +150,7 @@ async def update_post():
     return post, 200
 
 
-@posts_bp.delete("")
+@posts_bp.delete("/")
 async def delete_post():
     # Check authorization
     if not request.user:
@@ -261,14 +261,14 @@ async def create_chat_post(chat_id):
     # Ratelimit
     app.supporter.ratelimit(f"post:{request.user}", 6, 5)
 
+    # Check restrictions
+    if app.security.is_restricted(request.user, Restrictions.CHAT_POSTS):
+        return {"error": True, "type": "accountBanned"}, 403
+
     # Get body
     try:
         body = PostBody(**await request.json)
     except: abort(400)
-
-    # Check restrictions
-    if app.security.is_restricted(request.user, Restrictions.CHAT_POSTS):
-        return {"error": True, "type": "accountBanned"}, 403
 
     if chat_id != "livechat":
         # Get chat

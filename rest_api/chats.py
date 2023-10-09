@@ -17,7 +17,7 @@ class ChatBody(BaseModel):
         str_strip_whitespace = True
 
 
-@chats_bp.get("")
+@chats_bp.get("/")
 async def get_chats():
     # Check authorization
     if not request.user:
@@ -64,7 +64,7 @@ async def get_chats():
     return payload, 200
 
 
-@chats_bp.post("")
+@chats_bp.post("/")
 async def create_chat():
     # Check authorization
     if not request.user:
@@ -143,14 +143,14 @@ async def update_chat(chat_id):
     # Ratelimit
     app.supporter.ratelimit(f"update_chat:{request.user}", 5, 5)
 
+    # Check restrictions
+    if body.nickname and app.security.is_restricted(request.user, Restrictions.EDITING_CHAT_NICKNAMES):
+        return {"error": True, "type": "accountBanned"}, 403
+
     # Get body
     try:
         body = ChatBody(**await request.json)
     except: abort(400)
-
-    # Check restrictions
-    if body.nickname and app.security.is_restricted(request.user, Restrictions.EDITING_CHAT_NICKNAMES):
-        return {"error": True, "type": "accountBanned"}, 403
 
     # Get chat
     chat = app.files.db.chats.find_one({"_id": chat_id, "members": request.user, "deleted": False})
