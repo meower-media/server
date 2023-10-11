@@ -39,17 +39,20 @@ async def get_chats():
         user_settings["favorited_chats"] = []
 
     # Get chats
-    chats = list(app.files.db.chats.find({
-        "deleted": False,
-        "members": request.user,
-        "$or": [
-            {"type": 0},
-            {
-                "type": 1,
-                "_id": {"$in": user_settings["active_dms"] + user_settings["favorited_chats"]}
-            }
-        ]
-    }, hint="user_chats"))
+    chats = list(app.files.db.chats.find({"$or": [
+        {  # DMs
+            "_id": {
+                "$in": user_settings["active_dms"] + user_settings["favorited_chats"]
+            },
+            "members": request.user,
+            "deleted": False
+        },
+        {  # group chats
+            "members": request.user,
+            "type": 0,
+            "deleted": False
+        }
+    ]}))
 
     # Return chats
     payload = {

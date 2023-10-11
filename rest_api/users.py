@@ -166,9 +166,9 @@ async def get_dm_chat(username):
 
     # Get existing chat or create new chat
     chat = app.files.db.chats.find_one({
-        "deleted": False,
         "members": {"$all": [request.user, username]},
-        "type": 1
+        "type": 1,
+        "deleted": False
     })
     if not chat:
         # Check restrictions

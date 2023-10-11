@@ -7,7 +7,7 @@ from threading import Thread
 import bcrypt
 import re
 
-from security import UserFlags, Permissions, Restrictions
+from security import UserFlags, Restrictions
 
 load_dotenv()  # take environment variables from .env.
 
@@ -115,7 +115,7 @@ class Meower:
         })
         if not account:
             return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-        elif account["flags"] & UserFlags.DELETED == UserFlags.DELETED:
+        elif (account["flags"] & UserFlags.DELETED == UserFlags.DELETED) or (account["delete_after"] and account["delete_after"] <= time.time()+10):
             self.supporter.ratelimit(f"login:u:{username}:f", 5, 60)
             return self.returnCode(client = client, code = "Deleted", listener_detected = listener_detected, listener_id = listener_id)
         
@@ -125,7 +125,7 @@ class Meower:
             return self.returnCode(client = client, code = "PasswordInvalid", listener_detected = listener_detected, listener_id = listener_id)
         
         # Update netlog
-        self.files.db.netlog.update_one({"_id": {"ip": ip, "user": username}}, {"$set": {"last_used": int(time.time())}}, upsert=True)
+        netlog_result = self.files.db.netlog.update_one({"_id": {"ip": ip, "user": username}}, {"$set": {"last_used": int(time.time())}}, upsert=True)
 
         # Check ban
         if (account["ban"]["state"] == "perm_ban") or (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time()):
@@ -139,8 +139,8 @@ class Meower:
         # Ratelimit
         self.supporter.ratelimit(f"login:u:{username}:s", 25, 300)
 
-        # Alert user of new IP address if user has admin permissions  # TODO: fix
-        if account["permissions"]:
+        # Alert user of new IP address if user has admin permissions
+        if account["permissions"] and netlog_result.upserted_count >= 1:
             self.supporter.createPost("inbox", username, f"Your account was logged into on a new IP address ({ip})! You are receiving this message because you have admin permissions. Please make sure to keep your account secure.")
         
         # Alert user if account was pending deletion
@@ -577,12 +577,8 @@ class Meower:
             except: pass
 
         # Get chats
-        query = {
-            "deleted": False,
-            "members": client,
-            "type": 0
-        }
-        chats = list(self.files.db.chats.find(query, sort=[("last_active", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
+        query = {"members": client, "type": 0}
+        chats = list(self.files.db.chats.find(query, skip=(page-1)*25, limit=25))
 
         # Return chats
         self.sendPacket({"cmd": "direct", "val": {
@@ -1098,21 +1094,20 @@ class Meower:
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
         
         # Get post
-        post = self.files.db.posts.find_one({"_id": post["post_origin"]})
+        post = self.files.db.posts.find_one({"_id": post["post_origin"], "isDeleted": False})
         if not post:
             return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
         
-        # Make sure the client has permission to access the post
-        can_view_all_posts = self.security.has_permission(self.security.get_permissions(client), Permissions.VIEW_POSTS)
-        if not can_view_all_posts:
-            if post["isDeleted"]:
+        # Check access
+        if (post["post_origin"] == "inbox") and (post["u"] != client):
+            return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
+        elif post["post_origin"] not in ["home", "inbox"]:
+            if self.files.db.chats.count_documents({
+                "_id": post["post_origin"],
+                "members": client,
+                "deleted": False
+            }, limit=1) < 1:
                 return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-            elif (post["post_origin"] == "inbox") and (post["u"] != client):
-                return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-            elif post["post_origin"] != "home":
-                chat = self.files.db.chats.find_one({"_id": post["post_origin"]})
-                if (not chat) or chat["deleted"] or (client not in chat["members"]):
-                    return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
 
         # Return post
         self.sendPacket({"cmd": "direct", "val": {
@@ -1141,49 +1136,43 @@ class Meower:
         # Ratelimit
         self.supporter.ratelimit(f"post:{client}", 6, 5)
 
-        # Get client perms
-        client_perms = self.security.get_permissions(client)
-
         # Get post
-        post = self.files.db.posts.find_one({"_id": val})
-        if (not post) or (post["isDeleted"] and (not self.security.has_permission(client_perms, Permissions.VIEW_POSTS))):
+        post = self.files.db.posts.find_one({"_id": val, "isDeleted": False})
+        if not post:
             return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
 
-        # Self-delete
-        elif (post["post_origin"] != "inbox") and (post["u"] == client):
-            self.files.db.posts.update_one({"_id": post["_id"]}, {"$set": {
-                "isDeleted": True,
-                "deleted_at": int(time.time())
-            }})
-            self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": post["_id"]}})
-            return self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+        # Check access
+        if post["post_origin"] not in {"home", "inbox"}:
+            chat = self.files.db.chats.find_one({
+                "_id": post["post_origin"],
+                "members": client,
+                "deleted": False
+            }, projection={"owner": 1, "members": 1})
+            if not chat:
+                return self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
+        if post["post_origin"] == "inbox" or post["u"] != client:
+            if (post["post_origin"] in ["home", "inbox"]) or (chat["owner"] != client):
+                return self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
 
-        # Chat owner delete
-        elif post["post_origin"] not in {"home", "inbox"}:
-            chat = self.files.db.chats.find_one({"_id": post["post_origin"]})
-            if (not chat) or chat["deleted"]:
-                return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-            elif client == chat["owner"]:
-                self.files.db.posts.update_one({"_id": post["_id"]}, {"$set": {
-                    "isDeleted": True,
-                    "deleted_at": int(time.time())
-                }})
-                self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": post["_id"]}})
-                return self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+        # Update post
+        self.files.db.posts.update_one({"_id": post["_id"]}, {"$set": {
+            "isDeleted": True,
+            "deleted_at": int(time.time())
+        }})
 
-        # Admin delete
-        elif self.security.has_permission(client_perms, Permissions.EDIT_POSTS):
-            self.files.db.posts.update_one({"_id": post["_id"]}, {"$set": {
-                "isDeleted": True,
-                "mod_deleted": True,
-                "deleted_at": int(time.time())
+        # Send delete post event
+        if post["post_origin"] == "home":
+            self.sendPacket({"cmd": "direct", "val": {
+                "mode": "delete",
+                "id": post["_id"]
             }})
-            self.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": val}})
-            return self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-        
-        # Client doesn't have permission
         else:
-            return self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
+            self.sendPacket({"cmd": "direct", "val": {
+                "mode": "delete",
+                "id": post["_id"]
+            }, "id": chat["members"]})
+
+        return self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
 
 
 

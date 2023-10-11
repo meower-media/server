@@ -1,5 +1,4 @@
 from quart import Blueprint, current_app as app, request, abort
-import pymongo
 
 
 search_bp = Blueprint("search_bp", __name__, url_prefix="/search")
@@ -22,7 +21,7 @@ async def search_home():
 
     # Get posts
     query = {"post_origin": "home", "isDeleted": False, "$text": {"$search": q}}
-    posts = list(app.files.db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
+    posts = list(app.files.db.posts.find(query, skip=(page-1)*25, limit=25))
 
     # Return posts
     payload = {
@@ -53,7 +52,7 @@ async def search_users():
     except: pass
 
     # Get users
-    query = {"lower_username": {"$regex": q.lower()}}
+    query = {"pswd": {"$type": "string"}, "$text": {"$search": q}}
     usernames = [user["_id"] for user in app.files.db.usersv0.find(query, skip=(page-1)*25, limit=25, projection={"_id": 1})]
 
     # Return users

@@ -1,9 +1,10 @@
 from dotenv import load_dotenv
-from pymongo import MongoClient, ASCENDING, DESCENDING, TEXT
+import pymongo
+import radix
 import time
 import os
 
-from security import Permissions
+from security import DEFAULT_USER_SETTINGS, UserFlags, Permissions
 
 """
 
@@ -22,9 +23,10 @@ class Files:
         self.log = logger
         self.errorhandler = errorhandler
 
+
         self.log("Connecting to database...")
         try:
-            self.db = MongoClient(os.getenv("MONGO_URI", "mongodb://127.0.0.1:27017"))[os.getenv("MONGO_DB", "meowerserver")]
+            self.db = pymongo.MongoClient(os.getenv("MONGO_URI", "mongodb://127.0.0.1:27017"))[os.getenv("MONGO_DB", "meowerserver")]
             self.db.command("ping")
         except Exception as e:
             self.log(f"Failed connecting to database: {e}")
@@ -32,19 +34,172 @@ class Files:
         else:
             self.log("Connected to database!")
 
-        # Check connection status
-        if self.db.client.get_database("meowerserver") == None:
-            self.log("Failed to connect to MongoDB database!")
-        else:
-            self.log("Connected to database")
+
+        # Moderation update migration
+        if "config" in self.db.list_collection_names() and self.db.config.count_documents({"_id": "migration"}, limit=1) == 0:
+            self.log(
+                "Running migration for moderation update...\n\nPlease do not kill the server!"
+            )
+
+            LEGACY_LEVELS = {
+                1: (
+                    Permissions.VIEW_REPORTS
+                    | Permissions.EDIT_REPORTS
+                    | Permissions.VIEW_NOTES
+                    | Permissions.EDIT_NOTES
+                    | Permissions.VIEW_POSTS
+                    | Permissions.DELETE_POSTS
+                    | Permissions.SEND_ALERTS
+                    | Permissions.KICK_USERS
+                    | Permissions.CLEAR_USER_QUOTES
+                    | Permissions.VIEW_BAN_STATES
+                    | Permissions.EDIT_BAN_STATES
+                ),
+                2: Permissions.VIEW_ALTS,
+                3: (
+                    Permissions.DELETE_USERS
+                    | Permissions.VIEW_IPS
+                    | Permissions.BLOCK_IPS
+                    | Permissions.VIEW_CHATS
+                    | Permissions.EDIT_CHATS
+                    | Permissions.SEND_ANNOUNCEMENTS
+                )
+            }
+
+            self.log("Updating users...")
+            all_usernames = []
+            unique_usernames = set([
+                "server",
+                "deleted",
+                "meower",
+                "admin",
+                "username"
+            ])
+            user_updates = []
+            user_settings_inserts = []
+            for user in self.db.usersv0.find({}):
+                # Delete user if it has a duplicate username
+                if user["lower_username"] in unique_usernames:
+                    user_updates.append(pymongo.DeleteOne({"_id": user["_id"]}))
+
+                # Migrate settings to user_settings collection
+                user_settings = {"_id": user["_id"]}
+                for key, default in DEFAULT_USER_SETTINGS.items():
+                    value = user.pop(key, default)
+                    if value and isinstance(value, type(default)):
+                        user_settings[key] = value
+                    else:
+                        user_settings[key] = default
+                user_settings_inserts.append(pymongo.InsertOne(user_settings))
+
+                # Apply new permissions
+                legacy_level = user.get("lvl", 0)
+                if legacy_level == 4:
+                    user["permissions"] = Permissions.SYSADMIN
+                elif legacy_level == 3:
+                    user["permissions"] = (LEGACY_LEVELS[1] | LEGACY_LEVELS[2] | LEGACY_LEVELS[3])
+                elif legacy_level == 2:
+                    user["permissions"] = (LEGACY_LEVELS[1] | LEGACY_LEVELS[2])
+                elif legacy_level == 1:
+                    user["permissions"] = LEGACY_LEVELS[1]
+
+                # Apply new ban state
+                if user.get("banned"):
+                    user["ban"] = {
+                        "state": "perm_ban",
+                        "restrictions": 0,
+                        "expires": 0,
+                        "reason": ""
+                    }
+
+                # Validate other keys on user
+                expected_keys = {
+                    "_id": None,
+                    "lower_username": None,
+                    "uuid": None,
+                    "created": int(time.time()),
+                    "pfp_data": 1,
+                    "quote": "",
+                    "pswd": None,
+                    "tokens": [],
+                    "flags": 0,
+                    "permissions": 0,
+                    "ban": {
+                        "state": "none",
+                        "restrictions": 0,
+                        "expires": 0,
+                        "reason": ""
+                    },
+                    "last_seen": None,
+                    "delete_after": None
+                }
+                for key in user.keys():
+                    if key not in expected_keys:
+                        del user[key]
+                for key, default in expected_keys.items():
+                    if key not in user:
+                        user[key] = default
+
+                user_updates.append(pymongo.ReplaceOne({"_id": user["_id"]}, user))
+                all_usernames.append(user["_id"])
+                unique_usernames.add(user["lower_username"])
+            self.db.user_settings.bulk_write(user_settings_inserts)
+            self.db.usersv0.drop_indexes()
+            self.db.usersv0.bulk_write(user_updates)
+
+            self.log("Updating chats...")
+            self.db.chats.bulk_write([
+                pymongo.UpdateMany({}, {"$pull": {"members": {"$nin": all_usernames}}}),
+                pymongo.DeleteMany({"members": {"$size": 0}}),
+                pymongo.UpdateMany({}, {"$set": {
+                    "type": 0,
+                    "created": int(time.time()),
+                    "last_active": int(time.time()),
+                    "deleted": False
+                }})
+            ])
+            self.db.chats.drop_indexes()
+            all_chat_ids = [chat["_id"] for chat in self.db.chats.find({}, projection={"_id": 1})]
+
+            self.log("Updating posts...")
+            self.db.posts.bulk_write([
+                pymongo.DeleteMany({"$or": [
+                    {"u": {"$nin": ["Server"] + all_usernames}},
+                    {"post_origin": {"$nin": ["home", "inbox"] + all_chat_ids}}
+                ]}),
+                pymongo.UpdateMany({"isDeleted": True}, {"$set": {"deleted_at": int(time.time())}})
+            ])
+            self.db.posts.drop_indexes()
+
+            self.log("Migrating IP blocks...")
+            ip_banlist = self.db.config.find_one({"_id": "IPBanlist"})
+            if ip_banlist:
+                _radix = radix.Radix()
+                netblocks = []
+                for ip in ip_banlist.get("wildcard", []):
+                    try:
+                        radix_node = _radix.add(ip)
+                        netblocks.append(pymongo.InsertOne({"_id": radix_node.prefix, "type": 0}))
+                    except: pass
+                self.db.netblock.bulk_write(netblocks)
+
+            self.log("Dropping unnecessary data...")
+            self.db.config.delete_many({"_id": {"$ne": "filter"}})
+            self.db.netlog.drop()
+            self.db.reports.drop()
+
+            self.log("Done! It may take a bit to rebuild the indexes...")
+
 
         # Create database collections
         for item in {
             "config",
             "usersv0",
             "user_settings",
-            "netlog",
             "relationships",
+            "netinfo",
+            "netlog",
+            "netblock",
             "posts",
             "post_revisions",
             "chats",
@@ -56,73 +211,120 @@ class Files:
                 self.log("Creating collection {0}".format(item))
                 self.db.create_collection(name=item)
 
+
         # Create collection indexes
+
+        # Users
         try:
-            self.db["usersv0"].create_index(
-                [("lower_username", ASCENDING), ("created", DESCENDING)],
-                name="lower_username",
-            )
+            self.db.usersv0.create_index([("lower_username", pymongo.ASCENDING)], name="lower_username", unique=True)
         except: pass
         try:
-            self.db["netlog"].create_index([("users", ASCENDING)], name="users")
+            self.db.usersv0.create_index([
+                ("lower_username", pymongo.TEXT),
+                ("uuid", pymongo.TEXT),
+                ("quote", pymongo.TEXT)
+            ], name="search", partialFilterExpression={"pswd": {"$type": "string"}})
         except: pass
         try:
-            self.db["netlog"].create_index(
-                [("last_active", ASCENDING)],
-                name="last_active_ttl",
-                expireAfterSeconds=7776000,
-                partialFilterExpression={"banned": False},
-            )
+            self.db.usersv0.create_index([("created", pymongo.DESCENDING)], name="recent_users")
         except: pass
         try:
-            self.db["netlog"].create_index(
-                [("banned", ASCENDING)],
-                name="banned",
-                partialFilterExpression={"banned": True},
-            )
+            self.db.usersv0.create_index([
+                ("delete_after", pymongo.DESCENDING)
+            ], name="scheduled_deletions", partialFilterExpression={"delete_after": {"$type": "number"}})
+        except: pass
+
+        # Relationships
+        try:
+            self.db.relationships.create_index([("_id.from", pymongo.ASCENDING)], name="from")
+        except: pass
+
+        # Netlog
+        try:
+            self.db.netlog.create_index([("_id.ip", pymongo.ASCENDING)], name="ip")
         except: pass
         try:
-            self.db["posts"].create_index(
+            self.db.netlog.create_index([("_id.user", pymongo.ASCENDING)], name="user")
+        except: pass
+
+        # Posts
+        try:
+            self.db.posts.create_index(
                 [
-                    ("post_origin", ASCENDING),
-                    ("isDeleted", ASCENDING),
-                    ("t.e", DESCENDING),
-                    ("u", ASCENDING),
+                    ("post_origin", pymongo.ASCENDING),
+                    ("isDeleted", pymongo.ASCENDING),
+                    ("t.e", pymongo.DESCENDING),
+                    ("u", pymongo.ASCENDING),
                 ],
                 name="default"
             )
         except: pass
         try:
-            self.db["posts"].create_index(
-                [
-                    ("post_origin", ASCENDING),
-                    ("isDeleted", ASCENDING),
-                    ("p", TEXT),
-                    ("t.e", DESCENDING),
-                ],
+            self.db.posts.create_index(
+                [("u", pymongo.ASCENDING)],
+                name="user"
+            )
+        except: pass
+        try:
+            self.db.posts.create_index(
+                [("p", pymongo.TEXT)],
                 name="search",
                 partialFilterExpression={"post_origin": "home", "isDeleted": False},
             )
         except: pass
         try:
-            self.db["posts"].create_index(
-                [("deleted_at", ASCENDING)],
-                name="deleted_at_ttl",
-                expireAfterSeconds=2592000,
+            self.db.posts.create_index(
+                [("deleted_at", pymongo.ASCENDING)],
+                name="scheduled_purges",
                 partialFilterExpression={"isDeleted": True, "mod_deleted": False},
             )
         except: pass
+
+        # Post revisions
         try:
-            self.db["chats"].create_index(
-                [
-                    ("type", ASCENDING),
-                    ("members", ASCENDING),
-                    ("deleted", ASCENDING),
-                    ("last_active", DESCENDING),
-                ],
-                name="user_chats",
+            self.db.post_revisions.create_index(
+                [("post_id", pymongo.ASCENDING), ("time", pymongo.DESCENDING)],
+                name="post_revisions"
             )
         except: pass
+        try:
+            self.db.post_revisions.create_index(
+                [("time", pymongo.ASCENDING)],
+                name="scheduled_purges"
+            )
+        except: pass
+
+        # Chats
+        try:
+            self.db.chats.create_index(
+                [
+                    ("members", pymongo.ASCENDING),
+                    ("type", pymongo.ASCENDING)
+                ],
+                name="user_chats"
+            )
+        except: pass
+
+        # Reports
+        try:
+            self.db.reports.create_index(
+                [("content_id", pymongo.ASCENDING)],
+                name="pending_reports",
+                partialFilterExpression={"status": "pending"},
+            )
+        except: pass
+        try:
+            self.db.reports.create_index(
+                [
+                    ("escalated", pymongo.DESCENDING),
+                    ("time", pymongo.DESCENDING),
+                    ("status", pymongo.ASCENDING),
+                    ("type", pymongo.ASCENDING)
+                ],
+                name="all_reports"
+            )
+        except: pass
+
 
         # Create reserved accounts
         for username in ["Server", "Deleted", "Meower", "Admin", "username"]:
@@ -130,12 +332,13 @@ class Files:
                 self.db.usersv0.insert_one({
                     "_id": username,
                     "lower_username": username.lower(),
-                    "uuid": username,
-                    "created": int(time.time()),
+                    "uuid": None,
+                    "created": None,
                     "pfp_data": None,
                     "quote": None,
                     "pswd": None,
                     "tokens": None,
+                    "flags": UserFlags.SYSTEM,
                     "permissions": None,
                     "ban": None,
                     "last_seen": None,
@@ -143,7 +346,16 @@ class Files:
                 })
             except: pass
 
-        # Create status file
+
+        # Create migration item
+        try:
+            self.db.config.insert_one({
+                "_id": "migration",
+                "database": 1
+            })
+        except: pass
+
+        # Create status item
         try:
             self.db.config.insert_one({
                 "_id": "status",
@@ -152,7 +364,7 @@ class Files:
             })
         except: pass
 
-        # Create Filter file
+        # Create filter item
         try:
             self.db.config.insert_one({
                 "_id": "filter",
@@ -161,95 +373,6 @@ class Files:
             })
         except: pass
 
-        # Migrations
-        server_user = self.db.usersv0.find_one({"_id": "Server"})
-        if "banned" in server_user:  # moderation update
-            self.log(
-                "Running migration for moderation update...\n\nPlease do not kill the server!"
-            )
-
-            self.log("Updating user admin permissions...")
-            level1 = (
-                Permissions.VIEW_REPORTS
-                | Permissions.EDIT_REPORTS
-                | Permissions.VIEW_NOTES
-                | Permissions.EDIT_NOTES
-                | Permissions.VIEW_POSTS
-                | Permissions.EDIT_POSTS
-                | Permissions.VIEW_INBOXES
-                | Permissions.CLEAR_USER_QUOTES
-                | Permissions.SEND_ALERTS
-                | Permissions.KICK_USERS
-                | Permissions.VIEW_BAN_STATES
-                | Permissions.EDIT_BAN_STATES
-            )
-            level2 = (
-                level1
-                | Permissions.VIEW_ALTS
-                | Permissions.CLEAR_USER_POSTS
-            )
-            level3 = (
-                level2
-                | Permissions.DELETE_USERS
-                | Permissions.VIEW_IPS
-                | Permissions.BLOCK_IPS
-                | Permissions.VIEW_CHATS
-                | Permissions.EDIT_CHATS
-                | Permissions.SEND_ANNOUNCEMENTS
-                | Permissions.VIEW_AUDIT_LOG
-            )
-            self.db.usersv0.update_many({"lvl": 0}, {"$set": {"permissions": 0}})
-            self.db.usersv0.update_many({"lvl": 1}, {"$set": {"permissions": level1}})
-            self.db.usersv0.update_many({"lvl": 2}, {"$set": {"permissions": level2}})
-            self.db.usersv0.update_many({"lvl": 3}, {"$set": {"permissions": level3}})
-            self.db.usersv0.update_many(
-                {"lvl": 4}, {"$set": {"permissions": Permissions.SYSADMIN}}
-            )
-
-            self.log("Updating user ban statuses...")
-            self.db.usersv0.update_many(
-                {"banned": False},
-                {"$set": {"ban": {"state": "None", "expires": 0, "reason": ""}}},
-            )
-            self.db.usersv0.update_many(
-                {"banned": True},
-                {"$set": {"ban": {"state": "PermBan", "expires": 0, "reason": ""}}},
-            )
-
-            self.log("Updating users...")
-            self.db.usersv0.update_many(
-                {}, {"$set": {"last_seen": None}, "$unset": {"lvl": "", "banned": ""}}
-            )
-
-            self.log("Updating netlogs...")
-            ip_banlist = self.db.config.find_one({"_id": "IPBanlist"})
-            self.db.netlog.update_many({}, {"$set": {"last_used": int(time.time())}})
-            self.db.netlog.update_many(
-                {"_id": {"$in": ip_banlist["index"]}}, {"$set": {"banned": True}}
-            )
-            self.db.netlog.update_many(
-                {"_id": {"$nin": ip_banlist["index"]}}, {"$set": {"banned": False}}
-            )
-            self.db.config.delete_one({"_id": "IPBanlist"})
-
-            self.log("Updating chats...")
-            self.db.chats.update_many(
-                {},
-                {
-                    "$set": {
-                        "created": int(time.time()),
-                        "last_active": int(time.time()),
-                        "deleted": False,
-                    }
-                },
-            )
-
-            self.log("Updating posts...")
-            self.db.posts.update_many(
-                {"isDeleted": True}, {"$set": {"deleted_at": int(time.time())}}
-            )
-
-            self.log("Migration completed!")
 
         self.log("Files initialized!")
 

@@ -70,4 +70,5 @@ async def create_home_post():
         abort(500)
 
     # Return new post
+    post["error"] = False
     return post, 200

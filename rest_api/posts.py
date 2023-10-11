@@ -27,16 +27,14 @@ async def get_post():
         abort(400)
     
     # Get post
-    post = app.files.db.posts.find_one({"_id": post_id})
+    post = app.files.db.posts.find_one({"_id": post_id, "isDeleted": False})
     if not post:
         abort(404)
 
     # Check access
-    if post["isDeleted"]:
+    if (post["post_origin"] == "inbox") and (post["u"] != request.user):
         abort(404)
-    elif (post["post_origin"] == "inbox") and (post["u"] != request.user):
-        abort(404)
-    elif post["post_origin"] != "home":
+    elif post["post_origin"] not in ["home", "inbox"]:
         if app.files.db.chats.count_documents({
             "_id": post["post_origin"],
             "members": request.user,
@@ -73,32 +71,34 @@ async def update_post():
         abort(400)
     
     # Get post
-    post = app.files.db.posts.find_one({"_id": post_id})
+    post = app.files.db.posts.find_one({"_id": post_id, "isDeleted": False})
     if not post:
         abort(404)
 
     # Check access
-    if post["isDeleted"]:
+    if (post["post_origin"] == "inbox") and (post["u"] != request.user):
         abort(404)
-    elif post["post_origin"] not in {"home", "inbox"}:
+    elif post["post_origin"] not in ["home", "inbox"]:
         chat = app.files.db.chats.find_one({
             "_id": post["post_origin"],
             "members": request.user,
             "deleted": False
-        }, projection={"members": 1})
+        })
         if not chat:
             abort(404)
+
+    # Check permissions
     if post["post_origin"] == "inbox" or post["u"] != request.user:
         abort(403)
 
     # Check restrictions
     if post["post_origin"] == "home" and app.security.is_restricted(request.user, Restrictions.HOME_POSTS):
         return {"error": True, "type": "accountBanned"}, 403
-    elif post["post_origin"] not in ["home", "inbox"] and app.security.is_restricted(request.user, Restrictions.CHAT_POSTS):
+    elif post["post_origin"] != "home" and app.security.is_restricted(request.user, Restrictions.CHAT_POSTS):
         return {"error": True, "type": "accountBanned"}, 403
 
     # Make sure new content isn't the same as the old content
-    if post.get("unfiltered_p") or post["p"] == body.content:
+    if post.get("unfiltered_p", post["p"]) == body.content:
         post["error"] = False
         return post, 200
 
@@ -106,7 +106,7 @@ async def update_post():
     app.files.db.post_revisions.insert_one({
         "_id": str(uuid.uuid4()),
         "post_id": post["_id"],
-        "old_content": post.get("unfiltered_p") or post["p"],
+        "old_content": post.get("unfiltered_p", post["p"]),
         "new_content": body.content,
         "time": int(time.time())
     })
@@ -169,14 +169,12 @@ async def delete_post():
         abort(400)
     
     # Get post
-    post = app.files.db.posts.find_one({"_id": post_id})
+    post = app.files.db.posts.find_one({"_id": post_id, "isDeleted": False})
     if not post:
         abort(404)
 
     # Check access
-    if post["isDeleted"]:
-        abort(404)
-    elif post["post_origin"] not in {"home", "inbox"}:
+    if post["post_origin"] not in {"home", "inbox"}:
         chat = app.files.db.chats.find_one({
             "_id": post["post_origin"],
             "members": request.user,
@@ -185,9 +183,7 @@ async def delete_post():
         if not chat:
             abort(404)
     if post["post_origin"] == "inbox" or post["u"] != request.user:
-        if post["post_origin"] in {"home", "inbox"}:
-            abort(403)
-        elif chat["owner"] != request.user:
+        if (post["post_origin"] in ["home", "inbox"]) or (chat["owner"] != request.user):
             abort(403)
 
     # Update post
@@ -311,4 +307,5 @@ async def create_chat_post(chat_id):
         abort(500)
 
     # Return new post
+    post["error"] = False
     return post, 200

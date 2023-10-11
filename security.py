@@ -264,10 +264,6 @@ class Security:
 
         # Update or delete chats
         for chat in self.files.db.chats.find({
-            "$or": [
-                {"deleted": False},
-                {"deleted": True}
-            ],
             "members": username
         }, projection={"type": 1, "owner": 1, "members": 1}):
             if chat["type"] == 1 or len(chat["members"]) == 1:
