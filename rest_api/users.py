@@ -42,10 +42,10 @@ async def get_user(username):
 @users_bp.get("/posts")
 async def get_posts(username):
     # Get page
-    page = 1
     try:
         page = int(request.args["page"])
-    except: pass
+    except:
+        page = 1
 
     # Get posts
     query = {"post_origin": "home", "isDeleted": False, "u": username}

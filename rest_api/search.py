@@ -14,10 +14,10 @@ async def search_home():
         q = q[:4000]
 
     # Get page
-    page = 1
     try:
         page = int(request.args["page"])
-    except: pass
+    except:
+        page = 1
 
     # Get posts
     query = {"post_origin": "home", "isDeleted": False, "$text": {"$search": q}}
@@ -46,10 +46,10 @@ async def search_users():
         q = q[:20]
 
     # Get page
-    page = 1
     try:
         page = int(request.args["page"])
-    except: pass
+    except:
+        page = 1
 
     # Get users
     query = {"pswd": {"$type": "string"}, "$text": {"$search": q}}

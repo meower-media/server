@@ -295,7 +295,6 @@ class Security:
         ```json
         {
             "_id": str,
-            "ip": str,
             "country_code": str,
             "country_name": str,
             "asn": int,
@@ -318,7 +317,6 @@ class Security:
                 }).json()
                 netinfo = {
                     "_id": ip_hash,
-                    "ip": iphub_info["ip"],
                     "country_code": iphub_info["countryCode"],
                     "country_name": iphub_info["countryName"],
                     "asn": iphub_info["asn"],
@@ -330,7 +328,6 @@ class Security:
             else:
                 netinfo = {
                     "_id": ip_hash,
-                    "ip": ip_address,
                     "country_code": "Unknown",
                     "country_name": "Unknown",
                     "asn": "Unknown",
@@ -340,7 +337,7 @@ class Security:
                 }
 
         return netinfo
-    
+
     def add_audit_log(self, action_type, mod_username, mod_ip, data):
         self.files.db.audit_log.insert_one({
             "_id": str(uuid.uuid4()),
@@ -350,3 +347,30 @@ class Security:
             "time": int(time.time()),
             "data": data
         })
+
+    def run_background_tasks(self):
+        while True:
+            time.sleep(300)
+
+            self.log("Running background tasks...")
+
+            # Delete accounts scheduled for deletion
+            for user in self.files.db.usersv0.find({"delete_after": {"$lt": int(time.time())}}, projection={"_id": 1}):
+                try:
+                    self.delete_account(user["_id"])
+                except Exception as e:
+                    self.log("Failed to delete account {0}: {1}".format(user["_id"], e))
+
+            # Purge old netinfo
+            self.files.db.netinfo.delete_many({"last_refreshed": {"$lt": int(time.time())-7776000}})
+
+            # Purge old netlogs
+            self.files.db.netlog.delete_many({"last_used": {"$lt": int(time.time())-7776000}})
+
+            # Purge deleted posts
+            self.files.db.posts.delete_many({"deleted_at": {"$lt": int(time.time())-1209600}})
+
+            # Purge old post revisions
+            self.files.db.post_revisions.delete_many({"time": {"$lt": int(time.time())-1209600}})
+
+            self.log("Finished background tasks!")

@@ -81,6 +81,7 @@ class Files:
                 # Delete user if it has a duplicate username
                 if user["lower_username"] in unique_usernames:
                     user_updates.append(pymongo.DeleteOne({"_id": user["_id"]}))
+                    continue
 
                 # Migrate settings to user_settings collection
                 user_settings = {"_id": user["_id"]}
@@ -133,7 +134,7 @@ class Files:
                     "last_seen": None,
                     "delete_after": None
                 }
-                for key in user.keys():
+                for key in list(user.keys()):
                     if key not in expected_keys:
                         del user[key]
                 for key, default in expected_keys.items():
@@ -179,7 +180,11 @@ class Files:
                 for ip in ip_banlist.get("wildcard", []):
                     try:
                         radix_node = _radix.add(ip)
-                        netblocks.append(pymongo.InsertOne({"_id": radix_node.prefix, "type": 0}))
+                        netblocks.append(pymongo.InsertOne({
+                            "_id": radix_node.prefix,
+                            "type": 0,
+                            "created": int(time.time())
+                        }))
                     except: pass
                 self.db.netblock.bulk_write(netblocks)
 
@@ -230,7 +235,7 @@ class Files:
         except: pass
         try:
             self.db.usersv0.create_index([
-                ("delete_after", pymongo.DESCENDING)
+                ("delete_after", pymongo.ASCENDING)
             ], name="scheduled_deletions", partialFilterExpression={"delete_after": {"$type": "number"}})
         except: pass
 
@@ -239,12 +244,20 @@ class Files:
             self.db.relationships.create_index([("_id.from", pymongo.ASCENDING)], name="from")
         except: pass
 
+        # Netinfo
+        try:
+            self.db.netinfo.create_index([("last_refreshed", pymongo.ASCENDING)], name="last_refreshed")
+        except: pass
+
         # Netlog
         try:
             self.db.netlog.create_index([("_id.ip", pymongo.ASCENDING)], name="ip")
         except: pass
         try:
             self.db.netlog.create_index([("_id.user", pymongo.ASCENDING)], name="user")
+        except: pass
+        try:
+            self.db.netlog.create_index([("last_used", pymongo.ASCENDING)], name="last_used")
         except: pass
 
         # Posts

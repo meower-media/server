@@ -214,10 +214,10 @@ async def get_chat_posts(chat_id):
         abort(401)
 
     # Get page
-    page = 1
     try:
         page = int(request.args["page"])
-    except: pass
+    except:
+        page = 1
 
     # Make sure chat exists
     if app.files.db.chats.count_documents({

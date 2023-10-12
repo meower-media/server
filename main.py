@@ -109,6 +109,11 @@ class Main:
         rest_api_thread.daemon = True
         rest_api_thread.start()
 
+        # Run background tasks thread
+        background_tasks_thread = Thread(target=self.security.run_background_tasks)
+        background_tasks_thread.daemon = True
+        background_tasks_thread.start()
+
         # Run CloudLink server
         self.cl.server(port=3000, ip="0.0.0.0")
     

@@ -140,7 +140,7 @@ class Meower:
         self.supporter.ratelimit(f"login:u:{username}:s", 25, 300)
 
         # Alert user of new IP address if user has admin permissions
-        if account["permissions"] and netlog_result.upserted_count >= 1:
+        if account["permissions"] and netlog_result.upserted_id:
             self.supporter.createPost("inbox", username, f"Your account was logged into on a new IP address ({ip})! You are receiving this message because you have admin permissions. Please make sure to keep your account secure.")
         
         # Alert user if account was pending deletion
@@ -239,7 +239,7 @@ class Meower:
             "created": int(time.time()),
             "pfp_data": 2,
             "quote": "",
-            "pswd": bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode(),
+            "pswd": bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=14)).decode(),
             "tokens": [token],
             "flags": 0,
             "permissions": 0,
@@ -280,6 +280,23 @@ class Meower:
         
         # Tell the client it is authenticated
         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
+
+        # Auto-report if client is on a VPN
+        if self.security.get_netinfo(ip)["vpn"]:
+            self.files.db.reports.insert_one({
+                "_id": str(uuid.uuid4()),
+                "type": "user",
+                "content_id": username,
+                "status": "pending",
+                "escalated": False,
+                "reports": [{
+                    "user": "Server",
+                    "ip": ip,
+                    "reason": "User registered while using a VPN.",
+                    "comment": "",
+                    "time": int(time.time())
+                }]
+            })
 
     def get_profile(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
@@ -383,7 +400,7 @@ class Meower:
         
         # Update password
         self.files.db.usersv0.update_one({"_id": client}, {"$set": {
-            "pswd": bcrypt.hashpw(new_pswd.encode(), bcrypt.gensalt()).decode()
+            "pswd": bcrypt.hashpw(new_pswd.encode(), bcrypt.gensalt(rounds=14)).decode()
         }})
 
         # Tell the client the password was updated
@@ -918,10 +935,10 @@ class Meower:
         
         # Get query and page
         query = val["query"]
-        page = 1
         try:
             page = int(val["page"])
-        except: pass
+        except:
+            page =1
 
         # Check query and page datatypes
         if (not isinstance(query, str)) or (not isinstance(page, int)):

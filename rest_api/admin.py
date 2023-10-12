@@ -83,11 +83,10 @@ async def get_reports():
         query["type"] = request.args["type"]
 
     # Get page
-    page = 1
     try:
         page = int(request.args["page"])
     except:
-        pass
+        page = 1
 
     # Get reports
     reports = list(
@@ -421,6 +420,33 @@ async def restore_post(post_id):
     return post, 200
 
 
+@admin_bp.get("/users")
+async def get_users():
+    # Get page
+    try:
+        page = int(request.args["page"])
+    except:
+        page = 1
+
+    # Get usernames
+    usernames = [user["_id"] for user in app.files.db.usersv0.find({}, sort=[("created", pymongo.DESCENDING)], skip=(page-1)*25, limit=25)]
+
+    # Add log
+    app.security.add_audit_log("got_users", request.user, request.ip, {"page": page})
+
+    # Return users
+    payload = {
+        "error": False,
+        "page#": page,
+        "pages": app.files.get_total_pages("usersv0", {}),
+    }
+    if "autoget" in request.args:
+        payload["autoget"] = [app.security.get_account(username) for username in usernames]
+    else:
+        payload["index"] = usernames
+    return payload, 200
+
+
 @admin_bp.get("/users/<username>")
 async def get_user(username):
     # Get account
@@ -498,6 +524,7 @@ async def get_user(username):
             if app.security.has_permission(request.permissions, Permissions.VIEW_IPS):
                 payload["recent_ips"] = [
                     {
+                        "ip": netlog["ip"],
                         "netinfo": app.security.get_netinfo(netlog["ip"]),
                         "last_used": netlog["last_used"],
                         "blocked": (
@@ -685,11 +712,10 @@ async def get_user_posts(username, post_origin):
         abort(401)
 
     # Get page
-    page = 1
     try:
         page = int(request.args["page"])
     except:
-        pass
+        page = 1
 
     # Get posts
     if post_origin == "all":
@@ -906,9 +932,9 @@ async def get_netinfo(ip):
     # Get netblocks
     netblocks = []
     for radix_node in app.supporter.blocked_ips.search_covering(ip):
-        netblocks.append({"_id": radix_node.prefix, "type": 0})
+        netblocks.append(app.files.db.netblock.find_one({"_id": radix_node.prefix}))
     for radix_node in app.supporter.registration_blocked_ips.search_covering(ip):
-        netblocks.append({"_id": radix_node.prefix, "type": 1})
+        netblocks.append(app.files.db.netblock.find_one({"_id": radix_node.prefix}))
 
     # Get netlogs
     netlogs = [
@@ -940,11 +966,17 @@ async def get_netblocks():
     if not app.security.has_permission(request.permissions, Permissions.VIEW_IPS):
         abort(401)
 
+    # Get page
+    try:
+        page = int(request.args["page"])
+    except:
+        page = 1
+
     # Get netblocks
-    netblocks = list(app.files.db.netblock.find({}))
+    netblocks = list(app.files.db.netblock.find({}, sort=[("created", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
 
     # Add log
-    app.security.add_audit_log("got_netblocks", request.user, request.ip, {})
+    app.security.add_audit_log("got_netblocks", request.user, request.ip, {"page": page})
 
     # Return netblocks
     payload = {"error": False, "page#": 1, "pages": 1}
@@ -995,7 +1027,11 @@ async def create_netblock(cidr):
         abort(400)
 
     # Construct netblock obj
-    netblock = {"_id": cidr, "type": body.type}
+    netblock = {
+        "_id": cidr,
+        "type": body.type,
+        "created": int(time.time())
+    }
 
     # Remove from Radix
     if app.supporter.blocked_ips.search_exact(cidr):
@@ -1072,11 +1108,10 @@ async def get_announcements():
         abort(401)
 
     # Get page
-    page = 1
     try:
         page = int(request.args["page"])
     except:
-        pass
+        page = 1
 
     # Get posts
     query = {
@@ -1165,7 +1200,7 @@ async def restart_server():
 
     # Make sure the server can be restarted
     if not os.getenv("RESET_SCRIPT"):
-        abort(404)
+        abort(501)
 
     # Add log
     app.security.add_audit_log("restarted_server", request.user, request.ip, {})

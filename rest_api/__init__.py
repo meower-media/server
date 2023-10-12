@@ -125,6 +125,11 @@ async def internal(e):
 	return {"error": True, "type": "Internal"}, 500
 
 
+@app.errorhandler(501)  # Not implemented
+async def not_implemented(e):
+      return {"error": True, "type": "notImplemented"}, 501
+
+
 # Register blueprints
 app.register_blueprint(home_bp)
 app.register_blueprint(inbox_bp)

@@ -12,10 +12,10 @@ async def get_inbox_posts():
         abort(401)
 
     # Get page
-    page = 1
     try:
         page = int(request.args["page"])
-    except: pass
+    except:
+        page = 1
 
     # Get posts
     query = {"post_origin": "inbox", "isDeleted": False, "$or": [{"u": request.user}, {"u": "Server"}]}
