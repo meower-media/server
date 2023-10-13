@@ -13,6 +13,7 @@ from .admin import admin_bp
 
 # Init app
 app = Quart(__name__, static_folder="static")
+app.config["APPLICATION_ROOT"] = "/api"
 app.url_map.strict_slashes = False
 cors(app, allow_origin="*")
 

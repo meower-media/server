@@ -87,7 +87,7 @@ class Files:
                 user_settings = {"_id": user["_id"]}
                 for key, default in DEFAULT_USER_SETTINGS.items():
                     value = user.pop(key, default)
-                    if value and isinstance(value, type(default)):
+                    if isinstance(value, type(default)):
                         user_settings[key] = value
                     else:
                         user_settings[key] = default
