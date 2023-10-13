@@ -47,6 +47,14 @@ class UpdateUserBody(BaseModel):
         validate_assignment = True
 
 
+class UpdateChatBody(BaseModel):
+    nickname: str = Field(min_length=1, max_length=32)
+
+    class Config:
+        validate_assignment = True
+        str_strip_whitespace = True
+
+
 class InboxMessageBody(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
 
@@ -114,8 +122,8 @@ async def get_reports():
         request.user,
         request.ip,
         {
-            "status": request.args.get("status", "all"),
-            "type": request.args.get("type", "all"),
+            "status": request.args.get("status", "any"),
+            "type": request.args.get("type", "any"),
             "page": page,
         },
     )
@@ -705,11 +713,14 @@ async def ban_user(username):
     return {"error": False}, 200
 
 
-@admin_bp.get("/users/<username>/posts/<post_origin>")
-async def get_user_posts(username, post_origin):
+@admin_bp.get("/users/<username>/posts")
+async def get_user_posts(username):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.VIEW_POSTS):
         abort(401)
+
+    # Get post origin
+    post_origin = request.args.get("origin") 
 
     # Get page
     try:
@@ -718,14 +729,14 @@ async def get_user_posts(username, post_origin):
         page = 1
 
     # Get posts
-    if post_origin == "all":
-        query = {"u": username}
-    else:
+    if post_origin:
         query = {
             "post_origin": post_origin,
             "$or": [{"isDeleted": False}, {"isDeleted": True}],
             "u": username,
         }
+    else:
+        query = {"u": username}
     posts = list(
         app.files.db.posts.find(
             query, sort=[("t.e", pymongo.DESCENDING)], skip=(page - 1) * 25, limit=25
@@ -753,11 +764,14 @@ async def get_user_posts(username, post_origin):
     return payload, 200
 
 
-@admin_bp.delete("/users/<username>/posts/<post_origin>")
-async def clear_user_posts(username, post_origin):
+@admin_bp.delete("/users/<username>/posts")
+async def clear_user_posts(username):
     # Check permissions
-    if not app.security.has_permission(request.permissions, Permissions.EDIT_POSTS):
+    if not app.security.has_permission(request.permissions, Permissions.DELETE_POSTS):
         abort(401)
+
+    # Get post origin
+    post_origin = request.args.get("origin") 
 
     # Make sure user isn't protected
     if not app.security.has_permission(request.permissions, Permissions.SYSADMIN):
@@ -768,10 +782,10 @@ async def clear_user_posts(username, post_origin):
             abort(403)
 
     # Delete posts
-    if post_origin == "all":
-        query = {"u": username, "isDeleted": False}
-    else:
+    if post_origin:
         query = {"post_origin": post_origin, "isDeleted": False, "u": username}
+    else:
+        query = {"u": username, "isDeleted": False}
     app.files.db.posts.update_many(
         query,
         {
@@ -920,11 +934,287 @@ async def clear_quote(username):
     return {"error": False}, 200
 
 
+@admin_bp.get("/chats/<chat_id>")
+async def get_chat(chat_id):
+    # Check permissions
+    if not app.security.has_permission(request.permissions, Permissions.VIEW_CHATS):
+        abort(403)
+
+    # Get chat
+    chat = app.files.db.chats.find_one({"_id": chat_id})
+    if not chat:
+        abort(404)
+
+    # Add log
+    app.security.add_audit_log("got_chat", request.user, request.ip, {"chat_id": chat_id})
+
+    # Return chat
+    chat["error"] = False
+    return chat, 200
+
+
+@admin_bp.patch("/chats/<chat_id>")
+async def update_chat(chat_id):
+    # Check permissions
+    if not app.security.has_permission(request.permissions, Permissions.VIEW_CHATS):
+        abort(403)
+
+    # Get body
+    try:
+        body = UpdateChatBody(**await request.json)
+    except: abort(400)
+
+    # Get chat
+    chat = app.files.db.chats.find_one({"_id": chat_id})
+    if not chat:
+        abort(404)
+
+    # Make sure new nickname isn't the same as the old nickname
+    if chat["nickname"] == body.nickname:
+        chat["error"] = False
+        return chat, 200
+    
+    # Update chat
+    chat["nickname"] = app.supporter.wordfilter(body.nickname)
+    app.files.db.chats.update_one({"_id": chat_id}, {"$set": {"nickname": chat["nickname"]}})
+
+    # Send update chat event
+    app.supporter.sendPacket({"cmd": "direct", "val": {
+        "mode": "update_chat",
+        "payload": {
+            "_id": chat_id,
+            "nickname": chat["nickname"]
+        }
+    }, "id": chat["members"]})
+
+    # Add log
+    app.security.add_audit_log("updated_chat", request.user, request.ip, {"chat_id": chat_id, "nickname": body.nickname})
+
+    # Return chat
+    chat["error"] = False
+    return chat, 200
+
+
+@admin_bp.delete("/chats/<chat_id>")
+async def delete_chat(chat_id):
+    # Check permissions
+    if not app.security.has_permission(request.permissions, Permissions.EDIT_CHATS):
+        abort(403)
+
+    # Get chat
+    chat = app.files.db.chats.find_one({"_id": chat_id})
+    if not chat:
+        abort(404)
+
+    # Update chat
+    chat["deleted"] = True
+    app.files.db.chats.update_one({"_id": chat_id}, {"$set": {"deleted": True}})
+
+    # Send delete chat event
+    app.supporter.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": chat_id}, "id": chat["members"]})
+
+    # Add log
+    app.security.add_audit_log("deleted_chat", request.user, request.ip, {"chat_id": chat_id})
+
+    # Return chat
+    chat["error"] = False
+    return chat, 200
+
+
+@admin_bp.post("/chats/<chat_id>/restore")
+async def restore_chat(chat_id):
+    # Check permissions
+    if not app.security.has_permission(request.permissions, Permissions.EDIT_CHATS):
+        abort(403)
+
+    # Get chat
+    chat = app.files.db.chats.find_one({"_id": chat_id})
+    if not chat:
+        abort(404)
+
+    # Update chat
+    chat["deleted"] = False
+    app.files.db.chats.update_one({"_id": chat_id}, {"$set": {"deleted": False}})
+
+    # Send create chat event
+    app.supporter.sendPacket({"cmd": "direct", "val": {
+        "mode": "create_chat",
+        "payload": chat
+    }, "id": chat["members"]})
+
+    # Add log
+    app.security.add_audit_log("restored_chat", request.user, request.ip, {"chat_id": chat_id})
+
+    # Return chat
+    chat["error"] = False
+    return chat, 200
+
+
+@admin_bp.put("/chats/<chat_id>/members/<username>")
+async def add_chat_member(chat_id, username):
+    # Check permissions
+    if not app.security.has_permission(request.permissions, Permissions.EDIT_CHATS):
+        abort(401)
+
+    # Get chat
+    chat = app.files.db.chats.find_one({"_id": chat_id})
+    if not chat:
+        abort(404)
+
+    # Make sure the user isn't already in the chat
+    if username in chat["members"]:
+        return {"error": True, "type": "chatMemberAlreadyExists"}, 409
+
+    # Make sure requested user exists and isn't deleted
+    user = app.files.db.usersv0.find_one({"_id": username}, projection={"permissions": 1})
+    if (not user) or (user["permissions"] is None):
+        abort(404)
+
+    # Update chat
+    chat["members"].append(username)
+    app.files.db.chats.update_one({"_id": chat_id}, {"$addToSet": {"members": username}})
+
+    # Send create chat event
+    app.supporter.sendPacket({"cmd": "direct", "val": {
+        "mode": "create_chat",
+        "payload": chat
+    }, "id": username})
+
+    # Send update chat event
+    app.supporter.sendPacket({"cmd": "direct", "val": {
+        "mode": "update_chat",
+        "payload": {
+            "_id": chat_id,
+            "members": chat["members"]
+        }
+    }, "id": chat["members"]})
+
+    # Add log
+    app.security.add_audit_log("added_chat_member", request.user, request.ip, {"chat_id": chat_id, "username": username})
+
+    # Return chat
+    chat["error"] = False
+    return chat, 200
+
+
+@admin_bp.delete("/chats/<chat_id>/members/<username>")
+async def remove_chat_member(chat_id, username):
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Get chat
+    chat = app.files.db.chats.find_one({
+        "_id": chat_id,
+        "members": username
+    })
+    if not chat:
+        abort(404)
+
+    # Update chat
+    chat["members"].remove(username)
+    app.files.db.chats.update_one({"_id": chat_id}, {"$pull": {"members": username}})
+
+    # Send update chat event
+    app.supporter.sendPacket({"cmd": "direct", "val": {
+        "mode": "update_chat",
+        "payload": {
+            "_id": chat_id,
+            "members": chat["members"]
+        }
+    }, "id": chat["members"]})
+
+    # Send delete chat event to user
+    app.supporter.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": chat_id}, "id": username})
+
+    # Add log
+    app.security.add_audit_log("removed_chat_member", request.user, request.ip, {"chat_id": chat_id, "username": username})
+
+    # Return chat
+    chat["error"] = False
+    return chat, 200
+
+
+@admin_bp.post("/chats/<chat_id>/members/<username>/transfer")
+async def transfer_chat_ownership(chat_id, username):
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Get chat
+    chat = app.files.db.chats.find_one({
+        "_id": chat_id,
+        "members": username
+    })
+    if not chat:
+        abort(404)
+
+    # Make sure requested user isn't already owner
+    if chat["owner"] == username:
+        chat["error"] = False
+        return chat, 200
+
+    # Update chat
+    chat["owner"] = username
+    app.files.db.chats.update_one({"_id": chat_id}, {"$set": {"owner": username}})
+
+    # Send update chat event
+    app.supporter.sendPacket({"cmd": "direct", "val": {
+        "mode": "update_chat",
+        "payload": {
+            "_id": chat_id,
+            "owner": chat["owner"]
+        }
+    }, "id": chat["members"]})
+
+    # Add log
+    app.security.add_audit_log("transferred_chat_ownership", request.user, request.ip, {"chat_id": chat_id, "username": username})
+
+    # Return chat
+    chat["error"] = False
+    return chat, 200
+
+
+@admin_bp.get("/chats/<chat_id>/posts")
+async def get_chat_posts(chat_id):
+    # Check permissions
+    if not app.security.has_permission(request.permissions, Permissions.VIEW_IPS):
+        abort(403)
+
+    # Get page
+    try:
+        page = int(request.args["page"])
+    except:
+        page = 1
+
+    # Make sure chat exists
+    if app.files.db.chats.count_documents({
+        "_id": chat_id
+    }, limit=1) < 1:
+        abort(404)
+
+    # Get posts
+    query = {"post_origin": chat_id, "$or": [{"isDeleted": False}, {"isDeleted": True}]}
+    posts = list(app.files.db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
+
+    # Return posts
+    payload = {
+        "error": False,
+        "page#": page,
+        "pages": app.files.get_total_pages("posts", query)
+    }
+    if "autoget" in request.args:
+        payload["autoget"] = posts
+    else:
+        payload["index"] = [post["_id"] for post in posts]
+    return payload, 200
+
+
 @admin_bp.get("/netinfo/<ip>")
 async def get_netinfo(ip):
     # Check permissions
     if not app.security.has_permission(request.permissions, Permissions.VIEW_IPS):
-        abort(401)
+        abort(403)
 
     # Get netinfo
     netinfo = app.security.get_netinfo(ip)

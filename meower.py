@@ -1220,7 +1220,7 @@ class Meower:
         
         # Make sure the content exists
         if content_type == 0:
-            if self.files.db.posts.count_documents({"_id": content_id}, limit=1) < 1:
+            if self.files.db.posts.count_documents({"_id": content_id, "post_origin": {"$ne": "inbox"}}, limit=1) < 1:
                 return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
         elif content_type == 1:
             if self.files.db.usersv0.count_documents({"_id": content_id}, limit=1) < 1:

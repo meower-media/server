@@ -367,7 +367,7 @@ class Security:
             # Purge old netlogs
             self.files.db.netlog.delete_many({"last_used": {"$lt": int(time.time())-7776000}})
 
-            # Purge deleted posts
+            # Purge old deleted posts
             self.files.db.posts.delete_many({"deleted_at": {"$lt": int(time.time())-1209600}})
 
             # Purge old post revisions

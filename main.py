@@ -93,12 +93,6 @@ class Main:
             files = self.filesystem
         )
         
-        # Load trust keys
-        self.cl.trustedAccess(True, ["meower"])
-        
-        # Set server MOTD
-        self.cl.setMOTD("Meower Social Media Platform Server", True)
-        
         # Run REST API
         rest_api_app.cl = self.cl
         rest_api_app.supporter = self.supporter
@@ -115,6 +109,8 @@ class Main:
         background_tasks_thread.start()
 
         # Run CloudLink server
+        self.cl.trustedAccess(True, ["meower"])
+        self.cl.setMOTD("Meower Social Media Platform Server", True)
         self.cl.server(port=3000, ip="0.0.0.0")
     
     def returnCode(self, client, code, listener_detected, listener_id):

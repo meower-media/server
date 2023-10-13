@@ -398,7 +398,11 @@ async def transfer_chat_ownership(chat_id, username):
     app.supporter.ratelimit(f"update_chat:{request.user}", 5, 5)
 
     # Get chat
-    chat = app.files.db.chats.find_one({"_id": chat_id, "members": request.user, "deleted": False})
+    chat = app.files.db.chats.find_one({
+        "_id": chat_id,
+        "members": {"$all": [request.user, username]},
+        "deleted": False
+    })
     if not chat:
         abort(404)
 
@@ -410,10 +414,6 @@ async def transfer_chat_ownership(chat_id, username):
     if chat["owner"] == username:
         chat["error"] = False
         return chat, 200
-
-    # Make sure the user is in the chat
-    if username not in chat["members"]:
-        abort(404)
 
     # Update chat
     chat["owner"] = username
