@@ -164,7 +164,11 @@ class Meower:
         self.supporter.setAuthenticatedState(client, True) # Make the server know that the client is authed
 
         # Get relationships
-        relationships = {r["_id"]["to"]: r["state"] for r in self.files.db.relationships.find({"_id.from": username})}
+        relationships = [{
+            "username": relationship["_id"]["to"],
+            "state": relationship["state"],
+            "updated_at": relationship["updated_at"]
+        } for relationship in self.files.db.relationships.find({"_id.from": username})]
 
         # Return info to sender
         self.sendPacket({"cmd": "direct", "val": {
@@ -274,7 +278,7 @@ class Meower:
                 "username": username,
                 "token": token,
                 "account": self.security.get_account(username, True),
-                "relationships": {}
+                "relationships": []
             }
         }, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
         
