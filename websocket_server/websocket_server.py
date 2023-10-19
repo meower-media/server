@@ -325,7 +325,7 @@ class WebSocketHandler(StreamRequestHandler):
             opcode_handler = self.server._pong_received_
         else:
             logger.warning("Unknown opcode %#x." % opcode)
-	    return        
+            return        
 
         if payload_length == 126:
             payload_length = struct.unpack(">H", self.rfile.read(2))[0]
