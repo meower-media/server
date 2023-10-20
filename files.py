@@ -168,7 +168,7 @@ class Files:
                     {"u": {"$nin": ["Server"] + all_usernames}},
                     {"post_origin": {"$nin": ["home", "inbox"] + all_chat_ids}}
                 ]}),
-                pymongo.UpdateMany({"isDeleted": True}, {"$set": {"deleted_at": "$t.e"}})
+                pymongo.UpdateMany({"isDeleted": True}, [{"$set": {"deleted_at": "$t.e"}}])
             ])
             self.db.posts.drop_indexes()
 
