@@ -168,7 +168,7 @@ class Files:
                     {"u": {"$nin": ["Server"] + all_usernames}},
                     {"post_origin": {"$nin": ["home", "inbox"] + all_chat_ids}}
                 ]}),
-                pymongo.UpdateMany({"isDeleted": True}, {"$set": {"deleted_at": int(time.time())}})
+                pymongo.UpdateMany({"isDeleted": True}, {"$set": {"deleted_at": "$t.e"}})
             ])
             self.db.posts.drop_indexes()
 
@@ -335,6 +335,17 @@ class Files:
                     ("type", pymongo.ASCENDING)
                 ],
                 name="all_reports"
+            )
+        except: pass
+
+        # Audit logs
+        try:
+            self.db.audit_log.create_index(
+                [
+                    ("time", pymongo.ASCENDING),
+                    ("type", pymongo.ASCENDING)
+                ],
+                name="scheduled_purges"
             )
         except: pass
 

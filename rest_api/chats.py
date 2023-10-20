@@ -146,14 +146,14 @@ async def update_chat(chat_id):
     # Ratelimit
     app.supporter.ratelimit(f"update_chat:{request.user}", 5, 5)
 
-    # Check restrictions
-    if body.nickname and app.security.is_restricted(request.user, Restrictions.EDITING_CHAT_NICKNAMES):
-        return {"error": True, "type": "accountBanned"}, 403
-
     # Get body
     try:
         body = ChatBody(**await request.json)
     except: abort(400)
+
+    # Check restrictions
+    if body.nickname and app.security.is_restricted(request.user, Restrictions.EDITING_CHAT_NICKNAMES):
+        return {"error": True, "type": "accountBanned"}, 403
 
     # Get chat
     chat = app.files.db.chats.find_one({"_id": chat_id, "members": request.user, "deleted": False})

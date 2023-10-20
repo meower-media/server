@@ -373,4 +373,22 @@ class Security:
             # Purge old post revisions
             self.files.db.post_revisions.delete_many({"time": {"$lt": int(time.time())-2419200}})
 
+            # Purge old admin audit logs
+            self.files.db.audit_log.delete_many({
+                "time": {"$lt": int(time.time())-2419200},
+                "type": {"$in": [
+                    "got_reports",
+                    "got_report",
+                    "got_notes",
+                    "got_users",
+                    "got_user",
+                    "got_user_posts",
+                    "got_chat",
+                    "got_netinfo",
+                    "got_netblocks",
+                    "got_netblock",
+                    "got_announcements"
+                ]}
+            })
+
             self.log("Finished background tasks!")
