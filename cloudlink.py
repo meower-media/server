@@ -72,7 +72,7 @@ class API:
                     self.statedata["secure_enable"] = False
                     self.statedata["secure_keys"] = []
                 if not "ip_blocklist" in self.statedata:
-                    self.statedata["ip_blocklist"] = [""]
+                    self.statedata["ip_blocklist"] = set({""})
                 
                 self.statedata = {
                     "ulist": {
@@ -180,6 +180,47 @@ class API:
     def sendPacket(self, msg): # User-friendly message sender for both server and client.
         try:
             if self.state == 1:
+                if ("id" in msg):
+                    if isinstance(msg["id"], list):
+                        clients = msg["id"]
+                    else:
+                        clients = [msg["id"]]
+                    
+                    del msg["id"]
+                    stringified_msg = json.dumps(msg)
+
+                    for client in clients:
+                        if isinstance(client, dict): # Server is probably passing along the memory object for reference
+                            if self.debug:
+                                print("Info on sendPacket: Server passed along memory object:", client["id"], "will try to send packet directly")
+                            try:
+                                if self.debug:
+                                    print('Sending {0} to {1}'.format(stringified_msg, client["id"]))
+                                self.wss.send_message(client, stringified_msg)
+                            except Exception as e:
+                                if self.debug:
+                                    print("Error on sendPacket (server): {0}".format(e))
+                        elif isinstance(client, str) and (msg["cmd"] not in ["gmsg", "gvar"]):
+                            if client in self.statedata["ulist"]["usernames"]:
+                                try:
+                                    for multisession in self.statedata["ulist"]["usernames"][client]:
+                                        client = self.statedata["ulist"]["objs"][multisession]["object"]
+                                        if self.debug:
+                                            print('Sending {0} to {1}'.format(stringified_msg, client))
+                                        self.wss.send_message(client, stringified_msg)
+                                except Exception as e:
+                                    if self.debug:
+                                        print("Error on sendPacket (server): {0}".format(e))
+                else:
+                    try:
+                        if self.debug:
+                            print('Sending "{0}" to all clients'.format(json.dumps(msg)))
+                        self._send_to_all(msg)
+                    except Exception as e:
+                        if self.debug:
+                            print("Error on sendPacket (server): {0}".format(e))
+
+                """
                 if ("id" in msg) and (type(msg["id"]) == dict): # Server is probably passing along the memory object for reference
                     if self.debug:
                         print("Info on sendPacket: Server passed along memory object:", msg["id"]["id"], "will try to send packet directly")
@@ -220,6 +261,7 @@ class API:
                     except Exception as e:
                             if self.debug:
                                 print("Error on sendPacket (server): {0}".format(e))
+                """
             elif self.state == 2:
                 try:
                     if self.debug:
@@ -311,9 +353,9 @@ class API:
     
     def loadIPBlocklist(self, blist): # Loads a list of IP addresses to block
         if type(blist) == list:
-            if not '' in blist:
+            if "" not in blist:
                 blist.append("")
-            self.statedata["ip_blocklist"] = blist
+            self.statedata["ip_blocklist"] = set(blist)
             if self.debug:
                 print("Loaded {0} blocked IPs into the blocklist!".format(len(self.statedata["ip_blocklist"])-1))
     
@@ -321,8 +363,8 @@ class API:
         if self.state == 1:
             if self.statedata["secure_enable"]:
                 if type(ip) == str:
-                    if not ip in self.statedata["ip_blocklist"]:
-                        self.statedata["ip_blocklist"].append(ip)
+                    if ip not in self.statedata["ip_blocklist"]:
+                        self.statedata["ip_blocklist"].add(ip)
                         if self.debug:
                             print("Blocked IP {0}!".format(ip))
         else:
@@ -346,7 +388,7 @@ class API:
             if self.statedata["secure_enable"]:
                 tmp = self.statedata["ip_blocklist"]
                 tmp.remove('')
-                return self.statedata["ip_blocklist"]
+                return list(self.statedata["ip_blocklist"])
         else:
             if self.debug:
                 print("Error: Cannot use the IP Blocklist get function in current state!")

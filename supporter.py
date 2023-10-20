@@ -1,11 +1,12 @@
 from datetime import datetime
 from better_profanity import profanity
+from threading import Thread
+from copy import copy
+from radix import Radix
+import uuid
 import time
 import traceback
 import sys
-import string
-from threading import Thread
-from copy import copy
 
 """
 
@@ -18,20 +19,19 @@ This keeps the main.py clean and more understandable.
 
 class Supporter:
     def __init__(self, cl=None, packet_callback=None):
+        self.blocked_ips = Radix()
+        self.registration_blocked_ips = Radix()
         self.filter = None
-        self.last_packet = dict()
-        self.burst_amount = dict()
-        self.ratelimits = dict()
-        self.good_ips = set()
-        self.known_vpns = set()
-        self.status = {"repair_mode": True, "is_deprecated": False}
+        self.repair_mode = True
+        self.registration = False
+        self.ratelimits = {}
         self.cl = cl
         self.profanity = profanity
         self.packet_handler = packet_callback
-        self.listener_detected = False
-        self.listener_id = None
+
+        self.files = None
         
-        if not self.cl == None:
+        if self.cl:
             # Add custom status codes to CloudLink
             self.cl.codes["KeyNotFound"] = "I:010 | Key Not Found"
             self.cl.codes["PasswordInvalid"] = "I:011 | Invalid Password"
@@ -48,36 +48,9 @@ class Supporter:
             self.cl.codes["ChatNotFound"] = "E:022 | Chat not found"
             self.cl.codes["ChatFull"] = "E:023 | Chat full"
             self.cl.codes["LoggedOut"] = "I:024 | Logged out"
+            self.cl.codes["Deleted"] = "E:025 | Deleted"
         
-        # Create permitted lists of characters
-        self.permitted_chars_username = []
-        self.permitted_chars_post = []
-        for char in string.ascii_letters:
-            self.permitted_chars_username.append(char)
-            self.permitted_chars_post.append(char)
-        for char in string.digits:
-            self.permitted_chars_username.append(char)
-            self.permitted_chars_post.append(char)
-        for char in string.punctuation:
-            self.permitted_chars_post.append(char)
-        self.permitted_chars_username.extend(["_", "-"])
-        self.permitted_chars_post.append(" ")
-        
-        # Peak number of users logger
-        self.peak_users_logger = {
-            "count": 0,
-            "timestamp": {
-                "mo": 0,
-                "d": 0,
-                "y": 0,
-                "h": 0,
-                "mi": 0,
-                "s": 0,
-                "e": 0
-            }
-        }
-        
-        if not self.cl == None:
+        if self.cl:
             # Specify server callbacks
             self.cl.callback("on_packet", self.on_packet)
             self.cl.callback("on_close", self.on_close)
@@ -102,26 +75,23 @@ class Supporter:
         print("{0}: {1}".format(self.timestamp(4), event))
     
     def sendPacket(self, payload, listener_detected=False, listener_id=None):
-        if not self.cl == None:
-            if listener_detected:
-                if "id" in payload:
-                    payload["listener"] = listener_id
-                self.cl.sendPacket(payload)
-            else:
-                self.cl.sendPacket(payload)
+        if self.cl:
+            if listener_detected and "id" in payload:
+                payload["listener"] = listener_id
+            self.cl.sendPacket(payload)
     
     def get_client_statedata(self, client): # "steals" information from the CloudLink module to get better client data
         if not self.cl:
             return []
     
-        if type(client) is str:
+        if isinstance(client, str):
             tmp = client
             client = []
             for session in self.cl._get_obj_of_username(tmp):
                 client.append(session["id"])
-        elif type(client) is dict:
+        elif isinstance(client, dict):
             client = [client['id']]
-        elif type(client) is int:
+        elif isinstance(client, int):
             client = [client]
         else:
             raise Exception("client is not a supported datatype")
@@ -136,14 +106,14 @@ class Supporter:
         if not self.cl:
             return False
     
-        if type(client) is str:
+        if isinstance(client, str):
             tmp = client
             client = []
             for session in self.cl._get_obj_of_username(tmp):
                 client.append(session["id"])
-        elif type(client) is dict:
+        elif isinstance(client, dict):
             client = [client['id']]
-        elif type(client) is int:
+        elif isinstance(client, int):
             client = [client]
         else:
             raise Exception("client is not a supported datatype")
@@ -154,8 +124,8 @@ class Supporter:
         return True
     
     def delete_client_statedata(self, client, key): # WARN: Use with caution: DO NOT DELETE UNNECESSARY KEYS!
-        if not self.cl == None:
-            if type(client) == str:
+        if self.cl:
+            if isinstance(client, str):
                 client = self.cl._get_obj_of_username(client)
             if not client == None:
                 if client['id'] in self.cl.statedata["ulist"]["objs"]:
@@ -170,43 +140,42 @@ class Supporter:
                     return False
     
     def on_close(self, client):
-        if not self.cl == None:
-            if type(client) == dict:
-                self.log("{0} Disconnected.".format(client["id"]))
-            elif type(client) == str:
+        if self.cl:
+            if self.cl._get_username_of_obj(client):
+                if self.files:
+                    self.files.db.usersv0.update_one({"_id": self.cl._get_username_of_obj(client), "last_seen": {"$ne": None}}, {"$set": {
+                        "last_seen": int(time.time())
+                    }})
                 self.log("{0} Logged out.".format(self.cl._get_username_of_obj(client)))
     
     def on_connect(self, client):
-        if not self.cl == None:
-            if self.status["repair_mode"]:
+        if self.cl:
+            if self.repair_mode:
                 self.log("Refusing connection from {0} due to repair mode being enabled".format(client["id"]))
+                self.cl.kickClient(client)
+            elif self.blocked_ips.search_best(self.cl.getIPofObject(client)):
+                self.log("Refusing connection for {0} due to their IP being blocked".format(client["id"]))
                 self.cl.kickClient(client)
             else:
                 self.log("{0} Connected.".format(client["id"]))
                 self.modify_client_statedata(client, "authtype", "")
                 self.modify_client_statedata(client, "authed", False)
-                
-                # Rate limiter
-                self.modify_client_statedata(client, "last_packet", 0)
     
     def on_packet(self, message):
-        if not self.cl == None:
+        if self.cl:
             # CL Turbo Support
-            self.listener_detected = ("listener" in message)
-            self.listener_id = None
-            
-            if self.listener_detected:
-                self.listener_id = message["listener"]
+            listener_detected = ("listener" in message)
+            listener_id = message.get("listener")
             
             # Read packet contents
             id = message["id"]
             val = message["val"]
             clienttype = None
-            client = message["id"]
-            if type(message["id"]) == dict:
+            client = id
+            if isinstance(id, dict):
                 ip = self.cl.getIPofObject(client)
                 clienttype = 0
-            elif type(message["id"]) == str:
+            elif isinstance(id, str):
                 ip = self.cl.getIPofUsername(client)
                 clienttype = 1
             
@@ -216,7 +185,7 @@ class Supporter:
                 cmd = message["cmd"]
             
             if not self.packet_handler == None:
-                self.packet_handler(cmd, ip, val, self.listener_detected, self.listener_id, client, clienttype)
+                self.packet_handler(cmd, ip, val, listener_detected, listener_id, client, clienttype)
     
     def timestamp(self, ttype):
         today = datetime.now()
@@ -239,19 +208,15 @@ class Supporter:
         elif ttype == 5:    
             return today.strftime("%d%m%Y")
     
-    def ratelimit(self, client):
-        # Rate limiter
-        self.modify_client_statedata(client, "last_packet", int(time.time()))
-    
     def wordfilter(self, message):
         # Word censor
-        if self.filter != None:
+        if self.filter:
             self.profanity.load_censor_words(whitelist_words=self.filter["whitelist"])
             message = self.profanity.censor(message)
             self.profanity.load_censor_words(whitelist_words=self.filter["whitelist"], custom_words=self.filter["blacklist"])
             message = self.profanity.censor(message)
         else:
-            self.log("Failed loading profanity filter : Using default filter as fallback")
+            self.log("Failed loading profanity filter! Using default filter as fallback.")
             self.profanity.load_censor_words()
             message = self.profanity.censor(message)
         return message
@@ -270,30 +235,11 @@ class Supporter:
         return tmp[0]["authed"]
     
     def setAuthenticatedState(self, client, value):
-        if not self.cl == None:
+        if self.cl:
             self.modify_client_statedata(client, "authed", value)
     
-    def checkForBadCharsUsername(self, value):
-        # Check for profanity in username, will return '*' if there's profanity which will be blocked as an illegal character
-        value = self.wordfilter(value)
-
-        badchars = False
-        for char in value:
-            if not char in self.permitted_chars_username:
-                badchars = True
-                break
-        return badchars
-        
-    def checkForBadCharsPost(self, value):
-        badchars = False
-        for char in value:
-            if not char in self.permitted_chars_post:
-                badchars = True
-                break
-        return badchars
-    
     def autoID(self, client, username):
-        if not self.cl == None:
+        if self.cl:
             # really janky code that automatically sets user ID
             self.modify_client_statedata(client, "username", username)
 
@@ -306,7 +252,7 @@ class Supporter:
             self.log("{0} autoID given".format(username))
     
     def kickUser(self, username, status="Kicked"):
-        if not self.cl == None:
+        if self.cl:
             if username in self.cl.getUsernames():
                 self.log("Kicking {0}".format(username))
 
@@ -324,9 +270,9 @@ class Supporter:
                     # Thread final closing
                     def run(client):
                         # Tell client it's going to get kicked
-                        self.sendPacket({"cmd": "direct", "val": self.cl.codes[status], "id": client})
-                        time.sleep(1)
                         try:
+                            self.sendPacket({"cmd": "direct", "val": self.cl.codes[status], "id": client})
+                            time.sleep(1)
                             client["handler"].send_close(1000, bytes('', encoding='utf-8'))
                         except Exception as e:
                             self.log("Client {0} Broken pipe error: {1}".format(client['id'], e))
@@ -336,33 +282,78 @@ class Supporter:
             # Update userlists
             self.sendPacket({"cmd": "ulist", "val": self.cl._get_ulist()})
     
-    def check_for_spam(self, type, client, burst=1, seconds=1):
-        # Check if type and client are in ratelimit dictionary
-        if not (type in self.last_packet):
-            self.last_packet[type] = {}
-            self.burst_amount[type] = {}
-            self.ratelimits[type] = {}
-        if client not in self.last_packet[type]:
-            self.last_packet[type][client] = 0
-            self.burst_amount[type][client] = 0
-            self.ratelimits[type][client] = 0
-
-        # Check if user is currently ratelimited
-        if self.ratelimits[type][client] > time.time():
-            return True
-
-        # Check if max burst has expired
-        if (self.last_packet[type][client] + seconds) < time.time():
-            self.burst_amount[type][client] = 0
-
-        # Set last packet time and add to burst amount
-        self.last_packet[type][client] = time.time()
-        self.burst_amount[type][client] += 1
-
-        # Check if burst amount is over max burst
-        if self.burst_amount[type][client] > burst:
-            self.ratelimits[type][client] = (time.time() + seconds)
-            self.burst_amount[type][client] = 0
-            return True
-        else:
+    def ratelimited(self, bucket_id):
+        if bucket_id not in self.ratelimits:
             return False
+
+        remaining, expires = self.ratelimits.get(bucket_id, [0, 0])
+        if remaining > 0 or expires < time.time():
+            return False
+        else:
+            return True
+        
+    def ratelimit(self, bucket_id, limit, seconds):
+        remaining, expires = self.ratelimits.get(bucket_id, [0, 0])
+
+        if expires < time.time():
+            remaining = limit
+            expires = time.time()+seconds
+
+        remaining -= 1
+        self.ratelimits[bucket_id] = [remaining, expires]
+    
+    def clear_ratelimit(self, bucket_id):
+        if bucket_id in self.ratelimits:
+            del self.ratelimits[bucket_id]
+
+    def createPost(self, post_origin, user, content, chat_members=None):  # TODO: needs checking
+        # Create post ID and get timestamp
+        post_id = str(uuid.uuid4())
+        timestamp = self.timestamp(1).copy()
+
+        # Construct post object
+        post = {
+            "_id": post_id,
+            "type": 2 if post_origin == "inbox" else 1,
+            "post_origin": post_origin, 
+            "u": user, 
+            "t": timestamp, 
+            "p": content,
+            "post_id": post_id, 
+            "isDeleted": False
+        }
+        
+        # Profanity filter
+        filtered_content = self.wordfilter(content)
+        if filtered_content != content:
+            post["p"] = filtered_content
+            post["unfiltered_p"] = content
+
+        # Add database item and send live packet
+        if post_origin == "home":
+            self.files.db.posts.insert_one(post)
+            self.sendPacket({"cmd": "direct", "val": {"mode": 1, **post}})
+            return True, post
+        elif post_origin == "inbox":
+            self.files.db.posts.insert_one(post)
+            if user == "Server":
+                self.files.db.user_settings.update_many({}, {"$set": {"unread_inbox": True}})
+                self.sendPacket({"cmd": "direct", "val": {
+                    "mode": "inbox_message",
+                    "payload": post
+                }})
+            else:
+                self.files.db.user_settings.update_one({"_id": user}, {"$set": {"unread_inbox": True}})
+                self.sendPacket({"cmd": "direct", "val": {
+                    "mode": "inbox_message",
+                    "payload": post
+                }, "id": user})
+            return True, post
+        elif post_origin == "livechat":
+            self.sendPacket({"cmd": "direct", "val": {"state": 2, **post}})
+            return True, post
+        else:
+            self.files.db.posts.insert_one(post)
+            self.files.db.chats.update_one({"_id": post_origin}, {"$set": {"last_active": int(time.time())}})
+            self.sendPacket({"cmd": "direct", "val": {"state": 2, **post}, "id": chat_members})
+            return True, post
