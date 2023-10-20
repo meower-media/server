@@ -1,4 +1,4 @@
-CloudLink>=0.1.7.4
+CloudLink==0.1.7.4
 bcrypt
 requests
 quart-cors
@@ -7,3 +7,5 @@ quart
 pymongo
 python-dotenv
 uvicorn
+py-radix
+pydantic
