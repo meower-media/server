@@ -115,7 +115,7 @@ class Meower:
         })
         if not account:
             return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-        elif (account["flags"] & UserFlags.DELETED == UserFlags.DELETED) or (account["delete_after"] and account["delete_after"] <= time.time()+10):
+        elif (account["flags"] & UserFlags.DELETED == UserFlags.DELETED) or (account["delete_after"] and account["delete_after"] <= time.time()+60):
             self.supporter.ratelimit(f"login:u:{username}:f", 5, 60)
             return self.returnCode(client = client, code = "Deleted", listener_detected = listener_detected, listener_id = listener_id)
         

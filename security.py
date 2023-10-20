@@ -350,7 +350,7 @@ class Security:
 
     def run_background_tasks(self):
         while True:
-            time.sleep(300)
+            time.sleep(1800)  # Once every 30 minutes
 
             self.log("Running background tasks...")
 
@@ -362,15 +362,15 @@ class Security:
                     self.log("Failed to delete account {0}: {1}".format(user["_id"], e))
 
             # Purge old netinfo
-            self.files.db.netinfo.delete_many({"last_refreshed": {"$lt": int(time.time())-7776000}})
+            self.files.db.netinfo.delete_many({"last_refreshed": {"$lt": int(time.time())-2419200}})
 
             # Purge old netlogs
-            self.files.db.netlog.delete_many({"last_used": {"$lt": int(time.time())-7776000}})
+            self.files.db.netlog.delete_many({"last_used": {"$lt": int(time.time())-2419200}})
 
             # Purge old deleted posts
-            self.files.db.posts.delete_many({"deleted_at": {"$lt": int(time.time())-1209600}})
+            self.files.db.posts.delete_many({"deleted_at": {"$lt": int(time.time())-2419200}})
 
             # Purge old post revisions
-            self.files.db.post_revisions.delete_many({"time": {"$lt": int(time.time())-1209600}})
+            self.files.db.post_revisions.delete_many({"time": {"$lt": int(time.time())-2419200}})
 
             self.log("Finished background tasks!")
