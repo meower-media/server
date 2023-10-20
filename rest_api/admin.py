@@ -1269,7 +1269,11 @@ async def get_netblocks():
     app.security.add_audit_log("got_netblocks", request.user, request.ip, {"page": page})
 
     # Return netblocks
-    payload = {"error": False, "page#": 1, "pages": 1}
+    payload = {
+        "error": False,
+        "page#": page,
+        "pages": app.files.get_total_pages("netblock", {})
+    }
     if "autoget" in request.args:
         payload["autoget"] = netblocks
     else:
