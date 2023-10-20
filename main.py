@@ -6,6 +6,7 @@ from meower import Meower
 from rest_api import app as rest_api_app
 from threading import Thread
 import uvicorn
+import os
 
 """
 
@@ -99,7 +100,11 @@ class Main:
         rest_api_app.files = self.filesystem
         rest_api_app.security = self.security
         rest_api_app.log = self.supporter.log
-        rest_api_thread = Thread(target=uvicorn.run, args=(rest_api_app,), kwargs={"host": "0.0.0.0", "port": 5174, "root_path": "/api"})
+        rest_api_thread = Thread(target=uvicorn.run, args=(rest_api_app,), kwargs={
+            "host": os.getenv("API_HOST", "0.0.0.0"),
+            "port": int(os.getenv("API_PORT", 3001)),
+            "root_path": os.getenv("API_ROOT", "")
+        })
         rest_api_thread.daemon = True
         rest_api_thread.start()
 
@@ -111,7 +116,7 @@ class Main:
         # Run CloudLink server
         self.cl.trustedAccess(True, ["meower"])
         self.cl.setMOTD("Meower Social Media Platform Server", True)
-        self.cl.server(port=5175, ip="0.0.0.0")
+        self.cl.server(port=int(os.getenv("CL3_PORT", 3000)), ip=os.getenv("CL3_HOST", ""))
     
     def returnCode(self, client, code, listener_detected, listener_id):
         self.supporter.sendPacket({"cmd": "statuscode", "val": self.cl.codes[str(code)], "id": client}, listener_detected = listener_detected, listener_id = listener_id)
