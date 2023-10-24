@@ -101,7 +101,7 @@ async def get_reports():
         app.files.db.reports.find(
             query,
             projection={"reports.ip": 0},
-            sort=[("escalated", pymongo.DESCENDING), ("time", pymongo.DESCENDING)],
+            sort=[("escalated", pymongo.DESCENDING), ("reports.time", pymongo.DESCENDING)],
             skip=(page - 1) * 25,
             limit=25,
         )
@@ -458,7 +458,7 @@ async def get_users():
 @admin_bp.get("/users/<username>")
 async def get_user(username):
     # Get account
-    account = app.files.db.usersv0.find_one({"lower_username": username.lower()})
+    account = app.files.db.usersv0.find_one({"_id": username})
     if not account:
         abort(404)
 

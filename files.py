@@ -330,7 +330,7 @@ class Files:
             self.db.reports.create_index(
                 [
                     ("escalated", pymongo.DESCENDING),
-                    ("time", pymongo.DESCENDING),
+                    ("reports.time", pymongo.DESCENDING),
                     ("status", pymongo.ASCENDING),
                     ("type", pymongo.ASCENDING)
                 ],
