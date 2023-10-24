@@ -384,7 +384,7 @@ class Files:
             self.db.config.insert_one({
                 "_id": "status",
                 "repair_mode": False,
-                "registration": False
+                "registration": True
             })
         except: pass
 
