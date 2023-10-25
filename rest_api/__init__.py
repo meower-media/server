@@ -1,6 +1,7 @@
 from quart import Quart, request
 from quart_cors import cors
 import time
+import os
 
 from .home import home_bp
 from .inbox import inbox_bp
@@ -13,7 +14,7 @@ from .admin import admin_bp
 
 # Init app
 app = Quart(__name__, static_folder="static")
-app.config["APPLICATION_ROOT"] = "/api"
+app.config["APPLICATION_ROOT"] = os.getenv("API_ROOT", "")
 app.url_map.strict_slashes = False
 cors(app, allow_origin="*")
 
