@@ -5,6 +5,8 @@ from files import Files
 from meower import Meower
 from rest_api import app as rest_api_app
 from threading import Thread
+import uvicorn
+import os
 
 """
 
@@ -25,50 +27,40 @@ Dependencies:
 
 
 COMMANDS = {
+    # Networking/client utilities
     "ping",
-    "version_chk", 
-    "get_ulist", 
-    "authpswd", 
-    "gen_account", 
-    "get_profile", 
+    "get_ulist",
+
+    # Accounts and security
+    "authpswd",
+    "gen_account",
+    "get_profile",
     "update_config",
-    "change_pswd", 
+    "change_pswd",
     "del_tokens",
     "del_account",
-    "get_home", 
-    "get_inbox", 
-    "post_home",
-    "get_post", 
-    "get_peak_users", 
-    "search_user_posts",
-    "report",
-    "close_report",
-    "clear_home",
-    "clear_user_posts",
-    "alert",
-    "announce",
-    "block",
-    "unblock",
-    "kick",
-    "get_user_ip",
-    "get_ip_data",
-    "get_user_data",
-    "ban",
-    "pardon",
-    "terminate",
-    "repair_mode",
-    "delete_post",
-    "post_chat",
-    "set_chat_state",
+
+    # Group chats/DMs
     "create_chat",
     "leave_chat",
     "get_chat_list",
     "get_chat_data",
-    "get_chat_posts",
     "add_to_chat",
     "remove_from_chat",
-    "kick_all",
-    "force_kick"
+    "set_chat_state",
+
+    # Posts
+    "get_home",
+    "post_home",
+    "search_user_posts",
+    "get_inbox",
+    "get_chat_posts",
+    "post_chat",
+    "get_post",
+    "delete_post",
+
+    # Moderation/administration
+    "report"
 }
 
 
@@ -84,7 +76,8 @@ class Main:
             logger = self.supporter.log,
             errorhandler = self.supporter.full_stack
         )
-        self.accounts = Security( # Security and account management
+        self.supporter.files = self.filesystem
+        self.security = Security( # Security and account management
             files = self.filesystem,
             supporter = self.supporter,
             logger = self.supporter.log,
@@ -97,29 +90,33 @@ class Main:
             cl = self.cl,
             logger = self.supporter.log,
             errorhandler = self.supporter.full_stack,
-            accounts = self.accounts,
+            security = self.security,
             files = self.filesystem
         )
         
-        # Load trust keys
-        result, payload = self.filesystem.load_item("config", "trust_keys")
-        if result:
-            self.cl.trustedAccess(True, payload["index"])
-        
-        # Load IP Banlist
-        ips = []
-        for netlog in self.filesystem.db["netlog"].find({"blocked": True}):
-            ips.append(netlog["_id"])
-        self.cl.loadIPBlocklist(ips)
-        
-        # Set server MOTD
-        self.cl.setMOTD("Meower Social Media Platform Server", True)
-        
         # Run REST API
-        Thread(target=rest_api_app.run, kwargs={"host": "0.0.0.0", "port": 3001, "debug": False, "use_reloader": False}).start()
+        rest_api_app.cl = self.cl
+        rest_api_app.supporter = self.supporter
+        rest_api_app.files = self.filesystem
+        rest_api_app.security = self.security
+        rest_api_app.log = self.supporter.log
+        rest_api_thread = Thread(target=uvicorn.run, args=(rest_api_app,), kwargs={
+            "host": os.getenv("API_HOST", "0.0.0.0"),
+            "port": int(os.getenv("API_PORT", 3001)),
+            "root_path": os.getenv("API_ROOT", "")
+        })
+        rest_api_thread.daemon = True
+        rest_api_thread.start()
+
+        # Run background tasks thread
+        background_tasks_thread = Thread(target=self.security.run_background_tasks)
+        background_tasks_thread.daemon = True
+        background_tasks_thread.start()
 
         # Run CloudLink server
-        self.cl.server(port=3000, ip="0.0.0.0")
+        self.cl.trustedAccess(True, ["meower"])
+        self.cl.setMOTD("Meower Social Media Platform Server", True)
+        self.cl.server(port=int(os.getenv("CL3_PORT", 3000)), ip=os.getenv("CL3_HOST", ""))
     
     def returnCode(self, client, code, listener_detected, listener_id):
         self.supporter.sendPacket({"cmd": "statuscode", "val": self.cl.codes[str(code)], "id": client}, listener_detected = listener_detected, listener_id = listener_id)

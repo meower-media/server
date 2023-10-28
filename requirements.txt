@@ -1,8 +1,11 @@
-CloudLink>=0.1.7.4
+CloudLink==0.1.7.4
 bcrypt
 requests
-flask-cors
+quart-cors
 uuid
-flask
+quart
 pymongo
 python-dotenv
+uvicorn
+py-radix
+pydantic
