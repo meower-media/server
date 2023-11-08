@@ -35,6 +35,7 @@ COMMANDS = {
     "authpswd",
     "gen_account",
     "get_profile",
+    "accept_terms",
     "update_config",
     "change_pswd",
     "del_tokens",

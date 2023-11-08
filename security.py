@@ -9,6 +9,8 @@ Meower Security Module
 This module provides account management and authentication services.
 """
 
+LATEST_TERMS_REVISION = "1"
+
 SENSITIVE_ACCOUNT_FIELDS = {
     "pswd",
     "tokens",
@@ -30,7 +32,8 @@ DEFAULT_USER_SETTINGS = {
     "debug": False,
     "hide_blocked_users": False,
     "active_dms": [],
-    "favorited_chats": []
+    "favorited_chats": [],
+    "accepted_terms": {}
 }
 
 
@@ -163,6 +166,8 @@ class Security:
 
         # Update settings
         for key, default_val in DEFAULT_USER_SETTINGS.items():
+            if key == "tos_revisions":
+                continue
             if key in newdata:
                 if isinstance(newdata[key], type(default_val)):
                     if key == "favorited_chats" and len(newdata[key]) > 50:
