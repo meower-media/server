@@ -362,6 +362,7 @@ class Files:
                     "uuid": None,
                     "created": None,
                     "pfp_data": None,
+                    "custom_pfp": None,
                     "quote": None,
                     "pswd": None,
                     "tokens": None,

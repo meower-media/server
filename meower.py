@@ -242,6 +242,7 @@ class Meower:
             "uuid": str(uuid.uuid4()),
             "created": int(time.time()),
             "pfp_data": 2,
+            "custom_pfp": None,
             "quote": "",
             "pswd": bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=14)).decode(),
             "tokens": [token],
@@ -378,6 +379,19 @@ class Meower:
 
         # Ratelimit
         self.supporter.ratelimit(f"config:{client}", 10, 5)
+
+        # Confirm custom pfp
+        if "custom_pfp" in val:
+            if val["custom_pfp"] is not None:
+                try:
+                    upload_details = self.supporter.confirm_upload("icon", val["custom_pfp"], client)
+                    if upload_details["uploaded_by"] != client:
+                        raise Exception("Uploader doesn't match client")
+                except Exception as e:
+                    self.log(e)
+                    return self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
+                else:
+                    val["custom_pfp"] = upload_details["filename"]
 
         # Delete quote if client is restricted
         if "quote" in val:

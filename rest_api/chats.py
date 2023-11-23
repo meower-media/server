@@ -1,5 +1,6 @@
 from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
+from typing import Optional
 import uuid
 import time
 
@@ -10,7 +11,8 @@ chats_bp = Blueprint("chats_bp", __name__, url_prefix="/chats")
 
 
 class ChatBody(BaseModel):
-    nickname: str = Field(min_length=1, max_length=32)
+    nickname: Optional[str] = Field(min_length=1, max_length=32)
+    icon: str = None
 
     class Config:
         validate_assignment = True
@@ -98,6 +100,7 @@ async def create_chat():
         "_id": str(uuid.uuid4()),
         "type": 0,
         "nickname": app.supporter.wordfilter(body.nickname),
+        "icon": None,
         "owner": request.user,
         "members": [request.user],
         "created": int(time.time()),
@@ -151,10 +154,6 @@ async def update_chat(chat_id):
         body = ChatBody(**await request.json)
     except: abort(400)
 
-    # Check restrictions
-    if body.nickname and app.security.is_restricted(request.user, Restrictions.EDITING_CHAT_NICKNAMES):
-        return {"error": True, "type": "accountBanned"}, 403
-
     # Get chat
     chat = app.files.db.chats.find_one({"_id": chat_id, "members": request.user, "deleted": False})
     if not chat:
@@ -164,26 +163,46 @@ async def update_chat(chat_id):
     if chat["owner"] != request.user:
         abort(403)
 
-    # Make sure new nickname isn't the same as the old nickname
-    if chat["nickname"] == body.nickname:
-        chat["error"] = False
-        return chat, 200
-    
+    # Update nickname
+    if body.nickname and chat["nickname"] != body.nickname:
+        if body.nickname and app.security.is_restricted(request.user, Restrictions.EDITING_CHAT_NICKNAMES):
+            return {"error": True, "type": "accountBanned"}, 403
+        else:
+            chat["nickname"] = app.supporter.wordfilter(body.nickname)
+
+    # Update icon
+    if body.icon is not None:
+        try:
+            upload_details = app.supporter.confirm_upload("icon", body.icon, chat["_id"])
+            if upload_details["uploaded_by"] != request.user:
+                raise Exception("Uploader doesn't match client")
+        except Exception as e:
+            app.log(e)
+            abort(500)
+        else:
+            body.icon = upload_details["filename"]
+
     # Update chat
-    chat["nickname"] = app.supporter.wordfilter(body.nickname)
-    app.files.db.chats.update_one({"_id": chat_id}, {"$set": {"nickname": chat["nickname"]}})
+    app.files.db.chats.update_one({"_id": chat_id}, {"$set": {
+        "nickname": chat["nickname"],
+        "icon": chat["icon"]
+    }})
 
     # Send update chat event
     app.supporter.sendPacket({"cmd": "direct", "val": {
         "mode": "update_chat",
         "payload": {
             "_id": chat_id,
-            "nickname": chat["nickname"]
+            "nickname": chat["nickname"],
+            "icon": chat["icon"]
         }
     }, "id": chat["members"]})
 
-    # Send in-chat notification
-    app.supporter.createPost(chat_id, "Server", f"@{request.user} changed the nickname of the group chat to '{chat['nickname']}'.", chat_members=chat["members"])
+    # Send in-chat notifications
+    if body.nickname:
+        app.supporter.createPost(chat_id, "Server", f"@{request.user} changed the nickname of the group chat to '{chat['nickname']}'.", chat_members=chat["members"])
+    if body.icon is not None:
+        app.supporter.createPost(chat_id, "Server", f"@{request.user} changed the icon of the group chat.", chat_members=chat["members"])
 
     # Return chat
     chat["error"] = False

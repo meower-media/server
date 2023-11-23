@@ -468,6 +468,7 @@ async def get_user(username):
         "created": account["created"],
         "uuid": account["uuid"],
         "pfp_data": account["pfp_data"],
+        "custom_pfp": account["custom_pfp"],
         "quote": account["quote"],
         "flags": account["flags"],
         "permissions": account["permissions"],

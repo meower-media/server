@@ -160,6 +160,9 @@ class Security:
         if "pfp_data" in newdata:
             if isinstance(newdata["pfp_data"], int):
                 updated_user_vals["pfp_data"] = newdata["pfp_data"]
+        if "custom_pfp" in newdata:
+            if newdata["custom_pfp"] is None or isinstance(newdata["custom_pfp"], str):
+                updated_user_vals["custom_pfp"] = newdata["custom_pfp"]
         
         # Update quote
         if "quote" in newdata:
@@ -239,6 +242,7 @@ class Security:
         # Update account
         self.files.db.usersv0.update_one({"_id": username}, {"$set": {
             "pfp_data": None,
+            "custom_pfp": None,
             "quote": None,
             "pswd": None,
             "tokens": None,
