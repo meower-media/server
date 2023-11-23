@@ -41,6 +41,7 @@ class UserFlags:
     SYSTEM = 1
     DELETED = 2
     PROTECTED = 4
+    CAN_UPLOAD_ATTACHMENTS = 8
 
 
 class Permissions:
@@ -78,6 +79,7 @@ class Restrictions:
     NEW_CHATS = 4
     EDITING_CHAT_NICKNAMES = 8
     EDITING_QUOTE = 16
+    UPLOADING_FILES = 32
 
 
 class Security:
