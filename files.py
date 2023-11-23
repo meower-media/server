@@ -224,6 +224,9 @@ class Files:
             self.db.usersv0.create_index([("lower_username", pymongo.ASCENDING)], name="lower_username", unique=True)
         except: pass
         try:
+            self.db.usersv0.create_index([("tokens", pymongo.ASCENDING)], name="tokens")
+        except: pass
+        try:
             self.db.usersv0.create_index([
                 ("lower_username", pymongo.TEXT),
                 ("uuid", pymongo.TEXT),
