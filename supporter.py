@@ -3,9 +3,16 @@ from better_profanity import profanity
 from threading import Thread
 from copy import copy
 from radix import Radix
+from typing import Literal
+from base64 import urlsafe_b64encode
+from hashlib import sha256
+import hmac
+import msgpack
+import secrets
 import uuid
 import time
 import traceback
+import os
 import sys
 
 """
@@ -306,7 +313,7 @@ class Supporter:
         if bucket_id in self.ratelimits:
             del self.ratelimits[bucket_id]
 
-    def createPost(self, post_origin, user, content, chat_members=None):  # TODO: needs checking
+    def createPost(self, post_origin, user, content, attachment_ids: list[str] = [], chat_members: list[str] = None):
         # Create post ID and get timestamp
         post_id = str(uuid.uuid4())
         timestamp = self.timestamp(1).copy()
@@ -357,3 +364,33 @@ class Supporter:
             self.files.db.chats.update_one({"_id": post_origin}, {"$set": {"last_active": int(time.time())}})
             self.sendPacket({"cmd": "direct", "val": {"state": 2, **post}, "id": chat_members})
             return True, post
+
+    def create_uploads_token(self, upload_type: Literal["icon", "attachment"], uploader: str, max_size: int) -> (str, int):
+        # Create upload ID
+        upload_id = secrets.token_urlsafe(18).replace("-", "a").replace("_", "b").replace("=", "c")
+        
+        # Get expiration
+        expires_at = int(time.time())+600
+
+        # Create token claims
+        claims = msgpack.packb({
+            "t": "upload_" + upload_type,
+            "e": expires_at,
+            "d": {
+                "id": upload_id,
+                "u": uploader,
+                "s": max_size
+            }
+        })
+        
+        # Create signature
+        signature = hmac.new(os.getenv("UPLOADS_SECRET").encode(), claims, sha256).digest()
+
+        # Create token
+        token = f"{urlsafe_b64encode(claims).decode()}.{urlsafe_b64encode(signature).decode()}"
+
+        # Return token and expiration
+        return token, expires_at
+
+    def confirm_upload(self, upload_type: Literal["icon", "attachment"], upload_id: str, content_id: str) -> dict:
+        pass
