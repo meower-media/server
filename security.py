@@ -156,10 +156,12 @@ class Security:
         updated_user_vals = {}
         updated_user_settings_vals = {}
 
-        # Update pfp
+        # Update default pfp
         if "pfp_data" in newdata:
             if isinstance(newdata["pfp_data"], int):
                 updated_user_vals["pfp_data"] = newdata["pfp_data"]
+
+        # Update custom pfp
         if "custom_pfp" in newdata:
             if newdata["custom_pfp"] is None or isinstance(newdata["custom_pfp"], str):
                 updated_user_vals["custom_pfp"] = newdata["custom_pfp"]

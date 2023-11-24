@@ -12,7 +12,7 @@ chats_bp = Blueprint("chats_bp", __name__, url_prefix="/chats")
 
 class ChatBody(BaseModel):
     nickname: Optional[str] = Field(min_length=1, max_length=32)
-    icon: str = None
+    icon: str = ""
 
     class Config:
         validate_assignment = True
@@ -171,16 +171,19 @@ async def update_chat(chat_id):
             chat["nickname"] = app.supporter.wordfilter(body.nickname)
 
     # Update icon
-    if body.icon is not None:
-        try:
-            upload_details = app.supporter.confirm_upload("icon", body.icon, chat["_id"])
-            if upload_details["uploaded_by"] != request.user:
-                raise Exception("Uploader doesn't match client")
-        except Exception as e:
-            app.log(e)
-            abort(500)
+    if body.icon != "":
+        if body.icon is None:
+            chat["icon"] = None
         else:
-            body.icon = upload_details["filename"]
+            try:
+                upload_details = app.supporter.confirm_upload("icon", body.icon, chat["_id"])
+                if upload_details["uploaded_by"] != request.user:
+                    raise Exception("Uploader doesn't match client")
+            except Exception as e:
+                app.log(e)
+                abort(500)
+            else:
+                chat["icon"] = upload_details["filename"]
 
     # Update chat
     app.files.db.chats.update_one({"_id": chat_id}, {"$set": {
