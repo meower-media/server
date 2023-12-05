@@ -18,14 +18,22 @@ async def get_inbox_posts():
         page = 1
 
     # Get posts
-    query = {"post_origin": "inbox", "isDeleted": False, "$or": [{"u": request.user}, {"u": "Server"}]}
-    posts = list(app.files.db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
+    query = {
+        "post_origin": "inbox",
+        "isDeleted": False,
+        "$or": [{"u": request.user}, {"u": "Server"}],
+    }
+    posts = list(
+        app.files.db.posts.find(
+            query, sort=[("t.e", pymongo.DESCENDING)], skip=(page - 1) * 25, limit=25
+        )
+    )
 
     # Return posts
     payload = {
         "error": False,
         "page#": page,
-        "pages": app.files.get_total_pages("posts", query)
+        "pages": app.files.get_total_pages("posts", query),
     }
     if "autoget" in request.args:
         payload["autoget"] = posts

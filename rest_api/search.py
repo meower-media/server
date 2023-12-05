@@ -21,13 +21,13 @@ async def search_home():
 
     # Get posts
     query = {"post_origin": "home", "isDeleted": False, "$text": {"$search": q}}
-    posts = list(app.files.db.posts.find(query, skip=(page-1)*25, limit=25))
+    posts = list(app.files.db.posts.find(query, skip=(page - 1) * 25, limit=25))
 
     # Return posts
     payload = {
         "error": False,
         "page#": page,
-        "pages": app.files.get_total_pages("posts", query)
+        "pages": app.files.get_total_pages("posts", query),
     }
     if "autoget" in request.args:
         payload["autoget"] = posts
@@ -53,16 +53,23 @@ async def search_users():
 
     # Get users
     query = {"pswd": {"$type": "string"}, "$text": {"$search": q}}
-    usernames = [user["_id"] for user in app.files.db.usersv0.find(query, skip=(page-1)*25, limit=25, projection={"_id": 1})]
+    usernames = [
+        user["_id"]
+        for user in app.files.db.usersv0.find(
+            query, skip=(page - 1) * 25, limit=25, projection={"_id": 1}
+        )
+    ]
 
     # Return users
     payload = {
         "error": False,
         "page#": page,
-        "pages": app.files.get_total_pages("usersv0", query)
+        "pages": app.files.get_total_pages("usersv0", query),
     }
     if "autoget" in request.args:
-        payload["autoget"] = [app.security.get_account(username) for username in usernames]
+        payload["autoget"] = [
+            app.security.get_account(username) for username in usernames
+        ]
     else:
         payload["index"] = usernames
     return payload, 200

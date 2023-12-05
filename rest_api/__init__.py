@@ -11,7 +11,6 @@ from .chats import chats_bp
 from .search import search_bp
 from .admin import admin_bp
 
-
 # Init app
 app = Quart(__name__, static_folder="static")
 app.config["APPLICATION_ROOT"] = os.getenv("API_ROOT", "")
@@ -27,7 +26,7 @@ async def check_repair_mode():
 
 @app.before_request
 async def check_ip():
-    request.ip = (request.headers.get("Cf-Connecting-Ip", request.remote_addr))
+    request.ip = request.headers.get("Cf-Connecting-Ip", request.remote_addr)
     if request.path != "/status" and app.supporter.blocked_ips.search_best(request.ip):
         return {"error": True, "type": "ipBlocked"}, 403
 
@@ -43,14 +42,15 @@ async def check_auth():
 
     # Authenticate request
     if token and request.path != "/status":
-        account = app.files.db.usersv0.find_one({"tokens": token}, projection={
-            "_id": 1,
-            "permissions": 1,
-            "ban.state": 1,
-            "ban.expires": 1
-        })
+        account = app.files.db.usersv0.find_one(
+            {"tokens": token},
+            projection={"_id": 1, "permissions": 1, "ban.state": 1, "ban.expires": 1},
+        )
         if account:
-            if account["ban"]["state"] == "perm_ban" or (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time()):
+            if account["ban"]["state"] == "perm_ban" or (
+                account["ban"]["state"] == "temp_ban"
+                and account["ban"]["expires"] > time.time()
+            ):
                 return {"error": True, "type": "accountBanned"}, 403
             request.user = account["_id"]
             request.permissions = account["permissions"]
@@ -58,17 +58,20 @@ async def check_auth():
 
 @app.get("/")  # Welcome message
 async def index():
-	return "Hello world! The Meower API is working, but it's under construction. Please come back later.", 200
+    return (
+        "Hello world! The Meower API is working, but it's under construction. Please come back later.",
+        200,
+    )
 
 
 @app.get("/ip")  # Deprecated
 async def ip_tracer():
-	return "", 410
+    return "", 410
 
 
 @app.get("/favicon.ico")  # Favicon, my ass. We need no favicon for an API.
 async def favicon_my_ass():
-	return "", 200
+    return "", 200
 
 
 @app.get("/status")
@@ -78,7 +81,9 @@ async def get_status():
         "registrationEnabled": app.supporter.registration,
         "isRepairMode": app.supporter.repair_mode,
         "ipBlocked": (app.supporter.blocked_ips.search_best(request.ip) is not None),
-        "ipRegistrationBlocked": (app.supporter.registration_blocked_ips.search_best(request.ip) is not None)
+        "ipRegistrationBlocked": (
+            app.supporter.registration_blocked_ips.search_best(request.ip) is not None
+        ),
     }, 200
 
 
@@ -88,18 +93,18 @@ async def get_statistics():
         "error": False,
         "users": app.files.db.usersv0.estimated_document_count(),
         "posts": app.files.db.posts.estimated_document_count(),
-        "chats": app.files.db.chats.estimated_document_count()
+        "chats": app.files.db.chats.estimated_document_count(),
     }, 200
 
 
 @app.errorhandler(400)  # Bad request
 async def bad_request(e):
-	return {"error": True, "type": "badRequest"}, 400
+    return {"error": True, "type": "badRequest"}, 400
 
 
 @app.errorhandler(401)  # Unauthorized
 async def unauthorized(e):
-	return {"error": True, "type": "Unauthorized"}, 401
+    return {"error": True, "type": "Unauthorized"}, 401
 
 
 @app.errorhandler(403)  # Missing permissions
@@ -109,27 +114,27 @@ async def missing_permissions(e):
 
 @app.errorhandler(404)  # We do need a 404 handler.
 async def not_found(e):
-	return {"error": True, "type": "notFound"}, 404
+    return {"error": True, "type": "notFound"}, 404
 
 
 @app.errorhandler(405)  # Method not allowed
 async def method_not_allowed(e):
-	return {"error": True, "type": "methodNotAllowed"}, 405
+    return {"error": True, "type": "methodNotAllowed"}, 405
 
 
 @app.errorhandler(429)  # Too many requests
 async def too_many_requests(e):
-	return {"error": True, "type": "tooManyRequests"}, 429
+    return {"error": True, "type": "tooManyRequests"}, 429
 
 
 @app.errorhandler(500)  # Internal
 async def internal(e):
-	return {"error": True, "type": "Internal"}, 500
+    return {"error": True, "type": "Internal"}, 500
 
 
 @app.errorhandler(501)  # Not implemented
 async def not_implemented(e):
-      return {"error": True, "type": "notImplemented"}, 501
+    return {"error": True, "type": "notImplemented"}, 501
 
 
 # Register blueprints

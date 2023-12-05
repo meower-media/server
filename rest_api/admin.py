@@ -101,7 +101,10 @@ async def get_reports():
         app.files.db.reports.find(
             query,
             projection={"reports.ip": 0},
-            sort=[("escalated", pymongo.DESCENDING), ("reports.time", pymongo.DESCENDING)],
+            sort=[
+                ("escalated", pymongo.DESCENDING),
+                ("reports.time", pymongo.DESCENDING),
+            ],
             skip=(page - 1) * 25,
             limit=25,
         )
@@ -374,27 +377,29 @@ async def delete_post(post_id):
     )
 
     # Send delete post event
-    if post["post_origin"] == "home" or (post["post_origin"] == "inbox" and post["u"] == "Server"):
-        app.supporter.sendPacket({"cmd": "direct", "val": {
-            "mode": "delete",
-            "id": post_id
-        }})
+    if post["post_origin"] == "home" or (
+        post["post_origin"] == "inbox" and post["u"] == "Server"
+    ):
+        app.supporter.sendPacket(
+            {"cmd": "direct", "val": {"mode": "delete", "id": post_id}}
+        )
     elif post["post_origin"] == "inbox":
-        app.supporter.sendPacket({"cmd": "direct", "val": {
-            "mode": "delete",
-            "id": post_id
-        }, "id": post["u"]})
+        app.supporter.sendPacket(
+            {"cmd": "direct", "val": {"mode": "delete", "id": post_id}, "id": post["u"]}
+        )
     else:
-        chat = app.files.db.chats.find_one({
-            "_id": post["post_origin"],
-            "members": request.user,
-            "deleted": False
-        }, projection={"members": 1})
+        chat = app.files.db.chats.find_one(
+            {"_id": post["post_origin"], "members": request.user, "deleted": False},
+            projection={"members": 1},
+        )
         if chat:
-            app.supporter.sendPacket({"cmd": "direct", "val": {
-                "mode": "delete",
-                "id": post_id
-            }, "id": chat["members"]})
+            app.supporter.sendPacket(
+                {
+                    "cmd": "direct",
+                    "val": {"mode": "delete", "id": post_id},
+                    "id": chat["members"],
+                }
+            )
 
     # Return updated post
     post["error"] = False
@@ -437,7 +442,12 @@ async def get_users():
         page = 1
 
     # Get usernames
-    usernames = [user["_id"] for user in app.files.db.usersv0.find({}, sort=[("created", pymongo.DESCENDING)], skip=(page-1)*25, limit=25)]
+    usernames = [
+        user["_id"]
+        for user in app.files.db.usersv0.find(
+            {}, sort=[("created", pymongo.DESCENDING)], skip=(page - 1) * 25, limit=25
+        )
+    ]
 
     # Add log
     app.security.add_audit_log("got_users", request.user, request.ip, {"page": page})
@@ -449,7 +459,9 @@ async def get_users():
         "pages": app.files.get_total_pages("usersv0", {}),
     }
     if "autoget" in request.args:
-        payload["autoget"] = [app.security.get_account(username) for username in usernames]
+        payload["autoget"] = [
+            app.security.get_account(username) for username in usernames
+        ]
     else:
         payload["index"] = usernames
     return payload, 200
@@ -720,7 +732,7 @@ async def get_user_posts(username):
         abort(401)
 
     # Get post origin
-    post_origin = request.args.get("origin") 
+    post_origin = request.args.get("origin")
 
     # Get page
     try:
@@ -771,7 +783,7 @@ async def clear_user_posts(username):
         abort(401)
 
     # Get post origin
-    post_origin = request.args.get("origin") 
+    post_origin = request.args.get("origin")
 
     # Make sure user isn't protected
     if not app.security.has_permission(request.permissions, Permissions.SYSADMIN):
@@ -946,7 +958,9 @@ async def get_chat(chat_id):
         abort(404)
 
     # Add log
-    app.security.add_audit_log("got_chat", request.user, request.ip, {"chat_id": chat_id})
+    app.security.add_audit_log(
+        "got_chat", request.user, request.ip, {"chat_id": chat_id}
+    )
 
     # Return chat
     chat["error"] = False
@@ -962,7 +976,8 @@ async def update_chat(chat_id):
     # Get body
     try:
         body = UpdateChatBody(**await request.json)
-    except: abort(400)
+    except:
+        abort(400)
 
     # Get chat
     chat = app.files.db.chats.find_one({"_id": chat_id})
@@ -973,22 +988,32 @@ async def update_chat(chat_id):
     if chat["nickname"] == body.nickname:
         chat["error"] = False
         return chat, 200
-    
+
     # Update chat
     chat["nickname"] = app.supporter.wordfilter(body.nickname)
-    app.files.db.chats.update_one({"_id": chat_id}, {"$set": {"nickname": chat["nickname"]}})
+    app.files.db.chats.update_one(
+        {"_id": chat_id}, {"$set": {"nickname": chat["nickname"]}}
+    )
 
     # Send update chat event
-    app.supporter.sendPacket({"cmd": "direct", "val": {
-        "mode": "update_chat",
-        "payload": {
-            "_id": chat_id,
-            "nickname": chat["nickname"]
+    app.supporter.sendPacket(
+        {
+            "cmd": "direct",
+            "val": {
+                "mode": "update_chat",
+                "payload": {"_id": chat_id, "nickname": chat["nickname"]},
+            },
+            "id": chat["members"],
         }
-    }, "id": chat["members"]})
+    )
 
     # Add log
-    app.security.add_audit_log("updated_chat", request.user, request.ip, {"chat_id": chat_id, "nickname": body.nickname})
+    app.security.add_audit_log(
+        "updated_chat",
+        request.user,
+        request.ip,
+        {"chat_id": chat_id, "nickname": body.nickname},
+    )
 
     # Return chat
     chat["error"] = False
@@ -1011,10 +1036,18 @@ async def delete_chat(chat_id):
     app.files.db.chats.update_one({"_id": chat_id}, {"$set": {"deleted": True}})
 
     # Send delete chat event
-    app.supporter.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": chat_id}, "id": chat["members"]})
+    app.supporter.sendPacket(
+        {
+            "cmd": "direct",
+            "val": {"mode": "delete", "id": chat_id},
+            "id": chat["members"],
+        }
+    )
 
     # Add log
-    app.security.add_audit_log("deleted_chat", request.user, request.ip, {"chat_id": chat_id})
+    app.security.add_audit_log(
+        "deleted_chat", request.user, request.ip, {"chat_id": chat_id}
+    )
 
     # Return chat
     chat["error"] = False
@@ -1037,13 +1070,18 @@ async def restore_chat(chat_id):
     app.files.db.chats.update_one({"_id": chat_id}, {"$set": {"deleted": False}})
 
     # Send create chat event
-    app.supporter.sendPacket({"cmd": "direct", "val": {
-        "mode": "create_chat",
-        "payload": chat
-    }, "id": chat["members"]})
+    app.supporter.sendPacket(
+        {
+            "cmd": "direct",
+            "val": {"mode": "create_chat", "payload": chat},
+            "id": chat["members"],
+        }
+    )
 
     # Add log
-    app.security.add_audit_log("restored_chat", request.user, request.ip, {"chat_id": chat_id})
+    app.security.add_audit_log(
+        "restored_chat", request.user, request.ip, {"chat_id": chat_id}
+    )
 
     # Return chat
     chat["error"] = False
@@ -1066,31 +1104,46 @@ async def add_chat_member(chat_id, username):
         return {"error": True, "type": "chatMemberAlreadyExists"}, 409
 
     # Make sure requested user exists and isn't deleted
-    user = app.files.db.usersv0.find_one({"_id": username}, projection={"permissions": 1})
+    user = app.files.db.usersv0.find_one(
+        {"_id": username}, projection={"permissions": 1}
+    )
     if (not user) or (user["permissions"] is None):
         abort(404)
 
     # Update chat
     chat["members"].append(username)
-    app.files.db.chats.update_one({"_id": chat_id}, {"$addToSet": {"members": username}})
+    app.files.db.chats.update_one(
+        {"_id": chat_id}, {"$addToSet": {"members": username}}
+    )
 
     # Send create chat event
-    app.supporter.sendPacket({"cmd": "direct", "val": {
-        "mode": "create_chat",
-        "payload": chat
-    }, "id": username})
+    app.supporter.sendPacket(
+        {
+            "cmd": "direct",
+            "val": {"mode": "create_chat", "payload": chat},
+            "id": username,
+        }
+    )
 
     # Send update chat event
-    app.supporter.sendPacket({"cmd": "direct", "val": {
-        "mode": "update_chat",
-        "payload": {
-            "_id": chat_id,
-            "members": chat["members"]
+    app.supporter.sendPacket(
+        {
+            "cmd": "direct",
+            "val": {
+                "mode": "update_chat",
+                "payload": {"_id": chat_id, "members": chat["members"]},
+            },
+            "id": chat["members"],
         }
-    }, "id": chat["members"]})
+    )
 
     # Add log
-    app.security.add_audit_log("added_chat_member", request.user, request.ip, {"chat_id": chat_id, "username": username})
+    app.security.add_audit_log(
+        "added_chat_member",
+        request.user,
+        request.ip,
+        {"chat_id": chat_id, "username": username},
+    )
 
     # Return chat
     chat["error"] = False
@@ -1104,10 +1157,7 @@ async def remove_chat_member(chat_id, username):
         abort(401)
 
     # Get chat
-    chat = app.files.db.chats.find_one({
-        "_id": chat_id,
-        "members": username
-    })
+    chat = app.files.db.chats.find_one({"_id": chat_id, "members": username})
     if not chat:
         abort(404)
 
@@ -1116,19 +1166,29 @@ async def remove_chat_member(chat_id, username):
     app.files.db.chats.update_one({"_id": chat_id}, {"$pull": {"members": username}})
 
     # Send update chat event
-    app.supporter.sendPacket({"cmd": "direct", "val": {
-        "mode": "update_chat",
-        "payload": {
-            "_id": chat_id,
-            "members": chat["members"]
+    app.supporter.sendPacket(
+        {
+            "cmd": "direct",
+            "val": {
+                "mode": "update_chat",
+                "payload": {"_id": chat_id, "members": chat["members"]},
+            },
+            "id": chat["members"],
         }
-    }, "id": chat["members"]})
+    )
 
     # Send delete chat event to user
-    app.supporter.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": chat_id}, "id": username})
+    app.supporter.sendPacket(
+        {"cmd": "direct", "val": {"mode": "delete", "id": chat_id}, "id": username}
+    )
 
     # Add log
-    app.security.add_audit_log("removed_chat_member", request.user, request.ip, {"chat_id": chat_id, "username": username})
+    app.security.add_audit_log(
+        "removed_chat_member",
+        request.user,
+        request.ip,
+        {"chat_id": chat_id, "username": username},
+    )
 
     # Return chat
     chat["error"] = False
@@ -1142,10 +1202,7 @@ async def transfer_chat_ownership(chat_id, username):
         abort(401)
 
     # Get chat
-    chat = app.files.db.chats.find_one({
-        "_id": chat_id,
-        "members": username
-    })
+    chat = app.files.db.chats.find_one({"_id": chat_id, "members": username})
     if not chat:
         abort(404)
 
@@ -1159,16 +1216,24 @@ async def transfer_chat_ownership(chat_id, username):
     app.files.db.chats.update_one({"_id": chat_id}, {"$set": {"owner": username}})
 
     # Send update chat event
-    app.supporter.sendPacket({"cmd": "direct", "val": {
-        "mode": "update_chat",
-        "payload": {
-            "_id": chat_id,
-            "owner": chat["owner"]
+    app.supporter.sendPacket(
+        {
+            "cmd": "direct",
+            "val": {
+                "mode": "update_chat",
+                "payload": {"_id": chat_id, "owner": chat["owner"]},
+            },
+            "id": chat["members"],
         }
-    }, "id": chat["members"]})
+    )
 
     # Add log
-    app.security.add_audit_log("transferred_chat_ownership", request.user, request.ip, {"chat_id": chat_id, "username": username})
+    app.security.add_audit_log(
+        "transferred_chat_ownership",
+        request.user,
+        request.ip,
+        {"chat_id": chat_id, "username": username},
+    )
 
     # Return chat
     chat["error"] = False
@@ -1188,20 +1253,22 @@ async def get_chat_posts(chat_id):
         page = 1
 
     # Make sure chat exists
-    if app.files.db.chats.count_documents({
-        "_id": chat_id
-    }, limit=1) < 1:
+    if app.files.db.chats.count_documents({"_id": chat_id}, limit=1) < 1:
         abort(404)
 
     # Get posts
     query = {"post_origin": chat_id, "$or": [{"isDeleted": False}, {"isDeleted": True}]}
-    posts = list(app.files.db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
+    posts = list(
+        app.files.db.posts.find(
+            query, sort=[("t.e", pymongo.DESCENDING)], skip=(page - 1) * 25, limit=25
+        )
+    )
 
     # Return posts
     payload = {
         "error": False,
         "page#": page,
-        "pages": app.files.get_total_pages("posts", query)
+        "pages": app.files.get_total_pages("posts", query),
     }
     if "autoget" in request.args:
         payload["autoget"] = posts
@@ -1263,16 +1330,22 @@ async def get_netblocks():
         page = 1
 
     # Get netblocks
-    netblocks = list(app.files.db.netblock.find({}, sort=[("created", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
+    netblocks = list(
+        app.files.db.netblock.find(
+            {}, sort=[("created", pymongo.DESCENDING)], skip=(page - 1) * 25, limit=25
+        )
+    )
 
     # Add log
-    app.security.add_audit_log("got_netblocks", request.user, request.ip, {"page": page})
+    app.security.add_audit_log(
+        "got_netblocks", request.user, request.ip, {"page": page}
+    )
 
     # Return netblocks
     payload = {
         "error": False,
         "page#": page,
-        "pages": app.files.get_total_pages("netblock", {})
+        "pages": app.files.get_total_pages("netblock", {}),
     }
     if "autoget" in request.args:
         payload["autoget"] = netblocks
@@ -1321,11 +1394,7 @@ async def create_netblock(cidr):
         abort(400)
 
     # Construct netblock obj
-    netblock = {
-        "_id": cidr,
-        "type": body.type,
-        "created": int(time.time())
-    }
+    netblock = {"_id": cidr, "type": body.type, "created": int(time.time())}
 
     # Remove from Radix
     if app.supporter.blocked_ips.search_exact(cidr):

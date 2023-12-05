@@ -23,17 +23,22 @@ async def get_home_posts():
     if request.user:
         try:
             page = int(request.args["page"])
-        except: pass
+        except:
+            pass
 
     # Get posts
     query = {"post_origin": "home", "isDeleted": False}
-    posts = list(app.files.db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
+    posts = list(
+        app.files.db.posts.find(
+            query, sort=[("t.e", pymongo.DESCENDING)], skip=(page - 1) * 25, limit=25
+        )
+    )
 
     # Return posts
     payload = {
         "error": False,
         "page#": page,
-        "pages": (app.files.get_total_pages("posts", query) if request.user else 1)
+        "pages": (app.files.get_total_pages("posts", query) if request.user else 1),
     }
     if "autoget" in request.args:
         payload["autoget"] = posts
@@ -62,7 +67,8 @@ async def create_home_post():
     # Get body
     try:
         body = PostBody(**await request.json)
-    except: abort(400)
+    except:
+        abort(400)
 
     # Create post
     FileWrite, post = app.supporter.createPost("home", request.user, body.content)

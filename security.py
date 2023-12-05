@@ -11,11 +11,7 @@ This module provides account management and authentication services.
 
 LATEST_TERMS_REVISION = "1"
 
-SENSITIVE_ACCOUNT_FIELDS = {
-    "pswd",
-    "tokens",
-    "delete_after"
-}
+SENSITIVE_ACCOUNT_FIELDS = {"pswd", "tokens", "delete_after"}
 
 SENSITIVE_ACCOUNT_FIELDS_DB_PROJECTION = {}
 for key in SENSITIVE_ACCOUNT_FIELDS:
@@ -33,7 +29,7 @@ DEFAULT_USER_SETTINGS = {
     "hide_blocked_users": False,
     "active_dms": [],
     "favorited_chats": [],
-    "accepted_terms": {}
+    "accepted_terms": {},
 }
 
 
@@ -90,19 +86,38 @@ class Security:
 
     def account_exists(self, username, ignore_case=False):
         if not isinstance(username, str):
-            self.log("Error on account_exists: Expected str for username, got {0}".format(type(username)))
+            self.log(
+                "Error on account_exists: Expected str for username, got {0}".format(
+                    type(username)
+                )
+            )
             return False
 
-        return (self.files.db.usersv0.count_documents({"lower_username": username.lower()} if ignore_case else {"_id": username}, limit=1) > 0)
-    
+        return (
+            self.files.db.usersv0.count_documents(
+                {"lower_username": username.lower()}
+                if ignore_case
+                else {"_id": username},
+                limit=1,
+            )
+            > 0
+        )
+
     def get_account(self, username, include_config=False):
         # Check datatype
         if not isinstance(username, str):
-            self.log("Error on get_account: Expected str for username, got {0}".format(type(username)))
+            self.log(
+                "Error on get_account: Expected str for username, got {0}".format(
+                    type(username)
+                )
+            )
             return None
 
         # Get account
-        account = self.files.db.usersv0.find_one({"lower_username": username.lower()}, projection=SENSITIVE_ACCOUNT_FIELDS_DB_PROJECTION)
+        account = self.files.db.usersv0.find_one(
+            {"lower_username": username.lower()},
+            projection=SENSITIVE_ACCOUNT_FIELDS_DB_PROJECTION,
+        )
         if not account:
             return None
 
@@ -116,7 +131,9 @@ class Security:
         if account["ban"]:
             if account["ban"]["state"] == "perm_ban":
                 account["banned"] = True
-            elif (account["ban"]["state"] == "temp_ban") and (account["ban"]["expires"] > time.time()):
+            elif (account["ban"]["state"] == "temp_ban") and (
+                account["ban"]["expires"] > time.time()
+            ):
                 account["banned"] = True
             else:
                 account["banned"] = False
@@ -126,7 +143,9 @@ class Security:
         # Include config
         if include_config:
             account.update(DEFAULT_USER_SETTINGS)
-            user_settings = self.files.db.user_settings.find_one({"_id": account["_id"]})
+            user_settings = self.files.db.user_settings.find_one(
+                {"_id": account["_id"]}
+            )
             if user_settings:
                 del user_settings["_id"]
                 account.update(user_settings)
@@ -139,17 +158,27 @@ class Security:
     def update_settings(self, username, newdata):
         # Check datatype
         if not isinstance(username, str):
-            self.log("Error on update_settings: Expected str for username, got {0}".format(type(username)))
+            self.log(
+                "Error on update_settings: Expected str for username, got {0}".format(
+                    type(username)
+                )
+            )
             return False
         elif not isinstance(newdata, dict):
-            self.log("Error on update_settings: Expected str for newdata, got {0}".format(type(newdata)))
+            self.log(
+                "Error on update_settings: Expected str for newdata, got {0}".format(
+                    type(newdata)
+                )
+            )
             return False
-        
+
         # Get user UUID
-        account = self.files.db.usersv0.find_one({"lower_username": username.lower()}, projection={"_id": 1, "uuid": 1})
+        account = self.files.db.usersv0.find_one(
+            {"lower_username": username.lower()}, projection={"_id": 1, "uuid": 1}
+        )
         if not account:
             return False
-        
+
         # Init vars
         updated_user_vals = {}
         updated_user_settings_vals = {}
@@ -158,7 +187,7 @@ class Security:
         if "pfp_data" in newdata:
             if isinstance(newdata["pfp_data"], int):
                 updated_user_vals["pfp_data"] = newdata["pfp_data"]
-        
+
         # Update quote
         if "quote" in newdata:
             if isinstance(newdata["quote"], str) and len(newdata["quote"]) <= 360:
@@ -172,62 +201,89 @@ class Security:
                 if isinstance(newdata[key], type(default_val)):
                     if key == "favorited_chats" and len(newdata[key]) > 50:
                         newdata[key] = newdata[key][:50]
-                    
+
                     updated_user_settings_vals[key] = newdata[key]
 
         # Update database items
         if len(updated_user_vals) > 0:
-            self.files.db.usersv0.update_one({"_id": account["_id"]}, {"$set": updated_user_vals})
+            self.files.db.usersv0.update_one(
+                {"_id": account["_id"]}, {"$set": updated_user_vals}
+            )
         if len(updated_user_settings_vals) > 0:
-            self.files.db.user_settings.update_one({"_id": account["_id"]}, {"$set": updated_user_settings_vals}, upsert=True)
+            self.files.db.user_settings.update_one(
+                {"_id": account["_id"]},
+                {"$set": updated_user_settings_vals},
+                upsert=True,
+            )
 
         return True
 
     def get_permissions(self, username):
         if not isinstance(username, str):
-            self.log("Error on get_permissions: Expected str for username, got {0}".format(type(username)))
+            self.log(
+                "Error on get_permissions: Expected str for username, got {0}".format(
+                    type(username)
+                )
+            )
             return 0
 
-        account = self.files.db.usersv0.find_one({"lower_username": username.lower()}, projection={"permissions": 1})
+        account = self.files.db.usersv0.find_one(
+            {"lower_username": username.lower()}, projection={"permissions": 1}
+        )
         if account:
             return account["permissions"]
         else:
             return 0
 
     def has_permission(self, user_permissions, permission):
-        if ((user_permissions & Permissions.SYSADMIN) == Permissions.SYSADMIN):
+        if (user_permissions & Permissions.SYSADMIN) == Permissions.SYSADMIN:
             return True
         else:
-            return ((user_permissions & permission) == permission)
+            return (user_permissions & permission) == permission
 
     def is_restricted(self, username, restriction):
         # Check datatypes
         if not isinstance(username, str):
-            self.log("Error on is_restricted: Expected str for username, got {0}".format(type(username)))
+            self.log(
+                "Error on is_restricted: Expected str for username, got {0}".format(
+                    type(username)
+                )
+            )
             return False
         elif not isinstance(restriction, int):
-            self.log("Error on is_restricted: Expected int for username, got {0}".format(type(restriction)))
+            self.log(
+                "Error on is_restricted: Expected int for username, got {0}".format(
+                    type(restriction)
+                )
+            )
             return False
 
         # Get account
-        account = self.files.db.usersv0.find_one({"lower_username": username.lower()}, projection={"ban.state": 1, "ban.restrictions": 1, "ban.expires": 1})
+        account = self.files.db.usersv0.find_one(
+            {"lower_username": username.lower()},
+            projection={"ban.state": 1, "ban.restrictions": 1, "ban.expires": 1},
+        )
         if not account:
             return False
-        
+
         # Check type
         if account["ban"]["state"] == "none":
             return False
-        
+
         # Check expiration
-        if "perm" not in account["ban"]["state"] and account["ban"]["expires"] < int(time.time()):
+        if "perm" not in account["ban"]["state"] and account["ban"]["expires"] < int(
+            time.time()
+        ):
             return False
-        
+
         # Return whether feature is restricted
         return (account["ban"]["restrictions"] & restriction) == restriction
 
     def delete_account(self, username, purge=False):
         # Get account
-        account = self.files.db.usersv0.find_one({"_id": username}, projection={"uuid": 1, "flags": 1})
+        account = self.files.db.usersv0.find_one(
+            {"_id": username}, projection={"uuid": 1, "flags": 1}
+        )
         if not account:
             return
 
@@ -235,17 +291,22 @@ class Security:
         account["flags"] |= UserFlags.DELETED
 
         # Update account
-        self.files.db.usersv0.update_one({"_id": username}, {"$set": {
-            "pfp_data": None,
-            "quote": None,
-            "pswd": None,
-            "tokens": None,
-            "flags": account["flags"],
-            "permissions": None,
-            "ban": None,
-            "last_seen": None,
-            "delete_after": None
-        }})
+        self.files.db.usersv0.update_one(
+            {"_id": username},
+            {
+                "$set": {
+                    "pfp_data": None,
+                    "quote": None,
+                    "pswd": None,
+                    "tokens": None,
+                    "flags": account["flags"],
+                    "permissions": None,
+                    "ban": None,
+                    "last_seen": None,
+                    "delete_after": None,
+                }
+            },
+        )
 
         # Kick user
         self.supporter.kickUser(username, status="LoggedOut")
@@ -257,31 +318,32 @@ class Security:
         self.files.db.netlog.delete_many({"_id.user": username})
 
         # Remove from reports
-        self.files.db.reports.update_many({"reports.user": username}, {"$pull": {
-            "reports": {"user": username}
-        }})
+        self.files.db.reports.update_many(
+            {"reports.user": username}, {"$pull": {"reports": {"user": username}}}
+        )
 
         # Delete relationships
-        self.files.db.relationships.delete_many({"$or": [
-            {"_id.from": username},
-            {"_id.to": username}
-        ]})
+        self.files.db.relationships.delete_many(
+            {"$or": [{"_id.from": username}, {"_id.to": username}]}
+        )
 
         # Update or delete chats
-        for chat in self.files.db.chats.find({
-            "members": username
-        }, projection={"type": 1, "owner": 1, "members": 1}):
+        for chat in self.files.db.chats.find(
+            {"members": username}, projection={"type": 1, "owner": 1, "members": 1}
+        ):
             if chat["type"] == 1 or len(chat["members"]) == 1:
-                self.files.db.posts.delete_many({"post_origin": chat["_id"], "isDeleted": False})
+                self.files.db.posts.delete_many(
+                    {"post_origin": chat["_id"], "isDeleted": False}
+                )
                 self.files.db.chats.delete_one({"_id": chat["_id"]})
             else:
                 if chat["owner"] == username:
                     chat["owner"] = "Deleted"
                 chat["members"].remove(username)
-                self.files.db.chats.update_one({"_id": chat["_id"]}, {"$set": {
-                    "owner": chat["owner"],
-                    "members": chat["members"]
-                }})
+                self.files.db.chats.update_one(
+                    {"_id": chat["_id"]},
+                    {"$set": {"owner": chat["owner"], "members": chat["members"]}},
+                )
 
         # Delete posts
         self.files.db.posts.delete_many({"u": username})
@@ -317,9 +379,10 @@ class Security:
         if not netinfo:
             iphub_key = os.getenv("IPHUB_KEY")
             if iphub_key:
-                iphub_info = requests.get(f"http://v2.api.iphub.info/ip/{ip_address}", headers={
-                    "X-Key": iphub_key
-                }).json()
+                iphub_info = requests.get(
+                    f"http://v2.api.iphub.info/ip/{ip_address}",
+                    headers={"X-Key": iphub_key},
+                ).json()
                 netinfo = {
                     "_id": ip_hash,
                     "country_code": iphub_info["countryCode"],
@@ -327,9 +390,11 @@ class Security:
                     "asn": iphub_info["asn"],
                     "isp": iphub_info["isp"],
                     "vpn": (iphub_info["block"] == 1),
-                    "last_refreshed": int(time.time())
+                    "last_refreshed": int(time.time()),
                 }
-                self.files.db.netinfo.update_one({"_id": ip_hash}, {"$set": netinfo}, upsert=True)
+                self.files.db.netinfo.update_one(
+                    {"_id": ip_hash}, {"$set": netinfo}, upsert=True
+                )
             else:
                 netinfo = {
                     "_id": ip_hash,
@@ -338,20 +403,22 @@ class Security:
                     "asn": "Unknown",
                     "isp": "Unknown",
                     "vpn": False,
-                    "last_refreshed": int(time.time())
+                    "last_refreshed": int(time.time()),
                 }
 
         return netinfo
 
     def add_audit_log(self, action_type, mod_username, mod_ip, data):
-        self.files.db.audit_log.insert_one({
-            "_id": str(uuid.uuid4()),
-            "type": action_type,
-            "mod_username": mod_username,
-            "mod_ip": mod_ip,
-            "time": int(time.time()),
-            "data": data
-        })
+        self.files.db.audit_log.insert_one(
+            {
+                "_id": str(uuid.uuid4()),
+                "type": action_type,
+                "mod_username": mod_username,
+                "mod_ip": mod_ip,
+                "time": int(time.time()),
+                "data": data,
+            }
+        )
 
     def run_background_tasks(self):
         while True:
@@ -360,40 +427,54 @@ class Security:
             self.log("Running background tasks...")
 
             # Delete accounts scheduled for deletion
-            for user in self.files.db.usersv0.find({"delete_after": {"$lt": int(time.time())}}, projection={"_id": 1}):
+            for user in self.files.db.usersv0.find(
+                {"delete_after": {"$lt": int(time.time())}}, projection={"_id": 1}
+            ):
                 try:
                     self.delete_account(user["_id"])
                 except Exception as e:
                     self.log("Failed to delete account {0}: {1}".format(user["_id"], e))
 
             # Purge old netinfo
-            self.files.db.netinfo.delete_many({"last_refreshed": {"$lt": int(time.time())-2419200}})
+            self.files.db.netinfo.delete_many(
+                {"last_refreshed": {"$lt": int(time.time()) - 2419200}}
+            )
 
             # Purge old netlogs
-            self.files.db.netlog.delete_many({"last_used": {"$lt": int(time.time())-2419200}})
+            self.files.db.netlog.delete_many(
+                {"last_used": {"$lt": int(time.time()) - 2419200}}
+            )
 
             # Purge old deleted posts
-            self.files.db.posts.delete_many({"deleted_at": {"$lt": int(time.time())-2419200}})
+            self.files.db.posts.delete_many(
+                {"deleted_at": {"$lt": int(time.time()) - 2419200}}
+            )
 
             # Purge old post revisions
-            self.files.db.post_revisions.delete_many({"time": {"$lt": int(time.time())-2419200}})
+            self.files.db.post_revisions.delete_many(
+                {"time": {"$lt": int(time.time()) - 2419200}}
+            )
 
             # Purge old admin audit logs
-            self.files.db.audit_log.delete_many({
-                "time": {"$lt": int(time.time())-2419200},
-                "type": {"$in": [
-                    "got_reports",
-                    "got_report",
-                    "got_notes",
-                    "got_users",
-                    "got_user",
-                    "got_user_posts",
-                    "got_chat",
-                    "got_netinfo",
-                    "got_netblocks",
-                    "got_netblock",
-                    "got_announcements"
-                ]}
-            })
+            self.files.db.audit_log.delete_many(
+                {
+                    "time": {"$lt": int(time.time()) - 2419200},
+                    "type": {
+                        "$in": [
+                            "got_reports",
+                            "got_report",
+                            "got_notes",
+                            "got_users",
+                            "got_user",
+                            "got_user_posts",
+                            "got_chat",
+                            "got_netinfo",
+                            "got_netblocks",
+                            "got_netblock",
+                            "got_announcements",
+                        ]
+                    },
+                }
+            )
 
             self.log("Finished background tasks!")
