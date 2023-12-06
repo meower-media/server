@@ -9,8 +9,6 @@ Meower Security Module
 This module provides account management and authentication services.
 """
 
-LATEST_TERMS_REVISION = "1"
-
 SENSITIVE_ACCOUNT_FIELDS = {
     "pswd",
     "tokens",
@@ -32,8 +30,7 @@ DEFAULT_USER_SETTINGS = {
     "debug": False,
     "hide_blocked_users": False,
     "active_dms": [],
-    "favorited_chats": [],
-    "accepted_terms": {}
+    "favorited_chats": []
 }
 
 

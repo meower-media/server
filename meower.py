@@ -7,7 +7,7 @@ from threading import Thread
 import bcrypt
 import re
 
-from security import LATEST_TERMS_REVISION, UserFlags, Restrictions
+from security import UserFlags, Restrictions
 
 load_dotenv()  # take environment variables from .env.
 
@@ -256,7 +256,7 @@ class Meower:
             "last_seen": int(time.time()),
             "delete_after": None
         })
-        self.files.db.user_settings.insert_one({"_id": username, "accepted_terms": {LATEST_TERMS_REVISION: int(time.time())}})
+        self.files.db.user_settings.insert_one({"_id": username})
 
         # Ratelimit
         self.supporter.ratelimit(f"registration:{ip}:s", 5, 900)
@@ -326,41 +326,6 @@ class Meower:
             "payload": account,
             "user_id": account["_id"]
         }, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
-        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-
-    def accept_terms(self, client, val, listener_detected, listener_id):
-        # Check if the client is authenticated
-        if not self.supporter.isAuthenticated(client):
-            return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
-        # Get current settings
-        user_settings = self.files.db.user_settings.find_one({"_id": client})
-        if not user_settings:
-            return self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-        
-        # Make sure latest terms haven't already been accepted
-        if "accepted_terms" not in user_settings:
-            user_settings["accepted_terms"] = {}
-        if LATEST_TERMS_REVISION in user_settings["accepted_terms"]:
-            return self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-
-
-        # Accept latest terms revision
-        user_settings["accepted_terms"][LATEST_TERMS_REVISION] = int(time.time())
-
-        self.files.db.user_settings.update_one({"_id": client}, {"$set": {
-            "accepted_terms": user_settings["accepted_terms"]
-        }})
-
-        # Sync config between sessions
-        self.sendPacket({"cmd": "direct", "val": {
-            "mode": "update_config",
-            "payload": {
-                "accepted_terms": user_settings["accepted_terms"]
-            }
-        }, "id": client})
-        
-        # Tell the client the terms were accepted
         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
 
     def update_config(self, client, val, listener_detected, listener_id):
