@@ -1,4 +1,4 @@
-from quart import Blueprint, current_app as app, request
+from quart import Blueprint, current_app as app, request, abort
 import pymongo
 
 
@@ -7,6 +7,10 @@ me_bp = Blueprint("me_bp", __name__, url_prefix="/me")
 
 @me_bp.get("/reports")
 async def get_report_history():
+    # Check authorization
+    if not request.user:
+        abort(401)
+
     # Get page
     try:
         page = int(request.args["page"])
