@@ -7,7 +7,7 @@ from threading import Thread
 import bcrypt
 import re
 
-from security import LATEST_TERMS_REVISION, UserFlags, Restrictions
+from security import UserFlags, Restrictions
 
 load_dotenv()  # take environment variables from .env.
 
@@ -256,7 +256,7 @@ class Meower:
             "last_seen": int(time.time()),
             "delete_after": None
         })
-        self.files.db.user_settings.insert_one({"_id": username, "accepted_terms": {LATEST_TERMS_REVISION: int(time.time())}})
+        self.files.db.user_settings.insert_one({"_id": username})
 
         # Ratelimit
         self.supporter.ratelimit(f"registration:{ip}:s", 5, 900)
@@ -326,41 +326,6 @@ class Meower:
             "payload": account,
             "user_id": account["_id"]
         }, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
-        self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-
-    def accept_terms(self, client, val, listener_detected, listener_id):
-        # Check if the client is authenticated
-        if not self.supporter.isAuthenticated(client):
-            return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
-        # Get current settings
-        user_settings = self.files.db.user_settings.find_one({"_id": client})
-        if not user_settings:
-            return self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-        
-        # Make sure latest terms haven't already been accepted
-        if "accepted_terms" not in user_settings:
-            user_settings["accepted_terms"] = {}
-        if LATEST_TERMS_REVISION in user_settings["accepted_terms"]:
-            return self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-
-
-        # Accept latest terms revision
-        user_settings["accepted_terms"][LATEST_TERMS_REVISION] = int(time.time())
-
-        self.files.db.user_settings.update_one({"_id": client}, {"$set": {
-            "accepted_terms": user_settings["accepted_terms"]
-        }})
-
-        # Sync config between sessions
-        self.sendPacket({"cmd": "direct", "val": {
-            "mode": "update_config",
-            "payload": {
-                "accepted_terms": user_settings["accepted_terms"]
-            }
-        }, "id": client})
-        
-        # Tell the client the terms were accepted
         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
 
     def update_config(self, client, val, listener_detected, listener_id):
@@ -1259,8 +1224,16 @@ class Meower:
         
         # Make sure the content exists
         if content_type == 0:
-            if self.files.db.posts.count_documents({"_id": content_id, "post_origin": {"$ne": "inbox"}}, limit=1) < 1:
+            post = self.files.db.posts.find_one({"_id": content_id, "post_origin": {"$ne": "inbox"}}, projection={"post_origin": 1})
+            if not post:
                 return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
+            elif post["post_origin"] != "home":
+                if self.files.db.chats.count_documents({
+                    "_id": post["post_origin"],
+                    "members": client,
+                    "deleted": False
+                }, limit=1) < 1:
+                    return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
         elif content_type == 1:
             if self.files.db.usersv0.count_documents({"_id": content_id}, limit=1) < 1:
                 return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)

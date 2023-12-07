@@ -4,6 +4,7 @@ import time
 import os
 
 from .home import home_bp
+from .me import me_bp
 from .inbox import inbox_bp
 from .posts import posts_bp
 from .users import users_bp
@@ -134,6 +135,7 @@ async def not_implemented(e):
 
 # Register blueprints
 app.register_blueprint(home_bp)
+app.register_blueprint(me_bp)
 app.register_blueprint(inbox_bp)
 app.register_blueprint(posts_bp)
 app.register_blueprint(users_bp)
