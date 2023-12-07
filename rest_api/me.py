@@ -43,7 +43,7 @@ async def get_report_history():
     for report in reports:
         if report["type"] == "post":
             report["content"] = app.files.db.posts.find_one(
-                {"_id": report.pop("content_id")}, projection={"_id": 1, "u": 1, "isDeleted": 1}
+                {"_id": report.get("content_id")}, projection={"_id": 1, "u": 1, "isDeleted": 1}
             )
         elif report["type"] == "user":
             report["content"] = app.security.get_account(report.get("content_id"))

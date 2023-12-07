@@ -111,7 +111,7 @@ async def get_reports():
     for report in reports:
         if report["type"] == "post":
             report["content"] = app.files.db.posts.find_one(
-                {"_id": report.pop("content_id")}
+                {"_id": report.get("content_id")}
             )
         elif report["type"] == "user":
             report["content"] = app.security.get_account(report.get("content_id"))
