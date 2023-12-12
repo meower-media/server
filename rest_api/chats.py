@@ -461,6 +461,9 @@ async def join_invite(invite):
     if not request.user:
         abort(401)
 
+    if len(invite) > 4:
+        abort(400)
+
     invite = app.files.db.chat_invites.find_one({"_id": invite})
     if not invite:
         abort(404)
@@ -564,6 +567,30 @@ async def unban_user(chat_id, username):
 
     return {"error": False}, 200
 
+@chats_bp.get("/<chat_id>/bans")
+async def get_bans(chat_id):
+    if not request.user:
+        abort(401)
+
+    chat = app.files.db.chats.find_one({"_id": chat_id})
+    if not chat:
+        abort(404)
+
+    if chat["owner"] != request.user:
+        abort(403)
+
+    bans = app.files.db.chat_bans.find({"chat": chat_id})
+    if not bans:
+        return {"error": False, "bans": []}, 200
+
+    ret = []
+    for ban in bans:
+        ret.append({
+            "username": ban["username"],
+            "message": ban["message"]
+        })
+
+    return {"error": False, "bans": list(ret)}, 200
 
 @chats_bp.post("/<chat_id>/members/<username>/transfer")
 async def transfer_chat_ownership(chat_id, username):
