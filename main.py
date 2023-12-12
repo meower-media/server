@@ -33,7 +33,6 @@ COMMANDS = {
 
     # Accounts and security
     "authpswd",
-    "gen_account",
     "get_profile",
     "update_config",
     "change_pswd",
