@@ -54,31 +54,31 @@ class Meower:
 
 
     # Networking/client utilities
-    
+
     def ping(self, client, val, listener_detected, listener_id):
         # Returns your ping for my pong
         self.returnCode(client = client, code = "Pong", listener_detected = listener_detected, listener_id = listener_id)
-    
+
     def get_ulist(self, client, val, listener_detected, listener_id):
         self.sendPacket({"cmd": "ulist", "val": self.cl._get_ulist(), "id": client}, listener_detected = listener_detected, listener_id = listener_id)
 
 
 
     # Accounts and security
-    
+
     def authpswd(self, client, val, listener_detected, listener_id):
         # Check if the client is already authenticated
         if self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check val datatype
         if not isinstance(val, dict):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check val syntax
         if ("username" not in val) or ("pswd" not in val):
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Extract username, password, and IP
         username = val["username"]
         password = val["pswd"]
@@ -87,11 +87,11 @@ class Meower:
         # Check username and password datatypes
         if (not isinstance(username, str)) or (not isinstance(password, str)):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check username and password syntax
         if len(username) < 1 or len(username) > 20 or len(password) < 1 or len(password) > 255:
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check ratelimits
         for bucket_id in [
             f"login:i:{ip}",
@@ -100,7 +100,7 @@ class Meower:
         ]:
             if self.supporter.ratelimited(bucket_id):
                 return self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Ratelimit IP
         self.supporter.ratelimit(f"login:i:{ip}", 100, 1800)
 
@@ -118,12 +118,12 @@ class Meower:
         elif (account["flags"] & UserFlags.DELETED == UserFlags.DELETED) or (account["delete_after"] and account["delete_after"] <= time.time()+60):
             self.supporter.ratelimit(f"login:u:{username}:f", 5, 60)
             return self.returnCode(client = client, code = "Deleted", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check password
         if (password not in account["tokens"]) and (not bcrypt.checkpw(password.encode(), account["pswd"].encode())):
             self.supporter.ratelimit(f"login:u:{username}:f", 5, 60)
             return self.returnCode(client = client, code = "PasswordInvalid", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Update netlog
         netlog_result = self.files.db.netlog.update_one({"_id": {"ip": ip, "user": username}}, {"$set": {"last_used": int(time.time())}}, upsert=True)
 
@@ -142,7 +142,7 @@ class Meower:
         # Alert user of new IP address if user has admin permissions
         if account["permissions"] and netlog_result.upserted_id:
             self.supporter.createPost("inbox", username, f"Your account was logged into on a new IP address ({ip})! You are receiving this message because you have admin permissions. Please make sure to keep your account secure.")
-        
+
         # Alert user if account was pending deletion
         if account["delete_after"]:
             self.supporter.createPost("inbox", username, f"Your account was scheduled for deletion but you logged back in. Your account is no longer scheduled for deletion! If you didn't request for your account to be deleted, please change your password immediately.")
@@ -180,15 +180,15 @@ class Meower:
                 "relationships": relationships
             }
         }, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Tell the client it is authenticated
         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-    
+
     def gen_account(self, client, val, listener_detected, listener_id):
         # Check if the client is already authenticated
         if self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Make sure registration isn't disabled
         if not self.supporter.registration:
             return self.returnCode(client = client, code = "Disabled", listener_detected = listener_detected, listener_id = listener_id)
@@ -196,11 +196,11 @@ class Meower:
         # Check val datatype
         if not isinstance(val, dict):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check val syntax
         if ("username" not in val) or ("pswd" not in val):
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Extract username, password, and IP
         username = val["username"]
         password = val["pswd"]
@@ -209,15 +209,15 @@ class Meower:
         # Check username and password datatypes
         if (not isinstance(username, str)) or (not isinstance(password, str)):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check username and password syntax
         if len(username) < 1 or len(username) > 20 or len(password) < 8 or len(password) > 255:
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check username regex
         if not re.fullmatch("[a-zA-Z0-9-_]{1,20}", username):
             return self.returnCode(client = client, code = "IllegalChars", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check ratelimit
         if self.supporter.ratelimited(f"registration:{ip}:f") or self.supporter.ratelimited(f"registration:{ip}:s"):
             return self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
@@ -281,7 +281,7 @@ class Meower:
                 "relationships": []
             }
         }, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Tell the client it is authenticated
         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
 
@@ -306,20 +306,20 @@ class Meower:
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check datatype
         if not isinstance(val, str):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check syntax
         if len(val) > 20:
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Get profile
         account = self.security.get_account(val, (val.lower() == client.lower()))
         if not account:
             return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Return profile
         self.sendPacket({"cmd": "direct", "val": {
             "mode": "profile",
@@ -348,12 +348,12 @@ class Meower:
         if "quote" in val:
             if self.security.is_restricted(client, Restrictions.EDITING_QUOTE):
                 del val["quote"]
-        
+
         # Update config
         FileWrite = self.security.update_settings(client, val)
         if not FileWrite:
             return self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Sync config between sessions
         self.sendPacket({"cmd": "direct", "val": {
             "mode": "update_config",
@@ -367,15 +367,15 @@ class Meower:
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check val datatype
         if not isinstance(val, dict):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check val syntax
         if ("old" not in val) or ("new" not in val):
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Extract old password and new password
         old_pswd = val["old"]
         new_pswd = val["new"]
@@ -383,11 +383,11 @@ class Meower:
         # Check old password and new password datatypes
         if (not isinstance(old_pswd, str)) or (not isinstance(new_pswd, str)):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check old password and new password syntax
         if len(old_pswd) < 1 or len(old_pswd) > 255 or len(new_pswd) < 8 or len(new_pswd) > 255:
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check ratelimit
         if self.supporter.ratelimited(f"login:u:{client}:f"):
             return self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
@@ -401,7 +401,7 @@ class Meower:
             return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
         elif not bcrypt.checkpw(old_pswd.encode(), account["pswd"].encode()):
             return self.returnCode(client = client, code = "PasswordInvalid", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Update password
         self.files.db.usersv0.update_one({"_id": client}, {"$set": {
             "pswd": bcrypt.hashpw(new_pswd.encode(), bcrypt.gensalt(rounds=14)).decode()
@@ -414,10 +414,10 @@ class Meower:
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Revoke tokens
         self.files.db.usersv0.update_one({"_id": client}, {"$set": {"tokens": []}})
-        
+
         # Tell the client the tokens were revoked
         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
 
@@ -429,22 +429,22 @@ class Meower:
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check datatype
         if not isinstance(val, str):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check syntax
         if len(val) < 1 or len(val) > 255:
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check ratelimit
         if self.supporter.ratelimited(f"login:u:{client}:f"):
             return self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
 
         # Ratelimit
         self.supporter.ratelimit(f"login:u:{client}:f", 5, 60)
-        
+
         # Check password
         account = self.files.db.usersv0.find_one({"_id": client}, projection={"pswd": 1})
         if not bcrypt.checkpw(val.encode(), account["pswd"].encode()):
@@ -471,7 +471,7 @@ class Meower:
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check ratelimit
         if self.supporter.ratelimited(f"create_chat:{client}"):
             return self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
@@ -486,7 +486,7 @@ class Meower:
         # Check datatype
         if not isinstance(val, str):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check syntax
         if len(val) < 1 or len(val) > 50:
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
@@ -519,7 +519,7 @@ class Meower:
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check ratelimit
         if self.supporter.ratelimited(f"update_chat:{client}"):
             return self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
@@ -530,7 +530,7 @@ class Meower:
         # Check datatype
         if not isinstance(val, str):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check syntax
         if len(val) < 1 or len(val) > 50:
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
@@ -549,7 +549,7 @@ class Meower:
                 # Transfer ownership, if owner
                 if chat["owner"] == client:
                     chat["owner"] = chat["members"][0]
-                
+
                 # Update chat
                 self.files.db.chats.update_one({"_id": val}, {
                     "$set": {"owner": chat["owner"]},
@@ -589,7 +589,7 @@ class Meower:
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Get page
         page = 1
         if isinstance(val, dict):
@@ -612,25 +612,25 @@ class Meower:
             }
         }, "id": client}, listener_detected = listener_detected, listener_id = listener_id)
         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
-    
+
     def get_chat_data(self, client, val, listener_detected, listener_id):
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check datatype
         if not isinstance(val, str):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check syntax
         if len(val) < 1 or len(val) > 50:
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Get chat
         chat = self.files.db.chats.find_one({"_id": val, "members": client, "deleted": False})
         if not chat:
             return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Return chat
         chat["chatid"] = chat["_id"]
         self.sendPacket({"cmd": "direct", "val": {
@@ -643,7 +643,7 @@ class Meower:
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check ratelimit
         if self.supporter.ratelimited(f"update_chat:{client}"):
             return self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
@@ -670,7 +670,7 @@ class Meower:
         # Check chatid and username datatypes
         if (not isinstance(chatid, str)) or (not isinstance(username, str)):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check chatid and username syntax
         if (len(chatid) > 50) or (len(username) > 20):
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
@@ -680,10 +680,14 @@ class Meower:
         if not chat:
             return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
 
+        if self.files.db.chat_bans.find_one({"chat": chatid, "username": username}) is not None:
+            return self.returnCode(client = client, code = "MissingPermissions", listener_detected = listener_detected, listener_id = listener_id)
+
+
         # Make sure the chat isn't full
         if chat["type"] == 1 or len(chat["members"]) >= 256:
             return self.returnCode(client = client, code = "ChatFull", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Make sure the user isn't already in the chat
         if username in chat["members"]:
             return self.returnCode(client = client, code = "IDExists", listener_detected = listener_detected, listener_id = listener_id)
@@ -738,7 +742,7 @@ class Meower:
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check val datatype
         if not isinstance(val, dict):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
@@ -754,11 +758,11 @@ class Meower:
         # Check chatid and username datatypes
         if (not isinstance(chatid, str)) or (not isinstance(username, str)):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check chatid and username syntax
         if (len(chatid) > 50) or (len(username) > 20):
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check ratelimit
         if self.supporter.ratelimited(f"update_chat:{client}"):
             return self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
@@ -808,7 +812,7 @@ class Meower:
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check ratelimit
         if self.supporter.ratelimited(f"update_chat_state:{client}"):
             return self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
@@ -819,11 +823,11 @@ class Meower:
         # Check val datatype
         if not isinstance(val, dict):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check val syntax
         if ("chatid" not in val) or ("state" not in val):
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Extract chatid and state
         chatid = val["chatid"]
         state = val["state"]
@@ -831,7 +835,7 @@ class Meower:
         # Check chatid and state datatypes
         if (not isinstance(chatid, str)) or (not isinstance(state, int)):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check chatid syntax
         if len(chatid) < 1 or len(chatid) > 50:
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
@@ -845,7 +849,7 @@ class Meower:
             })
             if not chat:
                 return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-            
+
         # Send new state
         if chatid == "livechat":
             self.sendPacket({"cmd": "direct", "val": {
@@ -871,7 +875,7 @@ class Meower:
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Get page
         page = 1
         if isinstance(val, dict):
@@ -896,15 +900,15 @@ class Meower:
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check datatype
         if not isinstance(val, str):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check syntax
         if len(val) < 1 or len(val) > 4000:
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check ratelimit
         if self.supporter.ratelimited(f"post:{client}"):
             return self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
@@ -915,12 +919,12 @@ class Meower:
         # Check restrictions
         if self.security.is_restricted(client, Restrictions.HOME_POSTS):
             return self.returnCode(client = client, code = "Banned", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Create post
         FileWrite, _ = self.supporter.createPost("home", client, val)
         if not FileWrite:
             return self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Tell the client the post was created
         self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
 
@@ -932,11 +936,11 @@ class Meower:
         # Check val datatype
         if not isinstance(val, dict):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check syntax
         if "query" not in val:
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Get query and page
         query = val["query"]
         try:
@@ -947,7 +951,7 @@ class Meower:
         # Check query and page datatypes
         if (not isinstance(query, str)) or (not isinstance(page, int)):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Get posts
         posts = self.files.db.posts.find({
             "post_origin": "home",
@@ -966,7 +970,7 @@ class Meower:
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Get page
         page = 1
         if isinstance(val, dict):
@@ -992,15 +996,15 @@ class Meower:
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check datatype
         if not isinstance(val, str):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check syntax
         if len(val) < 1 or len(val) > 50:
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Make sure chat exists
         if self.files.db.chats.count_documents({
             "_id": val,
@@ -1008,7 +1012,7 @@ class Meower:
             "deleted": False
         }, limit=1) < 1:
             return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Get latest posts
         posts = self.files.db.posts.find({
             "post_origin": val,
@@ -1026,7 +1030,7 @@ class Meower:
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check ratelimit
         if self.supporter.ratelimited(f"post:{client}"):
             return self.returnCode(client = client, code = "RateLimit", listener_detected = listener_detected, listener_id = listener_id)
@@ -1037,11 +1041,11 @@ class Meower:
         # Check val datatype
         if not isinstance(val, dict):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check val syntax
         if ("chatid" not in val) or ("p" not in val):
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Extract chatid and content
         chatid = val["chatid"]
         content = val["p"]
@@ -1049,7 +1053,7 @@ class Meower:
         # Check chatid and content datatypes
         if (not isinstance(chatid, str)) or (not isinstance(content, str)):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check chatid and content syntax
         if len(chatid) < 1 or len(chatid) > 50 or len(content) < 1 or len(content) > 4000:
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
@@ -1067,7 +1071,7 @@ class Meower:
             }, projection={"type": 1, "members": 1})
             if not chat:
                 return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-            
+
             # DM stuff
             if chat["type"] == 1:
                 # Check privacy options
@@ -1097,7 +1101,7 @@ class Meower:
         FileWrite, _ = self.supporter.createPost(chatid, client, content, chat_members=(chat["members"] if chatid != "livechat" else None))
         if not FileWrite:
             return self.returnCode(client = client, code = "InternalServerError", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Tell the client the post was created
         return self.returnCode(client = client, code = "OK", listener_detected = listener_detected, listener_id = listener_id)
 
@@ -1105,20 +1109,20 @@ class Meower:
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check datatype
         if not isinstance(val, str):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check syntax
         if len(val) < 1 or len(val) > 50:
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Get post
         post = self.files.db.posts.find_one({"_id": post["post_origin"], "isDeleted": False})
         if not post:
             return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check access
         if (post["post_origin"] == "inbox") and (post["u"] != client):
             return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
@@ -1141,11 +1145,11 @@ class Meower:
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check datatype
         if not isinstance(val, str):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check syntax
         if len(val) < 1 or len(val) > 50:
             return self.returnCode(client = client, code = "Syntax", listener_detected = listener_detected, listener_id = listener_id)
@@ -1198,12 +1202,12 @@ class Meower:
 
 
     # Moderation/administration
-    
+
     def report(self, client, val, listener_detected, listener_id):  # TODO: needs checking
         # Check if the client is authenticated
         if not self.supporter.isAuthenticated(client):
             return self.returnCode(client = client, code = "Refused", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Check val datatype
         if not isinstance(val, dict):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
@@ -1221,7 +1225,7 @@ class Meower:
         # Check type, ID, reason, and comment datatypes
         if (not isinstance(content_type, int)) or (not isinstance(content_id, str)) or (not isinstance(reason, str)) or (not isinstance(comment, str)):
             return self.returnCode(client = client, code = "Datatype", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Make sure the content exists
         if content_type == 0:
             post = self.files.db.posts.find_one({"_id": content_id, "post_origin": {"$ne": "inbox"}}, projection={"post_origin": 1})
@@ -1239,7 +1243,7 @@ class Meower:
                 return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
         else:
             return self.returnCode(client = client, code = "IDNotFound", listener_detected = listener_detected, listener_id = listener_id)
-        
+
         # Create report
         report = self.files.db.reports.find_one({
             "content_id": content_id,
@@ -1291,7 +1295,7 @@ class Meower:
                         "expires": int(time.time())+21600,  # 6 hours
                         "reason": "Automatic suspension due to multiple people reporting a post made by you and/or your profile. This suspension will be automatically removed once a moderator reviews the reported content."
                     }
-                    
+
                     # Update user
                     self.files.db.usersv0.update_one({"_id": user}, {"$set": {"ban": ban_obj}})
 

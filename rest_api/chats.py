@@ -289,7 +289,7 @@ async def add_chat_member(chat_id, username):
     if (not user) or (user["permissions"] is None):
         abort(404)
 
-    if app.files.db.chat_bans.find_one({"user": username, "_id": chat_id}) is not None:
+    if app.files.db.chat_bans.find_one({"username": username, "chat": chat_id}) is not None:
         abort(403)
 
     # Make sure requested user isn't blocked or is blocking client
@@ -405,7 +405,7 @@ async def create_invite(chat_id):
 
     app.supporter.ratelimit("update_chat:{request.user}", 5, 5)
 
-    invite = secrets.token_urlsafe() \
+    invite = secrets.token_urlsafe(4) \
         .replace("-", 'a')           \
         .replace('_', 'b')           \
         .replace("=", 'c')
@@ -469,7 +469,7 @@ async def join_invite(invite):
     if not chat:
         abort(404)
 
-    if app.files.db.chat_bans.find_one({"user": request.user, "_id": chat["_id"]}) is not None:
+    if app.files.db.chat_bans.find_one({"username": request.user, "chat": chat["_id"]}) is not None:
         abort(403)
 
     if  len(chat["members"]) >= 256:
@@ -488,7 +488,7 @@ async def join_invite(invite):
 
     return {"error": False}, 200
 
-@chats_bp.post("/<chat_id>/members/<username>/ban")
+@chats_bp.put("/<chat_id>/bans/<username>")
 async def ban_user(chat_id, username):
 
     if not request.user:
@@ -500,18 +500,27 @@ async def ban_user(chat_id, username):
     app.supporter.ratelimit(f"update_chat:{request.user}", 5, 5)
 
     chat = app.files.db.chats.find_one({"_id": chat_id})
+
     if not chat:
         abort(404)
 
     if chat["owner"] != request.user:
         abort(403)
 
+    if request.user == username:
+        abort(403)
+
+    if username not in chat["members"]:
+        abort(404)
+
     # Update chat
+    message = (await request.body).decode('utf-8')
     chat["members"].remove(username)
     app.files.db.chats.update_one({"_id": chat_id}, {"$pull": {"members": username}})
     app.files.db.chat_bans.insert_one({
-        "_id": chat_id,
-        "username": username
+        "chat": chat_id,
+        "username": username,
+        "message": message
     })
     # Send update chat event
     app.supporter.sendPacket({"cmd": "direct", "val": {
@@ -526,14 +535,14 @@ async def ban_user(chat_id, username):
     app.supporter.sendPacket({"cmd": "direct", "val": {"mode": "delete", "id": chat_id}, "id": username})
 
     # Send inbox message to user
-    app.supporter.createPost("inbox", username, f"You have been removed from the group chat '{chat['nickname']}' by @{request.user}!")
+    app.supporter.createPost("inbox", username, f"You have been removed from the group chat '{chat['nickname']}' by @{request.user}!\n Reason: {message}")
 
     # Send in-chat notification
-    app.supporter.createPost(chat_id, "Server", f"@{request.user} removed @{username} from the group chat.", chat_members=chat["members"])
+    app.supporter.createPost(chat_id, "Server", f"@{request.user} removed @{username} from the group chat, with the reason: \n{message}", chat_members=chat["members"])
 
     return {"error": False}, 200
 
-@chats_bp.delete("/<chat_id>/members/<username>/ban")
+@chats_bp.delete("/<chat_id>/bans/<username>")
 async def unban_user(chat_id, username):
 
     if not request.user:
@@ -551,7 +560,7 @@ async def unban_user(chat_id, username):
     if chat["owner"] != request.user:
         abort(403)
 
-    app.files.db.chat_bans.delete_one({"_id": chat_id, "username": username})
+    app.files.db.chat_bans.delete_one({"chat": chat_id, "username": username})
 
     return {"error": False}, 200
 
