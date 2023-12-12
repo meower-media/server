@@ -10,6 +10,7 @@ from .posts import posts_bp
 from .users import users_bp
 from .chats import chats_bp
 from .search import search_bp
+from .uploads import uploads_bp
 from .admin import admin_bp
 
 
@@ -35,8 +36,9 @@ async def check_ip():
 
 @app.before_request
 async def check_auth():
-    # Init request user and permissions
+    # Init request user, user flags, and user permissions
     request.user = None
+    request.flags = 0
     request.permissions = 0
 
     # Get token
@@ -46,6 +48,7 @@ async def check_auth():
     if token and request.path != "/status":
         account = app.files.db.usersv0.find_one({"tokens": token}, projection={
             "_id": 1,
+            "flags": 1,
             "permissions": 1,
             "ban.state": 1,
             "ban.expires": 1
@@ -54,6 +57,7 @@ async def check_auth():
             if account["ban"]["state"] == "perm_ban" or (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time()):
                 return {"error": True, "type": "accountBanned"}, 403
             request.user = account["_id"]
+            request.flags = account["flags"]
             request.permissions = account["permissions"]
 
 
@@ -79,7 +83,8 @@ async def get_status():
         "registrationEnabled": app.supporter.registration,
         "isRepairMode": app.supporter.repair_mode,
         "ipBlocked": (app.supporter.blocked_ips.search_best(request.ip) is not None),
-        "ipRegistrationBlocked": (app.supporter.registration_blocked_ips.search_best(request.ip) is not None)
+        "ipRegistrationBlocked": (app.supporter.registration_blocked_ips.search_best(request.ip) is not None),
+        "uploadsEnabled": (not (not os.getenv("UPLOADS_URL")))
     }, 200
 
 
@@ -130,7 +135,12 @@ async def internal(e):
 
 @app.errorhandler(501)  # Not implemented
 async def not_implemented(e):
-      return {"error": True, "type": "notImplemented"}, 501
+    return {"error": True, "type": "notImplemented"}, 501
+
+
+@app.errorhandler(503)  # Service unavailable
+async def service_unavailable(e):
+    return {"error": True, "type": "serviceUnavailable"}, 503
 
 
 # Register blueprints
@@ -141,4 +151,5 @@ app.register_blueprint(posts_bp)
 app.register_blueprint(users_bp)
 app.register_blueprint(chats_bp)
 app.register_blueprint(search_bp)
+app.register_blueprint(uploads_bp)
 app.register_blueprint(admin_bp)

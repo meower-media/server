@@ -38,6 +38,7 @@ class UserFlags:
     SYSTEM = 1
     DELETED = 2
     PROTECTED = 4
+    CAN_UPLOAD_ATTACHMENTS = 8
 
 
 class Permissions:
@@ -75,6 +76,7 @@ class Restrictions:
     NEW_CHATS = 4
     EDITING_CHAT_NICKNAMES = 8
     EDITING_QUOTE = 16
+    UPLOADING_FILES = 32
 
 
 class Security:
@@ -151,10 +153,15 @@ class Security:
         updated_user_vals = {}
         updated_user_settings_vals = {}
 
-        # Update pfp
+        # Update default pfp
         if "pfp_data" in newdata:
             if isinstance(newdata["pfp_data"], int):
                 updated_user_vals["pfp_data"] = newdata["pfp_data"]
+
+        # Update custom pfp
+        if "custom_pfp" in newdata:
+            if newdata["custom_pfp"] is None or isinstance(newdata["custom_pfp"], str):
+                updated_user_vals["custom_pfp"] = newdata["custom_pfp"]
         
         # Update quote
         if "quote" in newdata:
@@ -234,6 +241,7 @@ class Security:
         # Update account
         self.files.db.usersv0.update_one({"_id": username}, {"$set": {
             "pfp_data": None,
+            "custom_pfp": None,
             "quote": None,
             "pswd": None,
             "tokens": None,
