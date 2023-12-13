@@ -489,6 +489,12 @@ async def join_invite(invite):
         }
     }, "id": chat["members"]})
 
+
+    app.supporter.sendPacket({"cmd": "direct", "val": {
+        "mode": "create_chat",
+        "payload": chat
+    }, "id": request.user})
+
     app.files.db.chats.update_one({"_id": chat["_id"]}, {"$addToSet": {"members": request.user}})
     app.supporter.createPost(chat["_id"], "Server", f" @{request.user} has joined the group chat via invite {invite['_id']}", chat_members=chat["members"])
 
