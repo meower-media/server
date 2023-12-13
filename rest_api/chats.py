@@ -492,7 +492,7 @@ async def join_invite(invite):
     app.files.db.chats.update_one({"_id": chat["_id"]}, {"$addToSet": {"members": request.user}})
     app.supporter.createPost(chat["_id"], "Server", f" @{request.user} has joined the group chat via invite {invite['_id']}", chat_members=chat["members"])
 
-    return {"error": False}, 200
+    return {"error": False, "chat": chat["_id"]}, 200
 
 @chats_bp.put("/<chat_id>/bans/<username>")
 async def ban_user(chat_id, username):
