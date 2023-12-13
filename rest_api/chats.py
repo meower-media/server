@@ -495,7 +495,7 @@ async def join_invite(invite):
             "_id": invite["chat_id"],
             "members": chat["members"]
         }
-    }, "id": chat["members"]})
+    }, "id": chat["members"] + [request.user]})
 
 
 
