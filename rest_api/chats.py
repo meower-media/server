@@ -436,7 +436,7 @@ async def delete_invite(invite):
     if not request.user:
         abort(401)
 
-    if len(invite) > 4:
+    if len(invite) > 8:
         abort(400)
 
     if app.supporter.ratelimited("update_chat:{request.user}"):
@@ -464,7 +464,7 @@ async def join_invite(invite):
     if not request.user:
         abort(401)
 
-    if len(invite) > 4:
+    if len(invite) > 8:
         abort(400)
 
     invite = app.files.db.chat_invites.find_one({"_id": invite})
