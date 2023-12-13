@@ -481,6 +481,14 @@ async def join_invite(invite):
     if  len(chat["members"]) >= 256:
         return {"error": True, "type": "chatFull"}, 403
 
+    app.files.db.chats.update_one({"_id": chat["_id"]}, {"$addToSet": {"members": request.user}})
+    app.supporter.createPost(chat["_id"], "Server", f" @{request.user} has joined the group chat via invite {invite['_id']}", chat_members=chat["members"])
+
+    app.supporter.sendPacket({"cmd": "direct", "val": {
+        "mode": "create_chat",
+        "payload": chat
+    }, "id": request.user})
+
     app.supporter.sendPacket({"cmd": "direct", "val": {
         "mode": "update_chat",
         "payload": {
@@ -490,13 +498,6 @@ async def join_invite(invite):
     }, "id": chat["members"]})
 
 
-    app.supporter.sendPacket({"cmd": "direct", "val": {
-        "mode": "create_chat",
-        "payload": chat
-    }, "id": request.user})
-
-    app.files.db.chats.update_one({"_id": chat["_id"]}, {"$addToSet": {"members": request.user}})
-    app.supporter.createPost(chat["_id"], "Server", f" @{request.user} has joined the group chat via invite {invite['_id']}", chat_members=chat["members"])
 
     return {"error": False, "chat": chat["_id"]}, 200
 
