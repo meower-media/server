@@ -423,7 +423,7 @@ async def get_invites(chat_id):
         abort(401)
 
 
-    invites = app.files.db.chat_invites.find({"chat_id": chat_id, "members": request.user})
+    invites = app.files.db.chat_invites.find({"chat_id": chat_id})
     if not invites:
         abort(404)
 
@@ -435,6 +435,9 @@ async def get_invites(chat_id):
 async def delete_invite(invite):
     if not request.user:
         abort(401)
+
+    if len(invite) > 4:
+        abort(400)
 
     if app.supporter.ratelimited("update_chat:{request.user}"):
         abort(429)
