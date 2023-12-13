@@ -475,6 +475,9 @@ async def join_invite(invite):
     if not chat:
         abort(404)
 
+    if request.user in chat["members"]:
+        return {"error": True, "type": "chatMemberAlreadyExists"}, 409
+
     if app.files.db.chat_bans.find_one({"username": request.user, "chat": chat["_id"]}) is not None:
         abort(403)
 
