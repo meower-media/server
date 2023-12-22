@@ -244,3 +244,4 @@ weeds
 woodpecker
 offs
 token
+hungarian
