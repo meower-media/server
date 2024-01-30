@@ -255,3 +255,5 @@ analyze
 analyzing
 analytical
 analytically
+vague
+vaguely
