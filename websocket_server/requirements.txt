@@ -1,5 +1,0 @@
-# Dev/test/deploy
-IPython
-pytest
-websocket-client>=1.1.1
-twine

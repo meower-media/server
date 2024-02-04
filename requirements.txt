@@ -1,4 +1,3 @@
-CloudLink==0.1.7.4
 bcrypt
 requests
 quart-cors

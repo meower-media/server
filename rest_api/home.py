@@ -2,7 +2,8 @@ from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
 import pymongo
 
-from security import Restrictions
+import security
+from database import db, get_total_pages
 
 
 home_bp = Blueprint("home_bp", __name__, url_prefix="/home")
@@ -27,13 +28,13 @@ async def get_home_posts():
 
     # Get posts
     query = {"post_origin": "home", "isDeleted": False}
-    posts = list(app.files.db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
+    posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
 
     # Return posts
     payload = {
         "error": False,
         "page#": page,
-        "pages": (app.files.get_total_pages("posts", query) if request.user else 1)
+        "pages": (get_total_pages("posts", query) if request.user else 1)
     }
     if "autoget" in request.args:
         payload["autoget"] = posts
@@ -49,14 +50,14 @@ async def create_home_post():
         abort(401)
 
     # Check ratelimit
-    if app.supporter.ratelimited(f"post:{request.user}"):
+    if security.ratelimited(f"post:{request.user}"):
         abort(429)
 
     # Ratelimit
-    app.supporter.ratelimit(f"post:{request.user}", 6, 5)
+    security.ratelimit(f"post:{request.user}", 6, 5)
 
     # Check restrictions
-    if app.security.is_restricted(request.user, Restrictions.HOME_POSTS):
+    if security.is_restricted(request.user, security.Restrictions.HOME_POSTS):
         return {"error": True, "type": "accountBanned"}, 403
 
     # Get body
@@ -65,9 +66,7 @@ async def create_home_post():
     except: abort(400)
 
     # Create post
-    FileWrite, post = app.supporter.createPost("home", request.user, body.content)
-    if not FileWrite:
-        abort(500)
+    post = app.supporter.create_post("home", request.user, body.content)
 
     # Return new post
     post["error"] = False

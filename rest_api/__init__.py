@@ -12,9 +12,11 @@ from .chats import chats_bp
 from .search import search_bp
 from .admin import admin_bp
 
+from database import db, blocked_ips, registration_blocked_ips
+
 
 # Init app
-app = Quart(__name__, static_folder="static")
+app = Quart(__name__)
 app.config["APPLICATION_ROOT"] = os.getenv("API_ROOT", "")
 app.url_map.strict_slashes = False
 cors(app, allow_origin="*")
@@ -29,7 +31,7 @@ async def check_repair_mode():
 @app.before_request
 async def check_ip():
     request.ip = (request.headers.get("Cf-Connecting-Ip", request.remote_addr))
-    if request.path != "/status" and app.supporter.blocked_ips.search_best(request.ip):
+    if request.path != "/status" and blocked_ips.search_best(request.ip):
         return {"error": True, "type": "ipBlocked"}, 403
 
 
@@ -44,7 +46,7 @@ async def check_auth():
 
     # Authenticate request
     if token and request.path != "/status":
-        account = app.files.db.usersv0.find_one({"tokens": token}, projection={
+        account = db.usersv0.find_one({"tokens": token}, projection={
             "_id": 1,
             "permissions": 1,
             "ban.state": 1,
@@ -78,8 +80,8 @@ async def get_status():
         "scratchDeprecated": True,
         "registrationEnabled": app.supporter.registration,
         "isRepairMode": app.supporter.repair_mode,
-        "ipBlocked": (app.supporter.blocked_ips.search_best(request.ip) is not None),
-        "ipRegistrationBlocked": (app.supporter.registration_blocked_ips.search_best(request.ip) is not None)
+        "ipBlocked": (blocked_ips.search_best(request.ip) is not None),
+        "ipRegistrationBlocked": (registration_blocked_ips.search_best(request.ip) is not None)
     }, 200
 
 
@@ -87,9 +89,9 @@ async def get_status():
 async def get_statistics():
     return {
         "error": False,
-        "users": app.files.db.usersv0.estimated_document_count(),
-        "posts": app.files.db.posts.estimated_document_count(),
-        "chats": app.files.db.chats.estimated_document_count()
+        "users": db.usersv0.estimated_document_count(),
+        "posts": db.posts.estimated_document_count(),
+        "chats": db.chats.estimated_document_count()
     }, 200
 
 
