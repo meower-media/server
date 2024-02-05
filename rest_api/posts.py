@@ -5,7 +5,8 @@ import pymongo
 import uuid
 import time
 
-from security import Restrictions
+import security
+from database import db, get_total_pages
 
 
 posts_bp = Blueprint("posts_bp", __name__, url_prefix="/posts")
@@ -27,7 +28,7 @@ async def get_post():
         abort(400)
     
     # Get post
-    post = app.files.db.posts.find_one({"_id": post_id, "isDeleted": False})
+    post = db.posts.find_one({"_id": post_id, "isDeleted": False})
     if not post:
         abort(404)
 
@@ -35,7 +36,7 @@ async def get_post():
     if (post["post_origin"] == "inbox") and (post["u"] != request.user):
         abort(404)
     elif post["post_origin"] not in ["home", "inbox"]:
-        if app.files.db.chats.count_documents({
+        if db.chats.count_documents({
             "_id": post["post_origin"],
             "members": request.user,
             "deleted": False
@@ -54,11 +55,11 @@ async def update_post():
         abort(401)
 
     # Check ratelimit
-    if app.supporter.ratelimited(f"post:{request.user}"):
+    if security.ratelimited(f"post:{request.user}"):
         abort(429)
 
     # Ratelimit
-    app.supporter.ratelimit(f"post:{request.user}", 6, 5)
+    security.ratelimit(f"post:{request.user}", 6, 5)
 
     # Get body
     try:
@@ -71,7 +72,7 @@ async def update_post():
         abort(400)
     
     # Get post
-    post = app.files.db.posts.find_one({"_id": post_id, "isDeleted": False})
+    post = db.posts.find_one({"_id": post_id, "isDeleted": False})
     if not post:
         abort(404)
 
@@ -79,7 +80,7 @@ async def update_post():
     if (post["post_origin"] == "inbox") and (post["u"] != request.user):
         abort(404)
     elif post["post_origin"] not in ["home", "inbox"]:
-        chat = app.files.db.chats.find_one({
+        chat = db.chats.find_one({
             "_id": post["post_origin"],
             "members": request.user,
             "deleted": False
@@ -92,9 +93,9 @@ async def update_post():
         abort(403)
 
     # Check restrictions
-    if post["post_origin"] == "home" and app.security.is_restricted(request.user, Restrictions.HOME_POSTS):
+    if post["post_origin"] == "home" and security.is_restricted(request.user, security.Restrictions.HOME_POSTS):
         return {"error": True, "type": "accountBanned"}, 403
-    elif post["post_origin"] != "home" and app.security.is_restricted(request.user, Restrictions.CHAT_POSTS):
+    elif post["post_origin"] != "home" and security.is_restricted(request.user, security.Restrictions.CHAT_POSTS):
         return {"error": True, "type": "accountBanned"}, 403
 
     # Make sure new content isn't the same as the old content
@@ -103,7 +104,7 @@ async def update_post():
         return post, 200
 
     # Add revision
-    app.files.db.post_revisions.insert_one({
+    db.post_revisions.insert_one({
         "_id": str(uuid.uuid4()),
         "post_id": post["_id"],
         "old_content": post.get("unfiltered_p", post["p"]),
@@ -117,7 +118,7 @@ async def update_post():
     if filtered_content != body.content:
         post["p"] = filtered_content
         post["unfiltered_p"] = body.content
-        app.files.db.posts.update_one({"_id": post_id}, {"$set": {
+        db.posts.update_one({"_id": post_id}, {"$set": {
             "p": post["p"],
             "unfiltered_p": post["unfiltered_p"],
             "edited_at": post["edited_at"]
@@ -126,7 +127,7 @@ async def update_post():
         post["p"] = body.content
         if "unfiltered_p" in post:
             del post["unfiltered_p"]
-        app.files.db.posts.update_one({"_id": post_id}, {"$set": {
+        db.posts.update_one({"_id": post_id}, {"$set": {
             "p": post["p"],
             "edited_at": post["edited_at"]
         }, "$unset": {
@@ -134,16 +135,10 @@ async def update_post():
         }})
 
     # Send update post event
-    if post["post_origin"] == "home":
-        app.supporter.sendPacket({"cmd": "direct", "val": {
-            "mode": "update_post",
-            "payload": post
-        }})
-    else:
-        app.supporter.sendPacket({"cmd": "direct", "val": {
-            "mode": "update_post",
-            "payload": post
-        }, "id": chat["members"]})
+    app.cl.broadcast({
+        "mode": "update_post",
+        "payload": post
+    }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
 
     # Return post
     post["error"] = False
@@ -157,11 +152,11 @@ async def delete_post():
         abort(401)
 
     # Check ratelimit
-    if app.supporter.ratelimited(f"post:{request.user}"):
+    if security.ratelimited(f"post:{request.user}"):
         abort(429)
 
     # Ratelimit
-    app.supporter.ratelimit(f"post:{request.user}", 6, 5)
+    security.ratelimit(f"post:{request.user}", 6, 5)
 
     # Get post ID
     post_id = request.args.get("id")
@@ -169,13 +164,13 @@ async def delete_post():
         abort(400)
     
     # Get post
-    post = app.files.db.posts.find_one({"_id": post_id, "isDeleted": False})
+    post = db.posts.find_one({"_id": post_id, "isDeleted": False})
     if not post:
         abort(404)
 
     # Check access
     if post["post_origin"] not in {"home", "inbox"}:
-        chat = app.files.db.chats.find_one({
+        chat = db.chats.find_one({
             "_id": post["post_origin"],
             "members": request.user,
             "deleted": False
@@ -187,22 +182,16 @@ async def delete_post():
             abort(403)
 
     # Update post
-    app.files.db.posts.update_one({"_id": post_id}, {"$set": {
+    db.posts.update_one({"_id": post_id}, {"$set": {
         "isDeleted": True,
         "deleted_at": int(time.time())
     }})
 
     # Send delete post event
-    if post["post_origin"] == "home":
-        app.supporter.sendPacket({"cmd": "direct", "val": {
-            "mode": "delete",
-            "id": post_id
-        }})
-    else:
-        app.supporter.sendPacket({"cmd": "direct", "val": {
-            "mode": "delete",
-            "id": post_id
-        }, "id": chat["members"]})
+    app.cl.broadcast({
+        "mode": "delete",
+        "id": post_id
+    }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
 
     return {"error": False}, 200
 
@@ -220,7 +209,7 @@ async def get_chat_posts(chat_id):
         page = 1
 
     # Make sure chat exists
-    if app.files.db.chats.count_documents({
+    if db.chats.count_documents({
         "_id": chat_id,
         "members": request.user,
         "deleted": False
@@ -229,13 +218,13 @@ async def get_chat_posts(chat_id):
 
     # Get posts
     query = {"post_origin": chat_id, "isDeleted": False}
-    posts = list(app.files.db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
+    posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
 
     # Return posts
     payload = {
         "error": False,
         "page#": page,
-        "pages": app.files.get_total_pages("posts", query)
+        "pages": get_total_pages("posts", query)
     }
     if "autoget" in request.args:
         payload["autoget"] = posts
@@ -251,14 +240,14 @@ async def create_chat_post(chat_id):
         abort(401)
 
     # Check ratelimit
-    if app.supporter.ratelimited(f"post:{request.user}"):
+    if security.ratelimited(f"post:{request.user}"):
         abort(429)
 
     # Ratelimit
-    app.supporter.ratelimit(f"post:{request.user}", 6, 5)
+    security.ratelimit(f"post:{request.user}", 6, 5)
 
     # Check restrictions
-    if app.security.is_restricted(request.user, Restrictions.CHAT_POSTS):
+    if security.is_restricted(request.user, security.Restrictions.CHAT_POSTS):
         return {"error": True, "type": "accountBanned"}, 403
 
     # Get body
@@ -268,7 +257,7 @@ async def create_chat_post(chat_id):
 
     if chat_id != "livechat":
         # Get chat
-        chat = app.files.db.chats.find_one({
+        chat = db.chats.find_one({
             "_id": chat_id,
             "members": request.user,
             "deleted": False
@@ -279,14 +268,14 @@ async def create_chat_post(chat_id):
         # DM stuff
         if chat["type"] == 1:
             # Check privacy options
-            if app.files.db.relationships.count_documents({"$or": [
+            if db.relationships.count_documents({"$or": [
                 {"_id": {"from": chat["members"][0], "to": chat["members"][1]}},
                 {"_id": {"from": chat["members"][1], "to": chat["members"][0]}}
             ], "state": 2}, limit=1) > 0:
                 abort(403)
 
             # Update user settings
-            Thread(target=app.files.db.user_settings.bulk_write, args=([
+            Thread(target=db.user_settings.bulk_write, args=([
                 pymongo.UpdateMany({"$or": [
                     {"_id": chat["members"][0]},
                     {"_id": chat["members"][1]}
@@ -302,9 +291,7 @@ async def create_chat_post(chat_id):
             ],)).start()
 
     # Create post
-    FileWrite, post = app.supporter.createPost(chat_id, request.user, body.content, chat_members=(chat["members"] if chat_id != "livechat" else None))
-    if not FileWrite:
-        abort(500)
+    post = app.supporter.create_post(chat_id, request.user, body.content, chat_members=(None if chat_id == "livechat" else chat["members"]))
 
     # Return new post
     post["error"] = False

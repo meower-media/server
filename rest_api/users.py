@@ -5,7 +5,8 @@ import pymongo
 import uuid
 import time
 
-from security import UserFlags, Restrictions
+import security
+from database import db, get_total_pages
 
 
 users_bp = Blueprint("users_bp", __name__, url_prefix="/users/<username>")
@@ -25,8 +26,8 @@ class UpdateRelationshipBody(BaseModel):
 @users_bp.before_request
 async def check_user_exists():
     username = request.view_args.get("username")
-    user = app.files.db.usersv0.find_one({"lower_username": username.lower()}, projection={"_id": 1, "flags": 1})
-    if (not user) or (user["flags"] & UserFlags.DELETED == UserFlags.DELETED):
+    user = db.usersv0.find_one({"lower_username": username.lower()}, projection={"_id": 1, "flags": 1})
+    if (not user) or (user["flags"] & security.UserFlags.DELETED == security.UserFlags.DELETED):
         abort(404)
     else:
         request.view_args["username"] = user["_id"]
@@ -34,7 +35,7 @@ async def check_user_exists():
 
 @users_bp.get("/")
 async def get_user(username):
-    account = app.security.get_account(username, (request.user and request.user.lower() == username.lower()))
+    account = security.get_account(username, (request.user and request.user.lower() == username.lower()))
     account["error"] = False
     return account, 200
 
@@ -49,13 +50,13 @@ async def get_posts(username):
 
     # Get posts
     query = {"post_origin": "home", "isDeleted": False, "u": username}
-    posts = list(app.files.db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
+    posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
 
     # Return posts
     payload = {
         "error": False,
         "page#": page,
-        "pages": app.files.get_total_pages("posts", query)
+        "pages": get_total_pages("posts", query)
     }
     if "autoget" in request.args:
         payload["autoget"] = posts
@@ -75,7 +76,7 @@ async def get_relationship(username):
         abort(400)
 
     # Get relationship
-    relationship = app.files.db.relationships.find_one({"_id": {"from": request.user, "to": username}})
+    relationship = db.relationships.find_one({"_id": {"from": request.user, "to": username}})
 
     # Return relationship
     if relationship:
@@ -95,11 +96,11 @@ async def update_relationship(username):
         abort(401)
 
     # Check ratelimit
-    if app.supporter.ratelimited(f"relationships:{request.user}"):
+    if security.ratelimited(f"relationships:{request.user}"):
         abort(429)
 
     # Ratelimit
-    app.supporter.ratelimit(f"relationships:{request.user}", 10, 15)
+    security.ratelimit(f"relationships:{request.user}", 10, 15)
 
     # Make sure the requested user isn't the requester
     if request.user == username:
@@ -111,7 +112,7 @@ async def update_relationship(username):
     except: abort(400)
 
     # Get relationship
-    relationship = app.files.db.relationships.find_one({"_id": {"from": request.user, "to": username}})
+    relationship = db.relationships.find_one({"_id": {"from": request.user, "to": username}})
     if not relationship:
         relationship = {
             "_id": {"from": request.user, "to": username},
@@ -128,19 +129,19 @@ async def update_relationship(username):
     relationship["state"] = body.state
     relationship["updated_at"] = int(time.time())
     if body.state == 0:
-        app.files.db.relationships.delete_one({"_id": {"from": request.user, "to": username}})
+        db.relationships.delete_one({"_id": {"from": request.user, "to": username}})
     else:
-        app.files.db.relationships.update_one({"_id": {"from": request.user, "to": username}}, {"$set": relationship}, upsert=True)
+        db.relationships.update_one({"_id": {"from": request.user, "to": username}}, {"$set": relationship}, upsert=True)
 
     # Sync relationship between sessions
-    app.supporter.sendPacket({"cmd": "direct", "val": {
+    app.cl.broadcast({
         "mode": "update_relationship",
         "payload": {
             "username": username,
             "state": relationship["state"],
             "updated_at": relationship["updated_at"]
         }
-    }, "id": request.user})
+    }, direct_wrap=True, usernames=[request.user])
 
     # Return updated relationship
     del relationship["_id"]
@@ -154,25 +155,25 @@ async def get_dm_chat(username):
         abort(401)
 
     # Check ratelimit
-    if app.supporter.ratelimited(f"create_chat:{request.user}"):
+    if security.ratelimited(f"create_chat:{request.user}"):
         abort(429)
 
     # Ratelimit
-    app.supporter.ratelimit(f"create_chat:{request.user}", 5, 30)
+    security.ratelimit(f"create_chat:{request.user}", 5, 30)
 
     # Make sure the requested user isn't the requester
     if request.user == username:
         abort(400)
 
     # Get existing chat or create new chat
-    chat = app.files.db.chats.find_one({
+    chat = db.chats.find_one({
         "members": {"$all": [request.user, username]},
         "type": 1,
         "deleted": False
     })
     if not chat:
         # Check restrictions
-        if app.security.is_restricted(request.user, Restrictions.NEW_CHATS):
+        if security.is_restricted(request.user, security.Restrictions.NEW_CHATS):
             return {"error": True, "type": "accountBanned"}, 403
 
         # Create chat
@@ -186,7 +187,7 @@ async def get_dm_chat(username):
             "last_active": 0,
             "deleted": False
         }
-        app.files.db.chats.insert_one(chat)
+        db.chats.insert_one(chat)
 
     # Return chat
     if chat["last_active"] == 0:

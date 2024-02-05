@@ -1,6 +1,9 @@
 from quart import Blueprint, current_app as app, request, abort
 import pymongo
 
+import security
+from database import db, get_total_pages
+
 
 me_bp = Blueprint("me_bp", __name__, url_prefix="/me")
 
@@ -19,7 +22,7 @@ async def get_report_history():
 
     # Get reports
     reports = list(
-        app.files.db.reports.find(
+        db.reports.find(
             {"reports.user": request.user},
             projection={"escalated": 0},
             sort=[("reports.time", pymongo.DESCENDING)],
@@ -42,17 +45,17 @@ async def get_report_history():
     # Get content
     for report in reports:
         if report["type"] == "post":
-            report["content"] = app.files.db.posts.find_one(
+            report["content"] = db.posts.find_one(
                 {"_id": report.get("content_id")}, projection={"_id": 1, "u": 1, "isDeleted": 1}
             )
         elif report["type"] == "user":
-            report["content"] = app.security.get_account(report.get("content_id"))
+            report["content"] = security.get_account(report.get("content_id"))
 
     # Return reports
     payload = {
         "error": False,
         "page#": page,
-        "pages": app.files.get_total_pages("reports", {"reports.user": request.user}),
+        "pages": get_total_pages("reports", {"reports.user": request.user}),
     }
     if "autoget" in request.args:
         payload["autoget"] = reports
