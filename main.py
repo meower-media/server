@@ -1,7 +1,11 @@
+# Load .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 import asyncio
 import os
 import uvicorn
-from dotenv import load_dotenv
+
 from threading import Thread
 
 from cloudlink import CloudlinkServer
@@ -12,9 +16,6 @@ from rest_api import app as rest_api
 
 
 if __name__ == "__main__":
-    # Load .env file
-    load_dotenv()
-
     # Create Cloudlink server
     cl = CloudlinkServer()
     cl.set_real_ip_header(os.getenv("REAL_IP_HEADER"))
