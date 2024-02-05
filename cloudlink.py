@@ -69,8 +69,8 @@ class CloudlinkServer:
         self.clients.add(cl_client)
 
         # Run callbacks
-        for callbacks in self.callbacks.get("on_open", []):
-            await callbacks(cl_client)
+        for callback in self.callbacks.get("on_open", []):
+            await callback(cl_client)
 
         # Send motd
         if self.motd:
@@ -153,8 +153,8 @@ class CloudlinkServer:
             self.clients.remove(cl_client)
             cl_client.remove_username()
 
-            for callbacks in self.callbacks.get("on_close", []):
-                await callbacks(cl_client)
+            for callback in self.callbacks.get("on_close", []):
+                await callback(cl_client)
 
     def set_real_ip_header(self, real_ip_header: Optional[str] = None):
         self.real_ip_header = real_ip_header
