@@ -257,6 +257,43 @@ async def leave_chat(chat_id):
     return {"error": False}, 200
 
 
+@chats_bp.post("/<chat_id>/typing")
+async def emit_typing(chat_id):
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Check ratelimit
+    if security.ratelimited(f"typing:{request.user}"):
+        abort(429)
+
+    # Ratelimit
+    security.ratelimit(f"typing:{request.user}", 6, 5)
+
+    # Check restrictions
+    if security.is_restricted(request.user, security.Restrictions.CHAT_POSTS):
+        return {"error": True, "type": "accountBanned"}, 403
+
+    # Get chat
+    if chat_id != "livechat":
+        chat = db.chats.find_one({
+            "_id": chat_id,
+            "members": request.user,
+            "deleted": False
+        }, projection={"members": 1})
+        if not chat:
+            abort(404)
+
+    # Send new state
+    app.cl.broadcast({
+        "chatid": chat_id,
+        "u": request.user,
+        "state": 100
+    }, direct_wrap=True, usernames=(None if chat_id == "livechat" else chat["members"]))
+
+    return {"error": False}, 200
+
+
 @chats_bp.put("/<chat_id>/members/<username>")
 async def add_chat_member(chat_id, username):
     # Check authorization
