@@ -115,11 +115,11 @@ class MeowerCommands:
 
         # Alert user of new IP address if user has admin permissions
         if account["permissions"] and netlog_result.upserted_id:
-            await self.supporter.create_post("inbox", username, f"Your account was logged into on a new IP address ({client.ip})! You are receiving this message because you have admin permissions. Please make sure to keep your account secure.")
+            self.supporter.create_post("inbox", username, f"Your account was logged into on a new IP address ({client.ip})! You are receiving this message because you have admin permissions. Please make sure to keep your account secure.")
         
         # Alert user if account was pending deletion
         if account["delete_after"]:
-            await self.supporter.create_post("inbox", username, f"Your account was scheduled for deletion but you logged back in. Your account is no longer scheduled for deletion! If you didn't request for your account to be deleted, please change your password immediately.")
+            self.supporter.create_post("inbox", username, f"Your account was scheduled for deletion but you logged back in. Your account is no longer scheduled for deletion! If you didn't request for your account to be deleted, please change your password immediately.")
 
         # Generate new token
         token = security.generate_token()
@@ -299,6 +299,8 @@ class MeowerCommands:
             "mode": "update_config",
             "payload": val
         }, direct_wrap=True, usernames=[client.username])
+
+        # Tell the client the config was updated
         await client.send_statuscode("OK", listener)
 
     async def change_pswd(self, client: CloudlinkClient, val, listener: str = None):

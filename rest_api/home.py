@@ -71,3 +71,30 @@ async def create_home_post():
     # Return new post
     post["error"] = False
     return post, 200
+
+
+@home_bp.post("/typing")
+async def emit_typing():
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Check ratelimit
+    if security.ratelimited(f"typing:{request.user}"):
+        abort(429)
+
+    # Ratelimit
+    security.ratelimit(f"typing:{request.user}", 6, 5)
+
+    # Check restrictions
+    if security.is_restricted(request.user, security.Restrictions.HOME_POSTS):
+        return {"error": True, "type": "accountBanned"}, 403
+
+    # Send new state
+    app.cl.broadcast({
+        "chatid": "livechat",
+        "u": request.user,
+        "state": 101
+    }, direct_wrap=True)
+
+    return {"error": False}, 200
