@@ -244,8 +244,8 @@ class CloudlinkClient:
         self.trusted: bool = False
 
     def get_ip(self):
-        if self.server.real_ip_header:
-            return self.websocket.request_headers.get(self.server.real_ip_header)
+        if self.server.real_ip_header and self.server.real_ip_header in self.websocket.request_headers:
+            return self.websocket.request_headers[self.server.real_ip_header]
         elif type(self.websocket.remote_address) == tuple:
             return self.websocket.remote_address[0]
         else:
