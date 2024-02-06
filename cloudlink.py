@@ -87,7 +87,7 @@ class CloudlinkServer:
 
         # Send Trusted Access statuscode if Pseudo Trusted Access is enabled
         if self.pseudo_trusted_access:
-            await cl_client.send({"cmd": "statuscode", "val": "TAEnabled"})
+            await cl_client.send_statuscode("TAEnabled")
 
         # Process incoming packets until WebSocket closes
         try:
@@ -121,6 +121,8 @@ class CloudlinkServer:
                     packet["cmd"] = packet["val"].get("cmd")
                     if not packet["cmd"]:
                         await cl_client.send_statuscode("Syntax", packet.get("listener"))
+                        continue
+                    elif packet["cmd"] == "type":
                         continue
 
                     packet["val"] = packet["val"].get("val")
