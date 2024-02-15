@@ -4,7 +4,9 @@ quart-cors
 uuid
 quart
 pymongo
+redis
 python-dotenv
 uvicorn
 py-radix
 pydantic
+msgpack

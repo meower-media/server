@@ -1,9 +1,11 @@
 from better_profanity import profanity
+from threading import Thread
 import uuid
 import time
+import msgpack
 
 from cloudlink import CloudlinkServer, CloudlinkClient
-from database import db, blocked_ips
+from database import db, rdb, blocked_ips
 from utils import timestamp
 
 """
@@ -45,6 +47,9 @@ class Supporter:
 
         # Set filter
         self.filter = db.config.find_one({"_id": "filter"})
+
+        # Start admin pub/sub listener
+        Thread(target=self.listen_for_admin_pubsub, daemon=True).start()
     
     async def on_open(self, client: CloudlinkClient):
         if self.repair_mode or blocked_ips.search_best(client.ip):
@@ -111,3 +116,54 @@ class Supporter:
         
         # Return post
         return post
+
+    def listen_for_admin_pubsub(self):
+        pubsub = rdb.pubsub()
+        pubsub.subscribe("admin")
+        for msg in pubsub.listen():
+            try:
+                msg = msgpack.loads(msg["data"])
+                match msg.pop("op"):
+                    case "alert_user":
+                        self.create_post("inbox", msg["user"], msg["content"])
+                    case "ban_user":
+                        # Get user details
+                        username = msg.pop("user")
+                        user = db.usersv0.find_one({"_id": username}, projection={"uuid": 1, "ban": 1})
+                        if not user:
+                            continue
+
+                        # Construct ban state
+                        ban_state = {
+                            "state": msg.get("state", user["ban"]["state"]),
+                            "restrictions": msg.get("restrictions", user["ban"]["restrictions"]),
+                            "expires": msg.get("expires", user["ban"]["expires"]),  
+                            "reason": msg.get("reason", user["ban"]["reason"]),
+                        }
+
+                        # Set new ban state
+                        db.usersv0.update_one({"_id": username}, {"$set": {"ban": ban_state}})
+
+                        # Send update config event
+                        # The user doesn't get kicked when banned like usual,
+                        # but async is a pain and the client can't do "write" actions while banned anyway.
+                        # Which is the most important thing since this is meant to be used by anti-abuse systems.
+                        self.cl.broadcast({
+                            "mode": "update_config",
+                            "payload": {
+                                "ban": ban_state
+                            }
+                        }, direct_wrap=True, usernames=[username])
+
+                        # Add note to admin notes
+                        if "note" in msg:
+                            notes = db.admin_notes.find_one({"_id": user["uuid"]})
+                            if notes and notes["notes"] != "":
+                                msg["note"] = notes["notes"] + "\n\n" + msg["note"]
+                            db.admin_notes.update_one({"_id": user["uuid"]}, {"$set": {
+                                "notes": msg["note"],
+                                "last_modified_by": "Server",
+                                "last_modified_at": int(time.time())
+                            }}, upsert=True)
+            except:
+                continue
