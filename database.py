@@ -114,6 +114,12 @@ try:
     ], name="user_chats")
 except: pass
 
+try:
+    db["chat_bans"].create_index([
+        ("_id.chat", pymongo.ASCENDING)
+    ])
+except: pass
+
 # Create reports indexes
 try:
     db.reports.create_index([
