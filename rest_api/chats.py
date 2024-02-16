@@ -1,6 +1,7 @@
 import secrets
 
-from quart import Blueprint, Response, current_app as app, request, abort
+# noinspection PyTypeChecker
+from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
 import uuid
 import time
@@ -335,7 +336,10 @@ async def add_chat_member(chat_id, username):
     if (not user) or (user["permissions"] is None):
         abort(404)
 
-    if db["chat_bans"].find_one({"_id": (username, chat["_id"])}) is not None:
+    if db["chat_bans"].find_one({"_id": {
+        "username": username,
+        "chat": chat["_id"]
+    }}) is not None:
         return {"error": True, "type": "chatBanned"}, 401
 
     # Make sure requested user isn't blocked or is blocking client
@@ -587,7 +591,7 @@ async def join_invite(invite):
     if request.user in chat["members"]:
         return {"error": True, "type": "chatMemberAlreadyExists"}, 409
 
-    if db["chat_bans"].find_one({"_id": (request.user, chat["_id"])}) is not None:
+    if db["chat_bans"].find_one({"_id": {"username": request.user, "chat": chat["_id"]}}) is not None:
         abort(403)
 
     if  len(chat["members"]) >= 256:
@@ -607,7 +611,7 @@ async def join_invite(invite):
             "_id": invite["chat_id"],
             "members": chat["members"]
         }
-    }, direct_wrap=True, users = chat["members"] + [request.user])
+    }, direct_wrap=True, usernames = chat["members"] + [request.user])
 
     return {"error": False, "chat": chat["_id"]}, 200
 
@@ -636,12 +640,19 @@ async def ban_user(chat_id, username):
     if username not in chat["members"]:
         abort(404)
 
+    if db["chat_bans"].find_one({"_id": {"username": username,"chat": chat["_id"]}}) is not None:
+        abort(409)
+
     # Update chat
     message = (await request.body).decode('utf-8')
     chat["members"].remove(username)
     db.chats.update_one({"_id": chat_id}, {"$pull": {"members": username}})
     db.chat_bans.insert_one({
-        "_id": (username, chat_id)
+        "_id": {
+            "username": username,
+            "chat": chat_id
+        },
+        "message": message
     })
     # Send update chat event
     app.cl.broadcast({
@@ -681,7 +692,7 @@ async def unban_user(chat_id, username):
     if chat["owner"] != request.user:
         abort(403)
 
-    db.chat_bans.delete_one({"chat": chat_id, "username": username})
+    db["chat_bans"].delete_one({"_id": {"username": username, "chat": chat["_id"]}})
 
     return {"error": False}, 200
 
@@ -697,14 +708,14 @@ async def get_bans(chat_id):
     if chat["owner"] != request.user:
         abort(403)
 
-    bans = db.chat_bans.find({"chat": chat_id})
+    bans = db["chat_bans"].find({"_id.chat": chat_id})
     if not bans:
         return {"error": False, "bans": []}, 200
 
     ret = []
     for ban in bans:
         ret.append({
-            "username": ban["username"],
+            "username": ban["_id"]["username"],
             "message": ban["message"]
         })
 

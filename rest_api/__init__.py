@@ -22,7 +22,7 @@ from .api_types import AuthenticatedRequest, MeowerQuart
 request: AuthenticatedRequest
 
 # Init app
-app = MeowerQuart(__name__, request_class=AuthenticatedRequest)
+app = MeowerQuart(__name__)
 app.config["APPLICATION_ROOT"] = os.getenv("API_ROOT", "")
 app.url_map.strict_slashes = False
 cors(app, allow_origin="*")

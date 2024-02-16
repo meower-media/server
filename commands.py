@@ -641,8 +641,10 @@ class MeowerCommands:
         ]}, limit=1) > 0:
             return await client.send_statuscode("MissingPermissions", listener)
 
-
-        if db["chat_bans"].find_one({"_id": (username, chat["_id"])}) is not None:
+        if db["chat_bans"].find_one({"_id": {
+            "username": username,
+            "chat":     chat["_id"]
+        }}) is not None:
             return await client.send_statuscode("UserBanned", listener)
 
         # Update chat
