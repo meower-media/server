@@ -31,11 +31,10 @@ else:
 
 # Create database collections
 existing_collections = db.list_collection_names()
-for collection_name in []:
+for collection_name in ["chat_invites", "chat_bans"]:
     if collection_name not in existing_collections:
         log(f"Creating {collection_name} database collection...")
         db.create_collection(collection_name)
-
 
 # Create usersv0 indexes
 try: db.usersv0.create_index([("lower_username", pymongo.ASCENDING)], name="lower_username", unique=True)

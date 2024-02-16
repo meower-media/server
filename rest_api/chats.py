@@ -1,11 +1,16 @@
-from quart import Blueprint, current_app as app, request, abort
+import secrets
+
+from quart import Blueprint, Response, current_app as app, request, abort
 from pydantic import BaseModel, Field
 import uuid
 import time
 
 import security
 from database import db
+from .api_types import AuthenticatedRequest, MeowerQuart
 
+request: AuthenticatedRequest
+app: MeowerQuart
 
 chats_bp = Blueprint("chats_bp", __name__, url_prefix="/chats")
 
@@ -285,6 +290,7 @@ async def emit_typing(chat_id):
             abort(404)
 
     # Send new state
+    # noinspection PyUnboundLocalVariable
     app.cl.broadcast({
         "chatid": chat_id,
         "u": request.user,
@@ -328,6 +334,9 @@ async def add_chat_member(chat_id, username):
     user = db.usersv0.find_one({"_id": username}, projection={"permissions": 1})
     if (not user) or (user["permissions"] is None):
         abort(404)
+
+    if db["chat_bans"].find_one({"_id": (username, chat["_id"])}) is not None:
+        return {"error": True, "type": "chatBanned"}, 401
 
     # Make sure requested user isn't blocked or is blocking client
     if db.relationships.count_documents({"$or": [
@@ -478,3 +487,225 @@ async def transfer_chat_ownership(chat_id, username):
     # Return chat
     chat["error"] = False
     return chat, 200
+
+@chats_bp.post("/<chat_id>/invites")
+async def create_invite(chat_id):
+    if not request.user:
+        abort(401)
+
+    # get chat
+    chat = db.chats.find_one({"_id": chat_id, "members": request.user, "deleted": False})
+    if not chat:
+        abort(404)
+
+    if chat["owner"] is None:
+        abort(403)
+
+
+    if security.ratelimited("update_chat:{request.user}"):
+        abort(429)
+
+    security.ratelimit("update_chat:{request.user}", 5, 5)
+
+    invite = secrets.token_urlsafe(4) \
+        .replace("-", 'a')           \
+        .replace('_', 'b')           \
+        .replace("=", 'c')
+
+    db.chat_invites.insert_one({
+        "chat_id": chat_id,
+        "_id": invite
+    })
+
+    return {"error": False, "invite": invite}, 200
+
+@chats_bp.get("/<chat_id>/invites")
+async def get_invites(chat_id):
+    if not request.user:
+        abort(401)
+
+
+    # get chat
+    chat = db.chats.find_one({"_id": chat_id, "members": request.user, "deleted": False})
+    if not chat:
+        abort(404)
+
+    invites = db.chat_invites.find({"chat_id": chat_id})
+    if not invites:
+        abort(404)
+
+
+
+    invites = list(invites)
+
+    return {"error": False, "invites": invites}, 200
+
+@chats_bp.delete("/invites/<invite>")
+async def delete_invite(invite):
+    if not request.user:
+        abort(401)
+
+    if len(invite) > 8:
+        abort(400)
+
+    if security.ratelimited("update_chat:{request.user}"):
+        abort(429)
+
+    security.ratelimit("update_chat:{request.user}", 5, 5)
+
+    invite = db.chat_invites.find_one({"_id": invite})
+    if not invite:
+        abort(404)
+
+    chat = db.chats.find_one({"_id": invite["chat_id"]})
+    if not chat:
+        abort(404)
+
+    if chat["owner"] != request.user:
+        abort(403)
+
+    db.chat_invites.delete_one({"_id": invite})
+
+    return {"error": False}, 200
+
+@chats_bp.get("/join/<invite>")
+async def join_invite(invite):
+    if not request.user:
+        abort(401)
+
+    if len(invite) > 8:
+        abort(400)
+
+    invite = db.chat_invites.find_one({"_id": invite})
+    if not invite:
+        abort(404)
+
+    chat = db.chats.find_one({"_id": invite["chat_id"]})
+    if not chat:
+        abort(404)
+
+    if request.user in chat["members"]:
+        return {"error": True, "type": "chatMemberAlreadyExists"}, 409
+
+    if db["chat_bans"].find_one({"_id": (request.user, chat["_id"])}) is not None:
+        abort(403)
+
+    if  len(chat["members"]) >= 256:
+        return {"error": True, "type": "chatFull"}, 403
+
+    db.chats.update_one({"_id": chat["_id"]}, {"$addToSet": {"members": request.user}})
+    app.supporter.create_post(chat["_id"], "Server", f" @{request.user} has joined the group chat via invite {invite['_id']}", chat_members=chat["members"])
+
+    app.cl.broadcast({
+        "mode": "create_chat",
+        "payload": chat
+    }, direct_wrap=True,  usernames=[request.user])
+
+    app.cl.broadcast({
+        "mode": "update_chat",
+        "payload": {
+            "_id": invite["chat_id"],
+            "members": chat["members"]
+        }
+    }, direct_wrap=True, users = chat["members"] + [request.user])
+
+    return {"error": False, "chat": chat["_id"]}, 200
+
+@chats_bp.put("/<chat_id>/bans/<username>")
+async def ban_user(chat_id, username):
+
+    if not request.user:
+        abort(401)
+
+    if security.ratelimited(f"update_chat:{request.user}"):
+        abort(429)
+
+    security.ratelimit(f"update_chat:{request.user}", 5, 5)
+
+    chat = db.chats.find_one({"_id": chat_id})
+
+    if not chat:
+        abort(404)
+
+    if chat["owner"] != request.user:
+        abort(403)
+
+    if request.user == username:
+        abort(403)
+
+    if username not in chat["members"]:
+        abort(404)
+
+    # Update chat
+    message = (await request.body).decode('utf-8')
+    chat["members"].remove(username)
+    db.chats.update_one({"_id": chat_id}, {"$pull": {"members": username}})
+    db.chat_bans.insert_one({
+        "_id": (username, chat_id)
+    })
+    # Send update chat event
+    app.cl.broadcast({
+        "mode": "update_chat",
+        "payload": {
+            "_id": chat_id,
+            "members": chat["members"]
+        }
+    },  direct_wrap=True, usernames=chat["members"])
+
+    # Send delete chat event to user
+    app.cl.broadcast({"mode": "delete", "id": chat_id},  direct_wrap=True, usernames=[username])
+
+    # Send inbox message to user
+    app.supporter.create_post("inbox", username, f"You have been removed from the group chat '{chat['nickname']}' by @{request.user}!\n Reason: {message}")
+
+    # Send in-chat notification
+    app.supporter.create_post(chat_id, "Server", f"@{request.user} removed @{username} from the group chat, with the reason: \n{message}", chat_members=chat["members"])
+
+    return {"error": False}, 200
+
+@chats_bp.delete("/<chat_id>/bans/<username>")
+async def unban_user(chat_id, username):
+
+    if not request.user:
+        abort(401)
+
+    if security.ratelimited(f"update_chat:{request.user}"):
+        abort(429)
+
+    security.ratelimit(f"update_chat:{request.user}", 5, 5)
+
+    chat = db.chats.find_one({"_id": chat_id})
+    if not chat:
+        abort(404)
+
+    if chat["owner"] != request.user:
+        abort(403)
+
+    db.chat_bans.delete_one({"chat": chat_id, "username": username})
+
+    return {"error": False}, 200
+
+@chats_bp.get("/<chat_id>/bans")
+async def get_bans(chat_id):
+    if not request.user:
+        abort(401)
+
+    chat = db.chats.find_one({"_id": chat_id})
+    if not chat:
+        abort(404)
+
+    if chat["owner"] != request.user:
+        abort(403)
+
+    bans = db.chat_bans.find({"chat": chat_id})
+    if not bans:
+        return {"error": False, "bans": []}, 200
+
+    ret = []
+    for ban in bans:
+        ret.append({
+            "username": ban["username"],
+            "message": ban["message"]
+        })
+
+    return {"error": False, "bans": list(ret)}, 200
