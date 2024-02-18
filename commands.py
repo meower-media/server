@@ -488,6 +488,9 @@ class MeowerCommands:
                     "$pull": {"members": client.username}
                 })
 
+                # Delete invites
+                db.chat_invites.delete_many({"chat_id": chat["_id"], "inviter": client.username})
+
                 # Send update chat event
                 self.cl.broadcast({
                     "mode": "update_chat",
@@ -641,10 +644,14 @@ class MeowerCommands:
         ]}, limit=1) > 0:
             return await client.send_statuscode("MissingPermissions", listener)
 
-        if db["chat_bans"].find_one({"_id": {
-            "username": username,
-            "chat":     chat["_id"]
-        }}) is not None:
+        # Make sure requested user isn't banned from the chat
+        if db.chat_bans.count_documents({"_id": {
+            "chat": chat["_id"],
+            "user": username
+        }, "$or": [
+            {"expires": None},
+            {"expires": {"$gt": int(time.time())}}
+        ]}, limit=1) > 0:
             return await client.send_statuscode("UserBanned", listener)
 
         # Update chat
@@ -723,6 +730,9 @@ class MeowerCommands:
         # Update chat
         chat["members"].remove(username)
         db.chats.update_one({"_id": chatid}, {"$pull": {"members": username}})
+
+        # Delete invites
+        db.chat_invites.delete_many({"chat_id": chat["_id"], "inviter": username})
 
         # Send delete chat event
         self.cl.broadcast({

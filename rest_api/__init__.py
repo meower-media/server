@@ -13,6 +13,7 @@ from .inbox import inbox_bp
 from .posts import posts_bp
 from .users import users_bp
 from .chats import chats_bp
+from .invites import invites_bp
 from .search import search_bp
 from .admin import admin_bp
 
@@ -147,5 +148,6 @@ app.register_blueprint(inbox_bp)
 app.register_blueprint(posts_bp)
 app.register_blueprint(users_bp)
 app.register_blueprint(chats_bp)
+app.register_blueprint(invites_bp)
 app.register_blueprint(search_bp)
 app.register_blueprint(admin_bp)
