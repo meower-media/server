@@ -53,6 +53,10 @@ try: db.usersv0.create_index([
     ], name="scheduled_deletions", partialFilterExpression={"delete_after": {"$type": "number"}})
 except: pass
 
+# Create data exports indexes
+try: db.data_exports.create_index([("user", pymongo.ASCENDING)], name="user")
+except: pass
+
 # Create relationships indexes
 try: db.relationships.create_index([("_id.from", pymongo.ASCENDING)], name="from")
 except: pass
