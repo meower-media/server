@@ -9,7 +9,7 @@ import secrets
 
 import security
 from database import db, get_total_pages
-from .api_types import AuthenticatedRequest, MeowerQuart
+from .api_types import AuthenticatedRequest, BanBody, MeowerQuart
 
 request: AuthenticatedRequest
 app: MeowerQuart
@@ -19,15 +19,6 @@ chats_bp = Blueprint("chats_bp", __name__, url_prefix="/chats")
 
 class ChatBody(BaseModel):
     nickname: str = Field(min_length=1, max_length=32)
-
-    class Config:
-        validate_assignment = True
-        str_strip_whitespace = True
-
-
-class BanBody(BaseModel):
-    reason: Optional[str] = Field(default="", max_length=360)
-    expires: Optional[int] = Field(default=None)
 
     class Config:
         validate_assignment = True
