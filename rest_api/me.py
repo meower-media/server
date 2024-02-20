@@ -1,3 +1,4 @@
+# noinspection PyTypeChecker
 from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -6,7 +7,10 @@ import pymongo
 
 import security
 from database import db, get_total_pages
+from .api_types import AuthenticatedRequest, MeowerQuart
 
+request: AuthenticatedRequest
+app: MeowerQuart
 
 me_bp = Blueprint("me_bp", __name__, url_prefix="/me")
 
