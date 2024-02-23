@@ -78,6 +78,7 @@ class AdminPermissions:
     EDIT_CHATS = 131072
 
     SEND_ANNOUNCEMENTS = 262144
+    CHANGE_PROFANITY = 524288
 
 
 class Restrictions:

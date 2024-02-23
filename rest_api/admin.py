@@ -1,12 +1,13 @@
 from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
-from typing import Optional, Literal
+from typing import List, Optional, Literal
 from base64 import b64decode
 from copy import copy
 import time
 import pymongo
 
 import security
+from better_profanity import profanity
 from database import db, get_total_pages, blocked_ips, registration_blocked_ips
 
 
@@ -55,6 +56,12 @@ class UpdateChatBody(BaseModel):
         validate_assignment = True
         str_strip_whitespace = True
 
+class UpdateProfanityBody(BaseModel):
+    items: List[str]
+
+    class Config:
+        validate_assignment = True
+        str_strip_whitespace = True
 
 class InboxMessageBody(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
@@ -1496,3 +1503,88 @@ async def enable_registration():
     security.add_audit_log("enabled_registration", request.user, request.ip, {})
 
     return {"error": False}, 200
+
+@admin_bp.post("/server/profanity/whitelist/")
+async def add_profanity_whitelist():
+    if not security.has_permission(request.permissions, security.AdminPermissions.CHANGE_PROFANITY):
+        abort(401)
+
+
+    try:
+        data = UpdateProfanityBody(**await request.json)
+    except: abort(400)
+
+    db.config.update_one({"_id": "filter"}, {
+        "$push": {
+            "whitelist": {
+                "$each": data.items
+            }
+        }
+    })
+
+    for word in data.items:
+        profanity.whitelist.add(word)
+
+    return {"error": False}
+
+@admin_bp.post("/server/profanity/blacklist/")
+async def add_profanity_blacklist():
+    if not security.has_permission(request.permissions, security.AdminPermissions.CHANGE_PROFANITY):
+        abort(401)
+
+    try:
+        data = UpdateProfanityBody(**await request.json)
+    except: abort(400)
+
+    db.config.update_one({"_id": "filter"}, {
+            "$push": {
+                "blacklist": {
+                    "$each": data.items
+                }
+            }
+    })
+    profanity.add_censor_words(data.items)
+
+    return {"error": False}
+
+# When testing the lib, that mb.py uses, does not support DELETE bodies
+@admin_bp.post("/server/profanity/whitelist/delete")
+async def delete_profanity_whitelist():
+    if not security.has_permission(request.permissions, security.AdminPermissions.CHANGE_PROFANITY):
+        abort(401)
+
+    try:
+        data = UpdateProfanityBody(**await request.json)
+    except: abort(400)
+
+    db.config.update_one({"_id": "filter"}, {
+        "$pull": {
+            "whitelist": {
+                "$in": data.items
+            }
+        }
+    })
+
+    for word in data.items:
+        profanity.whitelist.remove(word)
+
+    return {"error": False}
+
+@admin_bp.post("/server/profanity/blacklist/delete")
+async def delete_profanity_blacklist():
+    if not security.has_permission(request.permissions, security.AdminPermissions.CHANGE_PROFANITY):
+        abort(401)
+
+    try:
+        data = UpdateProfanityBody(**await request.json)
+    except: abort(400)
+
+    return {
+        "error": db.config.update_one({"_id": "filter"}, {
+            "$pull": {
+                "blacklist": {
+                    "$in": data.items
+                }
+            }
+        }).modified_count == 1
+    }
