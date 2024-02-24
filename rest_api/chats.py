@@ -191,7 +191,8 @@ async def update_chat(chat_id):
         "mode": "update_chat",
         "payload": {
             "_id": chat_id,
-            "nickname": chat["nickname"]
+            "nickname": chat["nickname"],
+            "allow_pinning": chat["allow_pinning"]
         }
     }, direct_wrap=True, usernames=chat["members"])
 
