@@ -1,11 +1,11 @@
+import pymongo
 from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
 import uuid
 import time
 
 import security
-from database import db
-
+from database import db, get_total_pages
 
 chats_bp = Blueprint("chats_bp", __name__, url_prefix="/chats")
 
@@ -478,3 +478,35 @@ async def transfer_chat_ownership(chat_id, username):
     # Return chat
     chat["error"] = False
     return chat, 200
+
+
+@chats_bp.get("/<chat_id>/pins")
+def get_chat_pins(chat_id):
+    if not request.user:
+        abort(401)
+
+    query = {"_id": chat_id}
+    if not security.has_permission(request.permissions, security.AdminPermissions.VIEW_CHATS):
+        query["members"] = request.user
+        query["deleted"] = False
+
+    try:
+        page = int(request.args.get("page"))
+    except: page = 1
+
+    chat = db.chats.find_one(query)
+    if not chat:
+        abort(404)
+
+    posts = db.posts.find({"post_origin": chat_id, "pinned": True}, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25)
+
+    if not posts:
+        posts = []
+
+
+    return {
+        "error": False,
+        "page#": page,
+        "pages": get_total_pages("posts", query),
+        "posts": list(posts)
+    }, 200

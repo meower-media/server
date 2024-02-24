@@ -36,6 +36,10 @@ for collection_name in []:
         log(f"Creating {collection_name} database collection...")
         db.create_collection(collection_name)
 
+# Chat pinning
+resp = db.posts.update_many({"pinned": {"$exists": False}}, {"$set": {"pinned": False}})
+if resp.modified_count != 0:
+    log("[Migrator] Successfully added pinned messages to database")
 
 # Create usersv0 indexes
 try: db.usersv0.create_index([("lower_username", pymongo.ASCENDING)], name="lower_username", unique=True)
@@ -88,9 +92,12 @@ try:
         ("p", pymongo.TEXT)
     ], name="search", partialFilterExpression={"post_origin": "home", "isDeleted": False})
 except: pass
+
 try:
     db.posts.create_index([
-        ("deleted_at", pymongo.ASCENDING)
+        ("deleted_at", pymongo.ASCENDING),
+        ("pinned", pymongo.ASCENDING),
+        ("origin", pymongo.ASCENDING)
     ], name="scheduled_purges", partialFilterExpression={"isDeleted": True, "mod_deleted": False})
 except: pass
 
