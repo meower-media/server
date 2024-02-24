@@ -152,13 +152,19 @@ async def pin_post(post_id):
     if not post:
         abort(404)
     query = {"_id": post["post_origin"]}
-    if not security.has_permission(request.permissions, security.AdminPermissions.EDIT_CHATS):
-        query["owner"] = request.user
+
+    has_perm = security.has_permission(request.permissions, security.AdminPermissions.EDIT_CHATS)
+    if not has_perm:
+        query["members"] = request.user
         query["deleted"] = False
+
 
 
     chat = db.chats.find_one(query)
     if not chat:
+        abort(401)
+
+    if not (request.user == chat["owner"] or chat["allow_pinning"] or has_perm):
         abort(401)
 
     db.posts.update_one({"_id": post_id}, {"$set": {
@@ -186,13 +192,18 @@ async def unpin_post(post_id):
         abort(404)
 
     query = {"_id": post["post_origin"]}
-    if not security.has_permission(request.permissions, security.AdminPermissions.EDIT_CHATS):
-        query["owner"] = request.user
+    has_perm = security.has_permission(request.permissions, security.AdminPermissions.EDIT_CHATS)
+    if not has_perm:
+        query["members"] = request.user
         query["deleted"] = False
 
     chat = db.chats.find_one(query)
     if not chat:
         abort(401)
+
+    if not (request.user == chat["owner"] or chat["allow_pinning"] or has_perm):
+        abort(401)
+
 
     db.posts.update_one({"_id": post_id}, {"$set": {
         "pinned": False

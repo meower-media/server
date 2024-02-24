@@ -219,6 +219,9 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
     log("[Migrator] Adding pinned messages to database")
     db.posts.update_many({"pinned": {"$exists": False}}, {"$set": {"pinned": False}})
 
+    log("[Migrator] Adding Perm for pinning messages")
+    db.chats.update_many({"allow_pinning": {"$exists": False}}, {"$set": {"allow_pinning": False}})
+
     db.config.update_one({"_id": "migration"}, {"$set": {"database": CURRENT_DB_VERSION}})
     log(f"[Migrator] Finished Migrating DB to version {CURRENT_DB_VERSION}")
 

@@ -12,6 +12,7 @@ chats_bp = Blueprint("chats_bp", __name__, url_prefix="/chats")
 
 class ChatBody(BaseModel):
     nickname: str = Field(min_length=1, max_length=32)
+    allow_pinning: bool = Field(default=None)
 
     class Config:
         validate_assignment = True
@@ -103,8 +104,13 @@ async def create_chat():
         "members": [request.user],
         "created": int(time.time()),
         "last_active": int(time.time()),
-        "deleted": False
+        "deleted": False,
+        "allow_pinning": body.allow_pinning if body.allow_pinning else False
     }
+
+
+
+
     db.chats.insert_one(chat)
 
     # Tell the requester the chat was created
@@ -172,7 +178,13 @@ async def update_chat(chat_id):
     
     # Update chat
     chat["nickname"] = app.supporter.wordfilter(body.nickname)
-    db.chats.update_one({"_id": chat_id}, {"$set": {"nickname": chat["nickname"]}})
+
+    if body.allow_pinning is not None:
+        chat["allow_pinning"] = body.allow_pinning
+    else:
+        chat["allow_pinning"] = chat["allow_pinning"]
+
+    db.chats.update_one({"_id": chat_id}, {"$set": {"nickname": chat["nickname"], "allow_pinning": chat["allow_pinning"]}})
 
     # Send update chat event
     app.cl.broadcast({
