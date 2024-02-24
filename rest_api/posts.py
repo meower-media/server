@@ -166,6 +166,12 @@ async def pin_post(post_id):
     }})
 
     post["pinned"] = True
+
+    app.cl.broadcast({
+        "mode": "update_post",
+        "payload": post
+    }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+
     post["error"] = False
     return post, 200
 
@@ -193,6 +199,12 @@ async def unpin_post(post_id):
     }})
 
     post["pinned"] = False
+
+    app.cl.broadcast({
+        "mode": "update_post",
+        "payload": post
+    }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+
     post["error"] = False
     return post, 200
 

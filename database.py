@@ -91,10 +91,16 @@ except: pass
 
 try:
     db.posts.create_index([
-        ("deleted_at", pymongo.ASCENDING),
-        ("pinned", pymongo.ASCENDING),
-        ("origin", pymongo.ASCENDING)
+        ("deleted_at", pymongo.ASCENDING)
     ], name="scheduled_purges", partialFilterExpression={"isDeleted": True, "mod_deleted": False})
+except: pass
+
+try:
+    db.posts.create_index([
+        ("post_origin", pymongo.ASCENDING),
+        ("pinned", pymongo.ASCENDING),
+        ("t.e", pymongo.DESCENDING)
+    ], name="pinned_posts", partialFilterExpression={"pinned": True})
 except: pass
 
 # Create post revisions indexes
