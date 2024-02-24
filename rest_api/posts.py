@@ -169,32 +169,6 @@ async def pin_post(post_id):
     post["error"] = False
     return post, 200
 
-@posts_bp.delete("/<post_id>/pin")
-async def unpin_post(post_id):
-    if not request.user:
-        abort(401)
-
-    post = db.posts.find_one({"_id": post_id})
-    if not post:
-        abort(404)
-
-    query = {"_id": post["post_origin"]}
-    if not security.has_permission(request.permissions, security.AdminPermissions.EDIT_CHATS):
-        query["owner"] = request.user
-        query["deleted"] = False
-
-    chat = db.chats.find_one(query)
-    if not chat:
-        abort(401)
-
-    db.posts.update_one({"_id": post_id}, {"$set": {
-        "pinned": False
-    }})
-
-    post["pinned"] = False
-    post["error"] = False
-    return post, 200
-
 
 @posts_bp.delete("/<post_id>/pin")
 async def unpin_post(post_id):

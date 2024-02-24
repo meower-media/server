@@ -498,7 +498,8 @@ def get_chat_pins(chat_id):
     if not chat:
         abort(404)
 
-    posts = db.posts.find({"post_origin": chat_id, "pinned": True}, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25)
+    query = {"post_origin": chat_id, "pinned": True}
+    posts = db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25)
 
     if not posts:
         posts = []
