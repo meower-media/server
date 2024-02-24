@@ -1504,33 +1504,12 @@ async def enable_registration():
 
     return {"error": False}, 200
 
-@admin_bp.post("/server/profanity/whitelist/")
-async def add_profanity_whitelist():
+@admin_bp.post("/server/profanity/<mode>/")
+async def add_profanity_blacklist(mode):
     if not security.has_permission(request.permissions, security.AdminPermissions.CHANGE_PROFANITY):
         abort(401)
 
-
-    try:
-        data = UpdateProfanityBody(**await request.json)
-    except: abort(400)
-
-    db.config.update_one({"_id": "filter"}, {
-        "$push": {
-            "whitelist": {
-                "$each": data.items
-            }
-        }
-    })
-
-    for word in data.items:
-        profanity.whitelist.add(word)
-
-    return {"error": False}
-
-@admin_bp.post("/server/profanity/blacklist/")
-async def add_profanity_blacklist():
-    if not security.has_permission(request.permissions, security.AdminPermissions.CHANGE_PROFANITY):
-        abort(401)
+    if mode not in ["whitelist", "blacklist"]: abort(404)
 
     try:
         data = UpdateProfanityBody(**await request.json)
@@ -1538,20 +1517,25 @@ async def add_profanity_blacklist():
 
     db.config.update_one({"_id": "filter"}, {
             "$push": {
-                "blacklist": {
+                mode: {
                     "$each": data.items
                 }
             }
     })
-    profanity.add_censor_words(data.items)
+
+    for item in data.items:
+        if item in app.supporter.filter[mode]: continue
+        app.supporter.filter[mode].append(item)
 
     return {"error": False}
 
 # When testing the lib, that mb.py uses, does not support DELETE bodies
-@admin_bp.post("/server/profanity/whitelist/delete")
-async def delete_profanity_whitelist():
+@admin_bp.post("/server/profanity/<mode>/delete")
+async def delete_profanity_whitelist(mode):
     if not security.has_permission(request.permissions, security.AdminPermissions.CHANGE_PROFANITY):
         abort(401)
+
+    if mode not in ["whitelist", "blacklist"]: abort(404)
 
     try:
         data = UpdateProfanityBody(**await request.json)
@@ -1559,32 +1543,42 @@ async def delete_profanity_whitelist():
 
     db.config.update_one({"_id": "filter"}, {
         "$pull": {
-            "whitelist": {
+            mode: {
                 "$in": data.items
             }
         }
     })
 
     for word in data.items:
-        profanity.whitelist.remove(word)
+        if word not in app.supporter.filter[mode]: continue
+        app.supporter.filter[mode].remove(word)
 
     return {"error": False}
 
-@admin_bp.post("/server/profanity/blacklist/delete")
-async def delete_profanity_blacklist():
+
+@admin_bp.get("/server/profanity/<mode>")
+async def get_profanity_whitelist(mode: str):
     if not security.has_permission(request.permissions, security.AdminPermissions.CHANGE_PROFANITY):
         abort(401)
 
     try:
-        data = UpdateProfanityBody(**await request.json)
-    except: abort(400)
+        page = int(request.args["page"])
+    except:
+        page = 1
+
+    if mode not in ["whitelist", "blacklist"]:
+        abort(404)
+
+    page_size = 25
+    max_pages = len(app.supporter.filter[mode])//page_size
+
+    if page > max_pages:
+        page = max_pages
 
     return {
-        "error": db.config.update_one({"_id": "filter"}, {
-            "$pull": {
-                "blacklist": {
-                    "$in": data.items
-                }
-            }
-        }).modified_count == 1
+        "error": False,
+        "page#": page,
+        "pages": max_pages,
+        mode: app.supporter.filter[mode][page * 25: page * 25 + 25]
     }
+
