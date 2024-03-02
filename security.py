@@ -4,10 +4,13 @@ import os
 import uuid
 import secrets
 import bcrypt
+import msgpack
+import hmac
+from base64 import urlsafe_b64encode
 from hashlib import sha256
-from typing import Optional
+from typing import Optional, Any
 
-from database import db, redis_client
+from database import db, rdb
 from utils import log
 
 """
@@ -89,7 +92,7 @@ class Restrictions:
 
 
 def ratelimited(bucket_id: str):
-    remaining = redis_client.get(f"rtl:{bucket_id}")
+    remaining = rdb.get(f"rtl:{bucket_id}")
     if remaining is not None and int(remaining.decode()) < 1:
         return True
     else:
@@ -97,22 +100,22 @@ def ratelimited(bucket_id: str):
 
 
 def ratelimit(bucket_id: str, limit: int, seconds: int):
-    remaining = redis_client.get(f"rtl:{bucket_id}")
+    remaining = rdb.get(f"rtl:{bucket_id}")
     if remaining is None:
         remaining = limit
     else:
         remaining = int(remaining.decode())
 
-    expires = redis_client.ttl(f"rtl:{bucket_id}")
+    expires = rdb.ttl(f"rtl:{bucket_id}")
     if expires <= 0:
         expires = seconds
 
     remaining -= 1
-    redis_client.set(f"rtl:{bucket_id}", remaining, ex=expires)
+    rdb.set(f"rtl:{bucket_id}", remaining, ex=expires)
 
 
 def clear_ratelimit(bucket_id: str):
-    redis_client.delete(f"rtl:{bucket_id}")
+    rdb.delete(f"rtl:{bucket_id}")
 
 
 def account_exists(username, ignore_case=False):
@@ -409,6 +412,27 @@ def add_audit_log(action_type, mod_username, mod_ip, data):
         "time": int(time.time()),
         "data": data
     })
+
+
+def create_token(token_type: str, ttl: int, data: dict[str, Any]) -> (str, int):
+    # Get expiration
+    expires_at = int(time.time()) + ttl
+
+    # Create token claims
+    claims = msgpack.packb({
+        "t": token_type,
+        "e": expires_at,
+        "d": data
+    })
+
+    # Create signature
+    signature = hmac.new(os.environ["TOKEN_SECRET"].encode(), claims, sha256).digest()
+
+    # Create token
+    token = f"{urlsafe_b64encode(claims).decode()}.{urlsafe_b64encode(signature).decode()}"
+
+    # Return token and expiration
+    return token, expires_at
 
 
 def background_tasks_loop():

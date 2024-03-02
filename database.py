@@ -9,7 +9,7 @@ from utils import log
 # Create Redis connection
 log("Connecting to Redis...")
 try:
-    redis_client = redis.from_url(os.getenv("REDIS_URI", "redis://127.0.0.1:6379/0"))
+    rdb = redis.from_url(os.getenv("REDIS_URI", "redis://127.0.0.1:6379/0"))
 except Exception as e:
     log(f"Failed to connect to database! Error: {e}")
     exit()
@@ -51,6 +51,10 @@ except: pass
 try: db.usersv0.create_index([
         ("delete_after", pymongo.ASCENDING)
     ], name="scheduled_deletions", partialFilterExpression={"delete_after": {"$type": "number"}})
+except: pass
+
+# Create data exports indexes
+try: db.data_exports.create_index([("user", pymongo.ASCENDING)], name="user")
 except: pass
 
 # Create relationships indexes
