@@ -382,7 +382,7 @@ class MeowerCommands:
         security.ratelimit(f"login:u:{client.username}:f", 5, 60)
         
         # Check password
-        account = self.files.db.usersv0.find_one({"_id": client.username}, projection={"pswd": 1})
+        account = db.usersv0.find_one({"_id": client.username}, projection={"pswd": 1})
         if not security.check_password_hash(val, account["pswd"]):
             return await client.send_statuscode("PasswordInvalid", listener)
 
