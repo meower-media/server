@@ -42,6 +42,7 @@ class UpdateUserBanBody(BaseModel):
 
 
 class UpdateUserBody(BaseModel):
+    experiments: Optional[int] = Field(default=None, ge=0)
     permissions: Optional[int] = Field(default=None, ge=0)
 
     class Config:
@@ -471,6 +472,7 @@ async def get_user(username):
         "pfp_data": account["pfp_data"],
         "quote": account["quote"],
         "flags": account["flags"],
+        "experiments": account["experiments"],
         "permissions": account["permissions"],
         "last_seen": account["last_seen"],
         "delete_after": account["delete_after"],
@@ -578,14 +580,22 @@ async def update_user(username):
     if not security.account_exists(username):
         abort(404)
 
-    # Permissions
-    if body.permissions is not None:
-        # Update user
-        db.usersv0.update_one(
-            {"_id": username}, {"$set": {"permissions": body.permissions}}
+    # Create updated fields var
+    updated_fields = {}
+
+    # Experiments
+    if body.experiments is not None:
+        updated_fields["experiments"] = body.experiments
+        security.add_audit_log(
+            "updated_experiments",
+            request.user,
+            request.ip,
+            {"username": username, "experiments": body.experiments},
         )
 
-        # Add log
+    # Permissions
+    if body.permissions is not None:
+        updated_fields["permissions"] = body.permissions
         security.add_audit_log(
             "updated_permissions",
             request.user,
@@ -593,13 +603,14 @@ async def update_user(username):
             {"username": username, "permissions": body.permissions},
         )
 
-        # Sync config between sessions
-        app.cl.broadcast({
-            "mode": "update_config",
-            "payload": {
-                "permissions": body.permissions
-            }
-        }, direct_wrap=True, usernames=[username])
+    # Update user
+    db.usersv0.update_one({"_id": username}, {"$set": updated_fields})
+
+    # Sync config between sessions
+    app.cl.broadcast({
+        "mode": "update_config",
+        "payload": updated_fields
+    }, direct_wrap=True, usernames=[username])
 
     return {"error": False}, 200
 

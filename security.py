@@ -54,6 +54,10 @@ class UserFlags:
     PROTECTED = 4
 
 
+class UserExperiments:
+    POST_ATTACHMENTS = 1
+
+
 class AdminPermissions:
     SYSADMIN = 1
 
@@ -138,6 +142,7 @@ def create_account(username: str, password: str, token: Optional[str] = None):
         "pswd": hash_password(password),
         "tokens": [token] if token else [],
         "flags": 0,
+        "experiments": 0,
         "permissions": 0,
         "ban": {
             "state": "none",
@@ -302,6 +307,7 @@ def delete_account(username, purge=False):
         "pswd": None,
         "tokens": None,
         "flags": account["flags"],
+        "experiments": None,
         "permissions": None,
         "ban": None,
         "last_seen": None,
