@@ -5,9 +5,10 @@ from base64 import b64decode
 from copy import copy
 import time
 import pymongo
+import msgpack
 
 import security
-from database import db, get_total_pages, blocked_ips, registration_blocked_ips
+from database import db, rdb, get_total_pages, blocked_ips, registration_blocked_ips
 
 
 admin_bp = Blueprint("admin_bp", __name__, url_prefix="/admin")
@@ -50,7 +51,8 @@ class UpdateUserBody(BaseModel):
 
 
 class UpdateChatBody(BaseModel):
-    nickname: str = Field(min_length=1, max_length=32)
+    nickname: str = Field(default=None, min_length=1, max_length=32)
+    icon: str = Field(default=None, max_length=24)
 
     class Config:
         validate_assignment = True
@@ -470,6 +472,7 @@ async def get_user(username):
         "created": account["created"],
         "uuid": account["uuid"],
         "pfp_data": account["pfp_data"],
+        "avatar": account["avatar"],
         "quote": account["quote"],
         "flags": account["flags"],
         "experiments": account["experiments"],
@@ -611,6 +614,16 @@ async def update_user(username):
         "mode": "update_config",
         "payload": updated_fields
     }, direct_wrap=True, usernames=[username])
+
+    # Send updated experiments and permissions to other clients
+    app.cl.broadcast({
+        "mode": "update_profile",
+        "payload": {
+            "_id": username,
+            "experiments": body.experiments,
+            "permissions": body.permissions,
+        }
+    }, direct_wrap=True)
 
     return {"error": False}, 200
 
@@ -865,11 +878,57 @@ async def kick_user(username):
     return {"error": False}, 200
 
 
+@admin_bp.delete("/users/<username>/avatar")
+async def clear_avatar(username):
+    # Check permissions
+    if not security.has_permission(
+        request.permissions, security.AdminPermissions.CLEAR_PROFILE_DETAILS
+    ):
+        abort(401)
+
+    # Make sure user isn't protected
+    if not security.has_permission(request.permissions, security.AdminPermissions.SYSADMIN):
+        account = db.usersv0.find_one(
+            {"_id": username}, projection={"flags": 1}
+        )
+        if account and (account["flags"] & security.UserFlags.PROTECTED) == security.UserFlags.PROTECTED:
+            abort(403)
+
+    # Update user
+    db.usersv0.update_one(
+        {"_id": username, "$ne": {"avatar": None}}, {"$set": {"avatar": ""}}
+    )
+
+    # Sync config between sessions
+    app.cl.broadcast({
+        "mode": "update_config",
+        "payload": {
+            "avatar": ""
+        }
+    }, direct_wrap=True, usernames=[username])
+
+    # Send updated avatar to other clients
+    app.cl.broadcast({
+        "mode": "update_profile",
+        "payload": {
+            "_id": username,
+            "avatar": ""
+        }
+    }, direct_wrap=True)
+
+    # Add log
+    security.add_audit_log(
+        "cleared_avatar", request.user, request.ip, {"username": username}
+    )
+
+    return {"error": False}, 200
+
+
 @admin_bp.delete("/users/<username>/quote")
 async def clear_quote(username):
     # Check permissions
     if not security.has_permission(
-        request.permissions, security.AdminPermissions.CLEAR_USER_QUOTES
+        request.permissions, security.AdminPermissions.CLEAR_PROFILE_DETAILS
     ):
         abort(401)
 
@@ -893,6 +952,15 @@ async def clear_quote(username):
             "quote": ""
         }
     }, direct_wrap=True, usernames=[username])
+
+     # Send updated quote to other clients
+    app.cl.broadcast({
+        "mode": "update_profile",
+        "payload": {
+            "_id": username,
+            "quote": ""
+        }
+    }, direct_wrap=True)
 
     # Add log
     security.add_audit_log(
@@ -937,26 +1005,30 @@ async def update_chat(chat_id):
     if not chat:
         abort(404)
 
-    # Make sure new nickname isn't the same as the old nickname
-    if chat["nickname"] == body.nickname:
-        chat["error"] = False
-        return chat, 200
+    # Get updated values
+    updated_vals = {"_id": chat_id}
+    if body.nickname is not None and chat["nickname"] != body.nickname:
+        updated_vals["nickname"] = app.supporter.wordfilter(body.nickname)
+    if body.icon is not None and chat["icon"] != body.icon:
+        if chat["icon"]:
+            rdb.publish("uploads", msgpack.packb({
+                "op": "unclaim_icon",
+                "id": chat["icon"]
+            }))
+        updated_vals["icon"] = body.icon
     
     # Update chat
-    chat["nickname"] = body.nickname
-    db.chats.update_one({"_id": chat_id}, {"$set": {"nickname": chat["nickname"]}})
+    db.chats.update_one({"_id": chat_id}, {"$set": updated_vals})
 
     # Send update chat event
     app.cl.broadcast({
         "mode": "update_chat",
-        "payload": {
-            "_id": chat_id,
-            "nickname": chat["nickname"]
-        }
+        "payload": updated_vals
     }, direct_wrap=True, usernames=chat["members"])
 
     # Add log
-    security.add_audit_log("updated_chat", request.user, request.ip, {"chat_id": chat_id, "nickname": body.nickname})
+    updated_vals["chat_id"] = updated_vals.pop("_id")
+    security.add_audit_log("updated_chat", request.user, request.ip, updated_vals)
 
     # Return chat
     chat["error"] = False

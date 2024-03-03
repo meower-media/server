@@ -286,9 +286,13 @@ class MeowerCommands:
         # Ratelimit
         security.ratelimit(f"config:{client.username}", 10, 5)
 
-        # Delete quote if account is restricted
-        if "quote" in val:
-            if security.is_restricted(client.username, security.Restrictions.EDITING_QUOTE):
+        # Delete updated profile data if account is restricted
+        if security.is_restricted(client.username, security.Restrictions.EDITING_PROFILE):
+            if "pfp_data" in val:
+                del val["pfp_data"]
+            if "avatar" in val:
+                del val["avatar"]
+            if "quote" in val:
                 del val["quote"]
 
         # Update config
@@ -299,6 +303,20 @@ class MeowerCommands:
             "mode": "update_config",
             "payload": val
         }, direct_wrap=True, usernames=[client.username])
+
+        # Send updated pfp and quote to other clients
+        updated_profile_data = {"_id": client.username}
+        if "pfp_data" in val:
+            updated_profile_data["pfp_data"] = val["pfp_data"]
+        if "avatar" in val:
+            updated_profile_data["avatar"] = val["avatar"]
+        if "quote" in val:
+            updated_profile_data["quote"] = val["quote"]
+        if len(updated_profile_data) > 1:
+            self.cl.broadcast({
+                "mode": "update_profile",
+                "payload": updated_profile_data
+            }, direct_wrap=True)
 
         # Tell the client the config was updated
         await client.send_statuscode("OK", listener)

@@ -91,8 +91,8 @@ class Restrictions:
     HOME_POSTS = 1
     CHAT_POSTS = 2
     NEW_CHATS = 4
-    EDITING_CHAT_NICKNAMES = 8
-    EDITING_QUOTE = 16
+    EDITING_CHAT_DETAILS = 8
+    EDITING_PROFILE = 16
 
 
 def ratelimited(bucket_id: str):
@@ -138,6 +138,7 @@ def create_account(username: str, password: str, token: Optional[str] = None):
         "uuid": str(uuid.uuid4()),
         "created": int(time.time()),
         "pfp_data": 1,
+        "avatar": "",
         "quote": "",
         "pswd": hash_password(password),
         "tokens": [token] if token else [],
@@ -208,7 +209,7 @@ def update_settings(username, newdata):
         return False
     
     # Get user UUID
-    account = db.usersv0.find_one({"lower_username": username.lower()}, projection={"_id": 1, "uuid": 1})
+    account = db.usersv0.find_one({"lower_username": username.lower()}, projection={"_id": 1, "uuid": 1, "avatar": 1})
     if not account:
         return False
     
@@ -217,19 +218,27 @@ def update_settings(username, newdata):
     updated_user_settings_vals = {}
 
     # Update pfp
-    if "pfp_data" in newdata:
-        if isinstance(newdata["pfp_data"], int):
-            updated_user_vals["pfp_data"] = newdata["pfp_data"]
+    if "pfp_data" in newdata and isinstance(newdata["pfp_data"], int):
+        updated_user_vals["pfp_data"] = newdata["pfp_data"]
+    if "avatar" in newdata and isinstance(newdata["avatar"], str):
+        if account["avatar"]:
+            rdb.publish("uploads", msgpack.packb({
+                "op": "unclaim_icon",
+                "id": account["avatar"]
+            }))
+        updated_user_vals["avatar"] = newdata["avatar"]
+        rdb.publish("uploads", msgpack.packb({
+            "op": "claim_icon",
+            "id": newdata["avatar"],
+            "resource": account["_id"]
+        }))
     
     # Update quote
-    if "quote" in newdata:
-        if isinstance(newdata["quote"], str) and len(newdata["quote"]) <= 360:
-            updated_user_vals["quote"] = newdata["quote"]
+    if "quote" in newdata and isinstance(newdata["quote"], str) and len(newdata["quote"]) <= 360:
+        updated_user_vals["quote"] = newdata["quote"]
 
     # Update settings
     for key, default_val in DEFAULT_USER_SETTINGS.items():
-        if key == "tos_revisions":
-            continue
         if key in newdata:
             if isinstance(newdata[key], type(default_val)):
                 if key == "favorited_chats" and len(newdata[key]) > 50:
@@ -303,6 +312,7 @@ def delete_account(username, purge=False):
     # Update account
     db.usersv0.update_one({"_id": username}, {"$set": {
         "pfp_data": None,
+        "avatar": None,
         "quote": None,
         "pswd": None,
         "tokens": None,
@@ -313,6 +323,16 @@ def delete_account(username, purge=False):
         "last_seen": None,
         "delete_after": None
     }})
+
+    # Start deleting uploads
+    rdb.publish("uploads", msgpack.packb({
+        "op": "unclaim_icon",
+        "uploader": username
+    }))
+    rdb.publish("uploads", msgpack.packb({
+        "op": "unclaim_attachment",
+        "uploader": username
+    }))
 
     # Delete user settings
     db.user_settings.delete_one({"_id": username})
@@ -420,7 +440,7 @@ def add_audit_log(action_type, mod_username, mod_ip, data):
     })
 
 
-def create_token(token_type: str, ttl: int, data: dict[str, Any]) -> (str, int):
+def create_token(token_type: str, ttl: int, data: dict[str, Any]) -> tuple[str, int]:
     # Get expiration
     expires_at = int(time.time()) + ttl
 

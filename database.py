@@ -152,6 +152,7 @@ for username in ["Server", "Deleted", "Meower", "Admin", "username"]:
             "uuid": None,
             "created": None,
             "pfp_data": None,
+            "avatar": None,
             "quote": None,
             "pswd": None,
             "tokens": None,

@@ -2,16 +2,18 @@ from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
 import uuid
 import time
+import msgpack
 
 import security
-from database import db
+from database import db, rdb
 
 
 chats_bp = Blueprint("chats_bp", __name__, url_prefix="/chats")
 
 
 class ChatBody(BaseModel):
-    nickname: str = Field(min_length=1, max_length=32)
+    nickname: str = Field(default=None, min_length=1, max_length=32)
+    icon: str = Field(default=None, max_length=24)
 
     class Config:
         validate_assignment = True
@@ -95,10 +97,13 @@ async def create_chat():
         return {"error": True, "type": "tooManyChats"}, 403
 
     # Create chat
+    if body.icon is None:
+        body.icon = ""
     chat = {
         "_id": str(uuid.uuid4()),
         "type": 0,
         "nickname": app.supporter.wordfilter(body.nickname),
+        "icon": body.icon,
         "owner": request.user,
         "members": [request.user],
         "created": int(time.time()),
@@ -153,7 +158,7 @@ async def update_chat(chat_id):
     except: abort(400)
 
     # Check restrictions
-    if body.nickname and security.is_restricted(request.user, security.Restrictions.EDITING_CHAT_NICKNAMES):
+    if security.is_restricted(request.user, security.Restrictions.EDITING_CHAT_DETAILS):
         return {"error": True, "type": "accountBanned"}, 403
 
     # Get chat
@@ -165,26 +170,28 @@ async def update_chat(chat_id):
     if chat["owner"] != request.user:
         abort(403)
 
-    # Make sure new nickname isn't the same as the old nickname
-    if chat["nickname"] == body.nickname:
-        chat["error"] = False
-        return chat, 200
+    # Get updated values
+    updated_vals = {"_id": chat_id}
+    if body.nickname is not None and chat["nickname"] != body.nickname:
+        updated_vals["nickname"] = app.supporter.wordfilter(body.nickname)
+        app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the nickname of the group chat to '{chat['nickname']}'.", chat_members=chat["members"])
+    if body.icon is not None and chat["icon"] != body.icon:
+        if chat["icon"]:
+            rdb.publish("uploads", msgpack.packb({
+                "op": "unclaim_icon",
+                "id": chat["icon"]
+            }))
+        updated_vals["icon"] = body.icon
+        app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the icon of the group chat.", chat_members=chat["members"])
     
     # Update chat
-    chat["nickname"] = app.supporter.wordfilter(body.nickname)
-    db.chats.update_one({"_id": chat_id}, {"$set": {"nickname": chat["nickname"]}})
+    db.chats.update_one({"_id": chat_id}, {"$set": updated_vals})
 
     # Send update chat event
     app.cl.broadcast({
         "mode": "update_chat",
-        "payload": {
-            "_id": chat_id,
-            "nickname": chat["nickname"]
-        }
+        "payload": updated_vals
     }, direct_wrap=True, usernames=chat["members"])
-
-    # Send in-chat notification
-    app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the nickname of the group chat to '{chat['nickname']}'.", chat_members=chat["members"])
 
     # Return chat
     chat["error"] = False
@@ -238,6 +245,11 @@ async def leave_chat(chat_id):
             # Send in-chat notification
             app.supporter.create_post(chat_id, "Server", f"@{request.user} has left the group chat.", chat_members=chat["members"])
         else:
+            if chat["icon"]:
+                rdb.publish("uploads", msgpack.packb({
+                    "op": "unclaim_icon",
+                    "id": chat["icon"]
+                }))
             db.posts.delete_many({"post_origin": chat_id, "isDeleted": False})
             db.chats.delete_one({"_id": chat_id})
     elif chat["type"] == 1:
