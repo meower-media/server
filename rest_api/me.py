@@ -16,6 +16,7 @@ me_bp = Blueprint("me_bp", __name__, url_prefix="/me")
 class UpdateConfigBody(BaseModel):
     pfp_data: Optional[int] = Field(default=None)
     avatar: Optional[str] = Field(default=None, max_length=24)
+    avatar_color: Optional[str] = Field(default=None, min_length=6, max_length=6)  # hex code without the #
     quote: Optional[str] = Field(default=None, max_length=360)
     unread_inbox: Optional[bool] = Field(default=None)
     theme: Optional[str] = Field(default=None, min_length=1, max_length=256)
@@ -72,6 +73,8 @@ async def update_config():
             del new_config["pfp_data"]
         if "avatar" in new_config:
             del new_config["avatar"]
+        if "avatar_color" in new_config:
+            del new_config["avatar_color"]
         if "quote" in new_config:
             del new_config["quote"]
 
@@ -90,6 +93,8 @@ async def update_config():
         updated_profile_data["pfp_data"] = new_config["pfp_data"]
     if "avatar" in new_config:
         updated_profile_data["avatar"] = new_config["avatar"]
+    if "avatar_color" in new_config:
+        updated_profile_data["avatar_color"] = new_config["avatar_color"]
     if "quote" in new_config:
         updated_profile_data["quote"] = new_config["quote"]
     if len(updated_profile_data) > 1:

@@ -292,6 +292,8 @@ class MeowerCommands:
                 del val["pfp_data"]
             if "avatar" in val:
                 del val["avatar"]
+            if "avatar_color" in val:
+                del val["avatar_color"]
             if "quote" in val:
                 del val["quote"]
 
@@ -310,6 +312,8 @@ class MeowerCommands:
             updated_profile_data["pfp_data"] = val["pfp_data"]
         if "avatar" in val:
             updated_profile_data["avatar"] = val["avatar"]
+        if "avatar_color" in val:
+            updated_profile_data["avatar_color"] = val["avatar_color"]
         if "quote" in val:
             updated_profile_data["quote"] = val["quote"]
         if len(updated_profile_data) > 1:

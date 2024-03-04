@@ -53,6 +53,7 @@ class UpdateUserBody(BaseModel):
 class UpdateChatBody(BaseModel):
     nickname: str = Field(default=None, min_length=1, max_length=32)
     icon: str = Field(default=None, max_length=24)
+    icon_color: str = Field(default=None, min_length=1, max_length=6)
 
     class Config:
         validate_assignment = True
@@ -473,6 +474,7 @@ async def get_user(username):
         "uuid": account["uuid"],
         "pfp_data": account["pfp_data"],
         "avatar": account["avatar"],
+        "avatar_color": account["avatar_color"],
         "quote": account["quote"],
         "flags": account["flags"],
         "experiments": account["experiments"],
@@ -1016,6 +1018,8 @@ async def update_chat(chat_id):
                 "id": chat["icon"]
             }))
         updated_vals["icon"] = body.icon
+    if body.icon_color is not None and chat["icon_color"] != body.icon_color:
+        updated_vals["icon_color"] = body.icon_color
     
     # Update chat
     db.chats.update_one({"_id": chat_id}, {"$set": updated_vals})

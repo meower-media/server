@@ -14,6 +14,7 @@ chats_bp = Blueprint("chats_bp", __name__, url_prefix="/chats")
 class ChatBody(BaseModel):
     nickname: str = Field(default=None, min_length=1, max_length=32)
     icon: str = Field(default=None, max_length=24)
+    icon_color: str = Field(default=None, min_length=6, max_length=6)  # hex code without the #
 
     class Config:
         validate_assignment = True
@@ -99,11 +100,14 @@ async def create_chat():
     # Create chat
     if body.icon is None:
         body.icon = ""
+    if body.icon_color is None:
+        body.icon_color = "000000"
     chat = {
         "_id": str(uuid.uuid4()),
         "type": 0,
         "nickname": app.supporter.wordfilter(body.nickname),
         "icon": body.icon,
+        "icon_color": body.icon_color,
         "owner": request.user,
         "members": [request.user],
         "created": int(time.time()),
@@ -183,6 +187,10 @@ async def update_chat(chat_id):
             }))
         updated_vals["icon"] = body.icon
         app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the icon of the group chat.", chat_members=chat["members"])
+    if body.icon_color is not None and chat["icon_color"] != body.icon_color:
+        updated_vals["icon_color"] = body.icon_color
+        if body.icon is None or chat["icon"] == body.icon:
+            app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the icon of the group chat.", chat_members=chat["members"])
     
     # Update chat
     db.chats.update_one({"_id": chat_id}, {"$set": updated_vals})

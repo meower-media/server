@@ -139,6 +139,7 @@ def create_account(username: str, password: str, token: Optional[str] = None):
         "created": int(time.time()),
         "pfp_data": 1,
         "avatar": "",
+        "avatar_color": "000000",
         "quote": "",
         "pswd": hash_password(password),
         "tokens": [token] if token else [],
@@ -208,7 +209,7 @@ def update_settings(username, newdata):
         log(f"Error on update_settings: Expected str for newdata, got {type(newdata)}")
         return False
     
-    # Get user UUID
+    # Get user UUID and avatar
     account = db.usersv0.find_one({"lower_username": username.lower()}, projection={"_id": 1, "uuid": 1, "avatar": 1})
     if not account:
         return False
@@ -232,6 +233,8 @@ def update_settings(username, newdata):
             "id": newdata["avatar"],
             "resource": account["_id"]
         }))
+    if "avatar_color" in newdata and isinstance(newdata["avatar_color"], str):
+        updated_user_vals["avatar_color"] = newdata["avatar_color"]
     
     # Update quote
     if "quote" in newdata and isinstance(newdata["quote"], str) and len(newdata["quote"]) <= 360:
@@ -313,6 +316,7 @@ def delete_account(username, purge=False):
     db.usersv0.update_one({"_id": username}, {"$set": {
         "pfp_data": None,
         "avatar": None,
+        "avatar_color": None,
         "quote": None,
         "pswd": None,
         "tokens": None,
