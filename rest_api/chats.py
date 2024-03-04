@@ -588,7 +588,7 @@ async def create_invite(chat_id):
 
 
 @chats_bp.delete("/<chat_id>/invites/<invite_code>")
-async def delete_invite(invite_code):
+async def delete_invite(chat_id, invite_code):
     # Check authorization
     if not request.user:
         abort(401)

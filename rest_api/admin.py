@@ -1504,10 +1504,6 @@ async def enable_registration():
     return {"error": False}, 200
 
 
-
-
-
-
 @admin_bp.get("/chats/<chat_id>/invites")
 async def get_invites(chat_id):
     # Check authorization
@@ -1541,8 +1537,10 @@ async def get_invites(chat_id):
         "page#": page,
         "pages": get_total_pages("chat_invites", {"chat_id": chat_id})
     }, 200
+
+
 @admin_bp.delete("/chats/<chat_id>/invites/<invite_code>")
-async def delete_invite(invite_code):
+async def delete_invite(chat_id, invite_code):
     # Check authorization
     if not security.has_permission(request.permissions, security.AdminPermissions.EDIT_CHATS):
         abort(401)
@@ -1570,9 +1568,6 @@ async def delete_invite(invite_code):
     if not chat:
         abort(404)
 
-    # Make sure requester has permission to delete the invite
-    if invite["inviter"] != request.user and chat["owner"] != request.user:
-        abort(403)
 
     # Delete the invite
     db.chat_invites.delete_one({"_id": invite_code})
@@ -1581,7 +1576,7 @@ async def delete_invite(invite_code):
 
 
 @admin_bp.put("/chats/<chat_id>/bans/<username>")
-async def ban_user(chat_id, username):
+async def chat_ban_user(chat_id, username):
     if not security.has_permission(request.permissions, security.AdminPermissions.EDIT_CHATS):
         abort(401)
 
@@ -1649,6 +1644,8 @@ async def ban_user(chat_id, username):
 
     ban["error"] = False
     return ban, 200
+
+
 @admin_bp.delete("/chats/<chat_id>/bans/<username>")
 async def unban_user(chat_id, username):
     if not security.has_permission(request.permissions, security.AdminPermissions.EDIT_CHATS):
@@ -1666,6 +1663,7 @@ async def unban_user(chat_id, username):
     db["chat_bans"].delete_one({"_id": {"username": username, "chat": chat["_id"]}})
 
     return {"error": False}, 200
+
 
 @admin_bp.get("/chats/<chat_id>/bans")
 async def get_bans(chat_id):
