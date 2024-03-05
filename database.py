@@ -163,6 +163,8 @@ for username in ["Server", "Deleted", "Meower", "Admin", "username"]:
             "uuid": None,
             "created": None,
             "pfp_data": None,
+            "avatar": None,
+            "avatar_color": None,
             "quote": None,
             "pswd": None,
             "tokens": None,
@@ -227,6 +229,16 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
 
     log("[Migrator] Adding Perm for pinning messages")
     db.chats.update_many({"allow_pinning": {"$exists": False}}, {"$set": {"allow_pinning": False}})
+
+    # Custom profile pictures
+    log("[Migrator] Adding custom profile pictures to database")
+    db.usersv0.update_many({"avatar": {"$exists": False}}, {"$set": {"avatar": ""}})
+    db.usersv0.update_many({"avatar_color": {"$exists": False}}, {"$set": {"avatar_color": "000000"}})
+
+    # Chat icons
+    log("[Migrator] Adding chat icons to database")
+    db.chats.update_many({"icon": {"$exists": False}}, {"$set": {"icon": ""}})
+    db.chats.update_many({"icon_color": {"$exists": False}}, {"$set": {"icon_color": "000000"}})
 
     db.config.update_one({"_id": "migration"}, {"$set": {"database": CURRENT_DB_VERSION}})
     log(f"[Migrator] Finished Migrating DB to version {CURRENT_DB_VERSION}")
