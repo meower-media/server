@@ -230,6 +230,10 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
     log("[Migrator] Adding Perm for pinning messages")
     db.chats.update_many({"allow_pinning": {"$exists": False}}, {"$set": {"allow_pinning": False}})
 
+    # Experiments
+    log("[Migrator] Adding experiments to database")
+    db.usersv0.update_many({"experiments": {"$exists": False}}, {"$set": {"experiments": 0}})
+
     # Custom profile pictures
     log("[Migrator] Adding custom profile pictures to database")
     db.usersv0.update_many({"avatar": {"$exists": False}}, {"$set": {"avatar": ""}})
