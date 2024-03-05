@@ -1,17 +1,21 @@
+import pymongo
 from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
 import uuid
 import time
+import msgpack
 
 import security
-from database import db
-
+from database import db, rdb, get_total_pages
 
 chats_bp = Blueprint("chats_bp", __name__, url_prefix="/chats")
 
 
 class ChatBody(BaseModel):
-    nickname: str = Field(min_length=1, max_length=32)
+    nickname: str = Field(default=None, min_length=1, max_length=32)
+    icon: str = Field(default=None, max_length=24)
+    icon_color: str = Field(default=None, min_length=6, max_length=6)  # hex code without the #
+    allow_pinning: bool = Field(default=None)
 
     class Config:
         validate_assignment = True
@@ -95,15 +99,24 @@ async def create_chat():
         return {"error": True, "type": "tooManyChats"}, 403
 
     # Create chat
+    if body.icon is None:
+        body.icon = ""
+    if body.icon_color is None:
+        body.icon_color = "000000"
+    if body.allow_pinning is None:
+        body.allow_pinning = False
     chat = {
         "_id": str(uuid.uuid4()),
         "type": 0,
         "nickname": app.supporter.wordfilter(body.nickname),
+        "icon": body.icon,
+        "icon_color": body.icon_color,
         "owner": request.user,
         "members": [request.user],
         "created": int(time.time()),
         "last_active": int(time.time()),
-        "deleted": False
+        "deleted": False,
+        "allow_pinning": body.allow_pinning
     }
     db.chats.insert_one(chat)
 
@@ -153,7 +166,7 @@ async def update_chat(chat_id):
     except: abort(400)
 
     # Check restrictions
-    if body.nickname and security.is_restricted(request.user, security.Restrictions.EDITING_CHAT_NICKNAMES):
+    if security.is_restricted(request.user, security.Restrictions.EDITING_CHAT_DETAILS):
         return {"error": True, "type": "accountBanned"}, 403
 
     # Get chat
@@ -165,26 +178,29 @@ async def update_chat(chat_id):
     if chat["owner"] != request.user:
         abort(403)
 
-    # Make sure new nickname isn't the same as the old nickname
-    if chat["nickname"] == body.nickname:
-        chat["error"] = False
-        return chat, 200
+    # Get updated values
+    updated_vals = {"_id": chat_id}
+    if body.nickname is not None and chat["nickname"] != body.nickname:
+        updated_vals["nickname"] = app.supporter.wordfilter(body.nickname)
+        app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the nickname of the group chat to '{chat['nickname']}'.", chat_members=chat["members"])
+    if body.icon is not None and chat["icon"] != body.icon:
+        updated_vals["icon"] = body.icon
+        app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the icon of the group chat.", chat_members=chat["members"])
+    if body.icon_color is not None and chat["icon_color"] != body.icon_color:
+        updated_vals["icon_color"] = body.icon_color
+        if body.icon is None or chat["icon"] == body.icon:
+            app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the icon of the group chat.", chat_members=chat["members"])
+    if body.allow_pinning is not None:
+        chat["allow_pinning"] = body.allow_pinning
     
     # Update chat
-    chat["nickname"] = app.supporter.wordfilter(body.nickname)
-    db.chats.update_one({"_id": chat_id}, {"$set": {"nickname": chat["nickname"]}})
+    db.chats.update_one({"_id": chat_id}, {"$set": updated_vals})
 
     # Send update chat event
     app.cl.broadcast({
         "mode": "update_chat",
-        "payload": {
-            "_id": chat_id,
-            "nickname": chat["nickname"]
-        }
+        "payload": updated_vals
     }, direct_wrap=True, usernames=chat["members"])
-
-    # Send in-chat notification
-    app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the nickname of the group chat to '{chat['nickname']}'.", chat_members=chat["members"])
 
     # Return chat
     chat["error"] = False
@@ -478,3 +494,36 @@ async def transfer_chat_ownership(chat_id, username):
     # Return chat
     chat["error"] = False
     return chat, 200
+
+
+@chats_bp.get("/<chat_id>/pins")
+def get_chat_pins(chat_id):
+    if not request.user:
+        abort(401)
+
+    query = {"_id": chat_id}
+    if not security.has_permission(request.permissions, security.AdminPermissions.VIEW_CHATS):
+        query["members"] = request.user
+        query["deleted"] = False
+
+    try:
+        page = int(request.args.get("page"))
+    except: page = 1
+
+    chat = db.chats.find_one(query)
+    if not chat:
+        abort(404)
+
+    query = {"post_origin": chat_id, "pinned": True}
+    posts = db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25)
+
+    if not posts:
+        posts = []
+
+
+    return {
+        "error": False,
+        "page#": page,
+        "pages": get_total_pages("posts", query),
+        "posts": list(posts)
+    }, 200

@@ -82,7 +82,8 @@ class Supporter:
             "t": ts, 
             "p": content,
             "post_id": post_id, 
-            "isDeleted": False
+            "isDeleted": False,
+            "pinned": False
         }
         
         # Profanity filter
