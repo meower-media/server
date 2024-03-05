@@ -222,9 +222,9 @@ def update_settings(username, newdata):
     # Update pfp
     if "pfp_data" in newdata and isinstance(newdata["pfp_data"], int):
         updated_user_vals["pfp_data"] = newdata["pfp_data"]
-    if "avatar" in newdata and isinstance(newdata["avatar"], str):
+    if "avatar" in newdata and isinstance(newdata["avatar"], str) and len(newdata["avatar"]) <= 24:
         updated_user_vals["avatar"] = newdata["avatar"]
-    if "avatar_color" in newdata and isinstance(newdata["avatar_color"], str):
+    if "avatar_color" in newdata and isinstance(newdata["avatar_color"], str) and len(newdata["avatar_color"]) == 6:
         updated_user_vals["avatar_color"] = newdata["avatar_color"]
     
     # Update quote

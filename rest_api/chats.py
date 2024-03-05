@@ -103,6 +103,8 @@ async def create_chat():
         body.icon = ""
     if body.icon_color is None:
         body.icon_color = "000000"
+    if body.allow_pinning is None:
+        body.allow_pinning = False
     chat = {
         "_id": str(uuid.uuid4()),
         "type": 0,
@@ -114,12 +116,8 @@ async def create_chat():
         "created": int(time.time()),
         "last_active": int(time.time()),
         "deleted": False,
-        "allow_pinning": body.allow_pinning if body.allow_pinning else False
+        "allow_pinning": body.allow_pinning
     }
-
-
-
-
     db.chats.insert_one(chat)
 
     # Tell the requester the chat was created

@@ -454,11 +454,14 @@ class MeowerCommands:
             "_id": str(uuid.uuid4()),
             "type": 0,
             "nickname": self.supporter.wordfilter(val),
+            "icon": "",
+            "icon_color": "000000",
             "owner": client.username,
             "members": [client.username],
             "created": int(time.time()),
             "last_active": int(time.time()),
-            "deleted": False
+            "deleted": False,
+            "allow_pinning": False
         }
         db.chats.insert_one(chat)
 
