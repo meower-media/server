@@ -4,10 +4,13 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from copy import copy
 import pymongo
+import uuid
+import time
 
 import security
-from database import db, get_total_pages
+from database import db, get_total_pages, rdb
 from .api_types import AuthenticatedRequest, MeowerQuart
+
 
 request: AuthenticatedRequest
 app: MeowerQuart
@@ -138,3 +141,62 @@ async def get_report_history():
     else:
         payload["index"] = [report["_id"] for report in reports]
     return payload, 200
+
+
+@me_bp.get("/export")
+async def get_current_data_export():
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Get current data export request from the database
+    data_export = db.data_exports.find_one({
+        "user": request.user,
+        "$or": [
+            {"status": "pending"},
+            {"completed_at": {"$gt": int(time.time())-604800}}
+        ]
+    }, projection={"error": 0})
+    if not data_export:
+        abort(404)
+
+    # Add download token that lasts 15 minutes
+    if data_export["status"] == "completed":
+        data_export["download_token"], _ = security.create_token("access_data_export", 900, {
+            "id": data_export["_id"]
+        })
+
+    # Return data export request
+    return data_export, 200
+
+
+@me_bp.post("/export")
+async def request_data_export():
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Make sure a current data export request doesn't already exist
+    if db.data_exports.count_documents({
+        "user": request.user,
+        "$or": [
+            {"status": "pending"},
+            {"completed_at": {"$gt": int(time.time())-604800}}
+        ]
+    }) > 0:
+        abort(429)
+
+    # Create data export request
+    data_export = {
+        "_id": str(uuid.uuid4()),
+        "user": request.user,
+        "status": "pending",
+        "created_at": int(time.time())
+    }
+    db.data_exports.insert_one(data_export)
+
+    # Tell the data export service to check for new requests
+    rdb.publish("data_exports", "0")
+
+    # Return data export request
+    return data_export, 200

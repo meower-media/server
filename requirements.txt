@@ -10,3 +10,5 @@ py-radix
 pydantic~=2.6.1
 redis~=5.0.1
 websockets~=12.0
+redis
+msgpack
