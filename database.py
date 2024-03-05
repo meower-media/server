@@ -40,6 +40,8 @@ for collection_name in []:
 # Create usersv0 indexes
 try: db.usersv0.create_index([("lower_username", pymongo.ASCENDING)], name="lower_username", unique=True)
 except: pass
+try: db.usersv0.create_index([("tokens", pymongo.ASCENDING)], name="tokens", unique=True)
+except: pass
 try: db.usersv0.create_index([("created", pymongo.DESCENDING)], name="recent_users")
 except: pass
 try:
