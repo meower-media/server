@@ -55,6 +55,7 @@ class UpdateChatBody(BaseModel):
     nickname: str = Field(default=None, min_length=1, max_length=32)
     icon: str = Field(default=None, max_length=24)
     icon_color: str = Field(default=None, min_length=1, max_length=6)
+    allow_pinning: bool = Field(default=None)
 
     class Config:
         validate_assignment = True
@@ -1022,6 +1023,8 @@ async def update_chat(chat_id):
         updated_vals["icon"] = body.icon
     if body.icon_color is not None and chat["icon_color"] != body.icon_color:
         updated_vals["icon_color"] = body.icon_color
+    if body.allow_pinning is not None:
+        updated_vals["allow_pinning"] = body.allow_pinning
     
     # Update chat
     db.chats.update_one({"_id": chat_id}, {"$set": updated_vals})
