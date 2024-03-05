@@ -1012,11 +1012,6 @@ async def update_chat(chat_id):
     if body.nickname is not None and chat["nickname"] != body.nickname:
         updated_vals["nickname"] = app.supporter.wordfilter(body.nickname)
     if body.icon is not None and chat["icon"] != body.icon:
-        if chat["icon"]:
-            rdb.publish("uploads", msgpack.packb({
-                "op": "unclaim_icon",
-                "id": chat["icon"]
-            }))
         updated_vals["icon"] = body.icon
     if body.icon_color is not None and chat["icon_color"] != body.icon_color:
         updated_vals["icon_color"] = body.icon_color

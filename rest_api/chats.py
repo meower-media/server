@@ -180,11 +180,6 @@ async def update_chat(chat_id):
         updated_vals["nickname"] = app.supporter.wordfilter(body.nickname)
         app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the nickname of the group chat to '{chat['nickname']}'.", chat_members=chat["members"])
     if body.icon is not None and chat["icon"] != body.icon:
-        if chat["icon"]:
-            rdb.publish("uploads", msgpack.packb({
-                "op": "unclaim_icon",
-                "id": chat["icon"]
-            }))
         updated_vals["icon"] = body.icon
         app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the icon of the group chat.", chat_members=chat["members"])
     if body.icon_color is not None and chat["icon_color"] != body.icon_color:
@@ -253,11 +248,6 @@ async def leave_chat(chat_id):
             # Send in-chat notification
             app.supporter.create_post(chat_id, "Server", f"@{request.user} has left the group chat.", chat_members=chat["members"])
         else:
-            if chat["icon"]:
-                rdb.publish("uploads", msgpack.packb({
-                    "op": "unclaim_icon",
-                    "id": chat["icon"]
-                }))
             db.posts.delete_many({"post_origin": chat_id, "isDeleted": False})
             db.chats.delete_one({"_id": chat_id})
     elif chat["type"] == 1:

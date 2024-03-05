@@ -222,17 +222,7 @@ def update_settings(username, newdata):
     if "pfp_data" in newdata and isinstance(newdata["pfp_data"], int):
         updated_user_vals["pfp_data"] = newdata["pfp_data"]
     if "avatar" in newdata and isinstance(newdata["avatar"], str):
-        if account["avatar"]:
-            rdb.publish("uploads", msgpack.packb({
-                "op": "unclaim_icon",
-                "id": account["avatar"]
-            }))
         updated_user_vals["avatar"] = newdata["avatar"]
-        rdb.publish("uploads", msgpack.packb({
-            "op": "claim_icon",
-            "id": newdata["avatar"],
-            "resource": account["_id"]
-        }))
     if "avatar_color" in newdata and isinstance(newdata["avatar_color"], str):
         updated_user_vals["avatar_color"] = newdata["avatar_color"]
     
@@ -328,11 +318,7 @@ def delete_account(username, purge=False):
         "delete_after": None
     }})
 
-    # Start deleting uploads
-    rdb.publish("uploads", msgpack.packb({
-        "op": "unclaim_icon",
-        "uploader": username
-    }))
+    # Start deleting uploaded attachments
     rdb.publish("uploads", msgpack.packb({
         "op": "unclaim_attachment",
         "uploader": username
