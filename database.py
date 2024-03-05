@@ -5,6 +5,7 @@ from radix import Radix
 
 from utils import log
 
+CURRENT_DB_VERSION = 2
 
 # Create Redis connection
 log("Connecting to Redis...")
@@ -36,9 +37,10 @@ for collection_name in []:
         log(f"Creating {collection_name} database collection...")
         db.create_collection(collection_name)
 
-
 # Create usersv0 indexes
 try: db.usersv0.create_index([("lower_username", pymongo.ASCENDING)], name="lower_username", unique=True)
+except: pass
+try: db.usersv0.create_index([("tokens", pymongo.ASCENDING)], name="tokens", unique=True)
 except: pass
 try: db.usersv0.create_index([("created", pymongo.DESCENDING)], name="recent_users")
 except: pass
@@ -92,10 +94,19 @@ try:
         ("p", pymongo.TEXT)
     ], name="search", partialFilterExpression={"post_origin": "home", "isDeleted": False})
 except: pass
+
 try:
     db.posts.create_index([
         ("deleted_at", pymongo.ASCENDING)
     ], name="scheduled_purges", partialFilterExpression={"isDeleted": True, "mod_deleted": False})
+except: pass
+
+try:
+    db.posts.create_index([
+        ("post_origin", pymongo.ASCENDING),
+        ("pinned", pymongo.ASCENDING),
+        ("t.e", pymongo.DESCENDING)
+    ], name="pinned_posts", partialFilterExpression={"pinned": True})
 except: pass
 
 # Create post revisions indexes
@@ -115,7 +126,7 @@ except: pass
 try:
     db.chats.create_index([
         ("members", pymongo.ASCENDING),
-        ("type", pymongo.ASCENDING)
+        ("type", pymongo.ASCENDING),
     ], name="user_chats")
 except: pass
 
@@ -207,3 +218,19 @@ def get_total_pages(collection: str, query: dict, page_size: int = 25) -> int:
     if (item_count % page_size) > 0:
         pages += 1
     return pages
+
+if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSION}}):
+    log(f"[Migrator] Migrating DB to version {CURRENT_DB_VERSION}. ")
+    log(f"[Migrator] Please do not shut the server down until it is done.")
+
+    # Chat pinning
+    log("[Migrator] Adding pinned messages to database")
+    db.posts.update_many({"pinned": {"$exists": False}}, {"$set": {"pinned": False}})
+
+    log("[Migrator] Adding Perm for pinning messages")
+    db.chats.update_many({"allow_pinning": {"$exists": False}}, {"$set": {"allow_pinning": False}})
+
+    db.config.update_one({"_id": "migration"}, {"$set": {"database": CURRENT_DB_VERSION}})
+    log(f"[Migrator] Finished Migrating DB to version {CURRENT_DB_VERSION}")
+
+print("") # finished startup logs

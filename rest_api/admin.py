@@ -1,6 +1,6 @@
 from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
-from typing import Optional, Literal
+from typing import List, Optional, Literal
 from base64 import b64decode
 from copy import copy
 import time
@@ -9,6 +9,7 @@ import msgpack
 
 import security
 from database import db, rdb, get_total_pages, blocked_ips, registration_blocked_ips
+from better_profanity import profanity
 
 
 admin_bp = Blueprint("admin_bp", __name__, url_prefix="/admin")
@@ -59,6 +60,12 @@ class UpdateChatBody(BaseModel):
         validate_assignment = True
         str_strip_whitespace = True
 
+class UpdateProfanityBody(BaseModel):
+    items: List[str]
+
+    class Config:
+        validate_assignment = True
+        str_strip_whitespace = True
 
 class InboxMessageBody(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
@@ -1578,3 +1585,82 @@ async def enable_registration():
     security.add_audit_log("enabled_registration", request.user, request.ip, {})
 
     return {"error": False}, 200
+
+@admin_bp.post("/server/profanity/<mode>/")
+async def add_profanity_blacklist(mode):
+    if not security.has_permission(request.permissions, security.AdminPermissions.CHANGE_PROFANITY):
+        abort(401)
+
+    if mode not in ["whitelist", "blacklist"]: abort(404)
+
+    try:
+        data = UpdateProfanityBody(**await request.json)
+    except: abort(400)
+
+    db.config.update_one({"_id": "filter"}, {
+            "$push": {
+                mode: {
+                    "$each": data.items
+                }
+            }
+    })
+
+    for item in data.items:
+        if item in app.supporter.filter[mode]: continue
+        app.supporter.filter[mode].append(item)
+
+    return {"error": False}
+
+# When testing the lib, that mb.py uses, does not support DELETE bodies
+@admin_bp.post("/server/profanity/<mode>/delete")
+async def delete_profanity_whitelist(mode):
+    if not security.has_permission(request.permissions, security.AdminPermissions.CHANGE_PROFANITY):
+        abort(401)
+
+    if mode not in ["whitelist", "blacklist"]: abort(404)
+
+    try:
+        data = UpdateProfanityBody(**await request.json)
+    except: abort(400)
+
+    db.config.update_one({"_id": "filter"}, {
+        "$pull": {
+            mode: {
+                "$in": data.items
+            }
+        }
+    })
+
+    for word in data.items:
+        if word not in app.supporter.filter[mode]: continue
+        app.supporter.filter[mode].remove(word)
+
+    return {"error": False}
+
+
+@admin_bp.get("/server/profanity/<mode>")
+async def get_profanity_whitelist(mode: str):
+    if not security.has_permission(request.permissions, security.AdminPermissions.CHANGE_PROFANITY):
+        abort(401)
+
+    try:
+        page = int(request.args["page"])
+    except:
+        page = 1
+
+    if mode not in ["whitelist", "blacklist"]:
+        abort(404)
+
+    page_size = 25
+    max_pages = len(app.supporter.filter[mode])//page_size
+
+    if page > max_pages:
+        page = max_pages
+
+    return {
+        "error": False,
+        "page#": page,
+        "pages": max_pages,
+        mode: app.supporter.filter[mode][page * 25: page * 25 + 25]
+    }
+

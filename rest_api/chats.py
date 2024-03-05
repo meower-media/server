@@ -1,3 +1,4 @@
+import pymongo
 from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
 import uuid
@@ -5,8 +6,7 @@ import time
 import msgpack
 
 import security
-from database import db, rdb
-
+from database import db, rdb, get_total_pages
 
 chats_bp = Blueprint("chats_bp", __name__, url_prefix="/chats")
 
@@ -15,6 +15,7 @@ class ChatBody(BaseModel):
     nickname: str = Field(default=None, min_length=1, max_length=32)
     icon: str = Field(default=None, max_length=24)
     icon_color: str = Field(default=None, min_length=6, max_length=6)  # hex code without the #
+    allow_pinning: bool = Field(default=None)
 
     class Config:
         validate_assignment = True
@@ -112,8 +113,13 @@ async def create_chat():
         "members": [request.user],
         "created": int(time.time()),
         "last_active": int(time.time()),
-        "deleted": False
+        "deleted": False,
+        "allow_pinning": body.allow_pinning if body.allow_pinning else False
     }
+
+
+
+
     db.chats.insert_one(chat)
 
     # Tell the requester the chat was created
@@ -186,6 +192,8 @@ async def update_chat(chat_id):
         updated_vals["icon_color"] = body.icon_color
         if body.icon is None or chat["icon"] == body.icon:
             app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the icon of the group chat.", chat_members=chat["members"])
+    if body.allow_pinning is not None:
+        chat["allow_pinning"] = body.allow_pinning
     
     # Update chat
     db.chats.update_one({"_id": chat_id}, {"$set": updated_vals})
@@ -488,3 +496,36 @@ async def transfer_chat_ownership(chat_id, username):
     # Return chat
     chat["error"] = False
     return chat, 200
+
+
+@chats_bp.get("/<chat_id>/pins")
+def get_chat_pins(chat_id):
+    if not request.user:
+        abort(401)
+
+    query = {"_id": chat_id}
+    if not security.has_permission(request.permissions, security.AdminPermissions.VIEW_CHATS):
+        query["members"] = request.user
+        query["deleted"] = False
+
+    try:
+        page = int(request.args.get("page"))
+    except: page = 1
+
+    chat = db.chats.find_one(query)
+    if not chat:
+        abort(404)
+
+    query = {"post_origin": chat_id, "pinned": True}
+    posts = db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25)
+
+    if not posts:
+        posts = []
+
+
+    return {
+        "error": False,
+        "page#": page,
+        "pages": get_total_pages("posts", query),
+        "posts": list(posts)
+    }, 200
