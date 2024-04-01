@@ -5,11 +5,12 @@ from radix import Radix
 
 from utils import log
 
+CURRENT_DB_VERSION = 2
 
 # Create Redis connection
 log("Connecting to Redis...")
 try:
-    redis_client = redis.from_url(os.getenv("REDIS_URI", "redis://127.0.0.1:6379/0"))
+    rdb = redis.from_url(os.getenv("REDIS_URI", "redis://127.0.0.1:6379/0"))
 except Exception as e:
     log(f"Failed to connect to database! Error: {e}")
     exit()
@@ -36,9 +37,10 @@ for collection_name in []:
         log(f"Creating {collection_name} database collection...")
         db.create_collection(collection_name)
 
-
 # Create usersv0 indexes
 try: db.usersv0.create_index([("lower_username", pymongo.ASCENDING)], name="lower_username", unique=True)
+except: pass
+try: db.usersv0.create_index([("tokens", pymongo.ASCENDING)], name="tokens", unique=True)
 except: pass
 try: db.usersv0.create_index([("created", pymongo.DESCENDING)], name="recent_users")
 except: pass
@@ -51,6 +53,10 @@ except: pass
 try: db.usersv0.create_index([
         ("delete_after", pymongo.ASCENDING)
     ], name="scheduled_deletions", partialFilterExpression={"delete_after": {"$type": "number"}})
+except: pass
+
+# Create data exports indexes
+try: db.data_exports.create_index([("user", pymongo.ASCENDING)], name="user")
 except: pass
 
 # Create relationships indexes
@@ -88,10 +94,19 @@ try:
         ("p", pymongo.TEXT)
     ], name="search", partialFilterExpression={"post_origin": "home", "isDeleted": False})
 except: pass
+
 try:
     db.posts.create_index([
         ("deleted_at", pymongo.ASCENDING)
     ], name="scheduled_purges", partialFilterExpression={"isDeleted": True, "mod_deleted": False})
+except: pass
+
+try:
+    db.posts.create_index([
+        ("post_origin", pymongo.ASCENDING),
+        ("pinned", pymongo.ASCENDING),
+        ("t.e", pymongo.DESCENDING)
+    ], name="pinned_posts", partialFilterExpression={"pinned": True})
 except: pass
 
 # Create post revisions indexes
@@ -111,7 +126,7 @@ except: pass
 try:
     db.chats.create_index([
         ("members", pymongo.ASCENDING),
-        ("type", pymongo.ASCENDING)
+        ("type", pymongo.ASCENDING),
     ], name="user_chats")
 except: pass
 
@@ -148,6 +163,8 @@ for username in ["Server", "Deleted", "Meower", "Admin", "username"]:
             "uuid": None,
             "created": None,
             "pfp_data": None,
+            "avatar": None,
+            "avatar_color": None,
             "quote": None,
             "pswd": None,
             "tokens": None,
@@ -201,3 +218,33 @@ def get_total_pages(collection: str, query: dict, page_size: int = 25) -> int:
     if (item_count % page_size) > 0:
         pages += 1
     return pages
+
+if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSION}}):
+    log(f"[Migrator] Migrating DB to version {CURRENT_DB_VERSION}. ")
+    log(f"[Migrator] Please do not shut the server down until it is done.")
+
+    # Chat pinning
+    log("[Migrator] Adding pinned messages to database")
+    db.posts.update_many({"pinned": {"$exists": False}}, {"$set": {"pinned": False}})
+
+    log("[Migrator] Adding Perm for pinning messages")
+    db.chats.update_many({"allow_pinning": {"$exists": False}}, {"$set": {"allow_pinning": False}})
+
+    # Experiments
+    log("[Migrator] Adding experiments to database")
+    db.usersv0.update_many({"experiments": {"$exists": False}}, {"$set": {"experiments": 0}})
+
+    # Custom profile pictures
+    log("[Migrator] Adding custom profile pictures to database")
+    db.usersv0.update_many({"avatar": {"$exists": False}}, {"$set": {"avatar": ""}})
+    db.usersv0.update_many({"avatar_color": {"$exists": False}}, {"$set": {"avatar_color": "000000"}})
+
+    # Chat icons
+    log("[Migrator] Adding chat icons to database")
+    db.chats.update_many({"icon": {"$exists": False}}, {"$set": {"icon": ""}})
+    db.chats.update_many({"icon_color": {"$exists": False}}, {"$set": {"icon_color": "000000"}})
+
+    db.config.update_one({"_id": "migration"}, {"$set": {"database": CURRENT_DB_VERSION}})
+    log(f"[Migrator] Finished Migrating DB to version {CURRENT_DB_VERSION}")
+
+print("") # finished startup logs

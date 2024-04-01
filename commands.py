@@ -249,9 +249,15 @@ class MeowerCommands:
         # Ratelimit
         security.ratelimit(f"config:{client.username}", 10, 5)
 
-        # Delete quote if account is restricted
-        if "quote" in val:
-            if security.is_restricted(client.username, security.Restrictions.EDITING_QUOTE):
+        # Delete updated profile data if account is restricted
+        if security.is_restricted(client.username, security.Restrictions.EDITING_PROFILE):
+            if "pfp_data" in val:
+                del val["pfp_data"]
+            if "avatar" in val:
+                del val["avatar"]
+            if "avatar_color" in val:
+                del val["avatar_color"]
+            if "quote" in val:
                 del val["quote"]
 
         # Update config
@@ -262,6 +268,22 @@ class MeowerCommands:
             "mode": "update_config",
             "payload": val
         }, direct_wrap=True, usernames=[client.username])
+
+        # Send updated pfp and quote to other clients
+        updated_profile_data = {"_id": client.username}
+        if "pfp_data" in val:
+            updated_profile_data["pfp_data"] = val["pfp_data"]
+        if "avatar" in val:
+            updated_profile_data["avatar"] = val["avatar"]
+        if "avatar_color" in val:
+            updated_profile_data["avatar_color"] = val["avatar_color"]
+        if "quote" in val:
+            updated_profile_data["quote"] = val["quote"]
+        if len(updated_profile_data) > 1:
+            self.cl.broadcast({
+                "mode": "update_profile",
+                "payload": updated_profile_data
+            }, direct_wrap=True)
 
         # Tell the client the config was updated
         await client.send_statuscode("OK", listener)
@@ -345,7 +367,7 @@ class MeowerCommands:
         security.ratelimit(f"login:u:{client.username}:f", 5, 60)
         
         # Check password
-        account = self.files.db.usersv0.find_one({"_id": client.username}, projection={"pswd": 1})
+        account = db.usersv0.find_one({"_id": client.username}, projection={"pswd": 1})
         if not security.check_password_hash(val, account["pswd"]):
             return await client.send_statuscode("PasswordInvalid", listener)
 

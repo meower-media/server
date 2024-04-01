@@ -3,9 +3,11 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from copy import copy
 import pymongo
+import uuid
+import time
 
 import security
-from database import db, get_total_pages
+from database import db, rdb, get_total_pages
 
 
 me_bp = Blueprint("me_bp", __name__, url_prefix="/me")
@@ -13,6 +15,8 @@ me_bp = Blueprint("me_bp", __name__, url_prefix="/me")
 
 class UpdateConfigBody(BaseModel):
     pfp_data: Optional[int] = Field(default=None)
+    avatar: Optional[str] = Field(default=None, max_length=24)
+    avatar_color: Optional[str] = Field(default=None, min_length=6, max_length=6)  # hex code without the #
     quote: Optional[str] = Field(default=None, max_length=360)
     unread_inbox: Optional[bool] = Field(default=None)
     theme: Optional[str] = Field(default=None, min_length=1, max_length=256)
@@ -63,9 +67,15 @@ async def update_config():
         if v is None:
             del new_config[k]
 
-    # Delete quote if account is restricted
-    if "quote" in new_config:
-        if security.is_restricted(request.user, security.Restrictions.EDITING_QUOTE):
+    # Delete updated profile data if account is restricted
+    if security.is_restricted(request.user, security.Restrictions.EDITING_PROFILE):
+        if "pfp_data" in new_config:
+            del new_config["pfp_data"]
+        if "avatar" in new_config:
+            del new_config["avatar"]
+        if "avatar_color" in new_config:
+            del new_config["avatar_color"]
+        if "quote" in new_config:
             del new_config["quote"]
 
     # Update config
@@ -76,6 +86,22 @@ async def update_config():
         "mode": "update_config",
         "payload": new_config
     }, direct_wrap=True, usernames=[request.user])
+
+    # Send updated pfp and quote to other clients
+    updated_profile_data = {"_id": request.user}
+    if "pfp_data" in new_config:
+        updated_profile_data["pfp_data"] = new_config["pfp_data"]
+    if "avatar" in new_config:
+        updated_profile_data["avatar"] = new_config["avatar"]
+    if "avatar_color" in new_config:
+        updated_profile_data["avatar_color"] = new_config["avatar_color"]
+    if "quote" in new_config:
+        updated_profile_data["quote"] = new_config["quote"]
+    if len(updated_profile_data) > 1:
+        app.cl.broadcast({
+            "mode": "update_profile",
+            "payload": updated_profile_data
+        }, direct_wrap=True)
 
     return {"error": False}, 200
 
@@ -134,3 +160,62 @@ async def get_report_history():
     else:
         payload["index"] = [report["_id"] for report in reports]
     return payload, 200
+
+
+@me_bp.get("/export")
+async def get_current_data_export():
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Get current data export request from the database
+    data_export = db.data_exports.find_one({
+        "user": request.user,
+        "$or": [
+            {"status": "pending"},
+            {"completed_at": {"$gt": int(time.time())-604800}}
+        ]
+    }, projection={"error": 0})
+    if not data_export:
+        abort(404)
+
+    # Add download token that lasts 15 minutes
+    if data_export["status"] == "completed":
+        data_export["download_token"], _ = security.create_token("access_data_export", 900, {
+            "id": data_export["_id"]
+        })
+
+    # Return data export request
+    return data_export, 200
+
+
+@me_bp.post("/export")
+async def request_data_export():
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Make sure a current data export request doesn't already exist
+    if db.data_exports.count_documents({
+        "user": request.user,
+        "$or": [
+            {"status": "pending"},
+            {"completed_at": {"$gt": int(time.time())-604800}}
+        ]
+    }) > 0:
+        abort(429)
+
+    # Create data export request
+    data_export = {
+        "_id": str(uuid.uuid4()),
+        "user": request.user,
+        "status": "pending",
+        "created_at": int(time.time())
+    }
+    db.data_exports.insert_one(data_export)
+
+    # Tell the data export service to check for new requests
+    rdb.publish("data_exports", "0")
+
+    # Return data export request
+    return data_export, 200

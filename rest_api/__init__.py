@@ -10,6 +10,7 @@ from .posts import posts_bp
 from .users import users_bp
 from .chats import chats_bp
 from .search import search_bp
+from .uploads import uploads_bp
 from .admin import admin_bp
 
 from database import db, blocked_ips, registration_blocked_ips
@@ -48,6 +49,7 @@ async def check_auth():
     if token and request.path != "/status":
         account = db.usersv0.find_one({"tokens": token}, projection={
             "_id": 1,
+            "experiments": 1,
             "permissions": 1,
             "ban.state": 1,
             "ban.expires": 1
@@ -56,6 +58,7 @@ async def check_auth():
             if account["ban"]["state"] == "perm_ban" or (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time()):
                 return {"error": True, "type": "accountBanned"}, 403
             request.user = account["_id"]
+            request.experiments = account["experiments"]
             request.permissions = account["permissions"]
 
 
@@ -143,4 +146,5 @@ app.register_blueprint(posts_bp)
 app.register_blueprint(users_bp)
 app.register_blueprint(chats_bp)
 app.register_blueprint(search_bp)
+app.register_blueprint(uploads_bp)
 app.register_blueprint(admin_bp)
