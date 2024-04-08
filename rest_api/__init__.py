@@ -98,6 +98,38 @@ async def get_statistics():
     }, 200
 
 
+@app.get("/ulist")
+async def get_ulist():
+    # Get page
+    try:
+        page = int(request.args["page"])
+    except:
+        page = 1
+
+    # Get online usernames
+    usernames = list(app.cl.usernames.keys())
+
+    # Get total pages
+    pages = (len(usernames) // 25)
+    if (len(usernames) % 25) > 0:
+        pages += 1
+
+    # Truncate list
+    usernames = usernames[((page-1)*25):(((page-1)*25)+25)]
+
+    # Return users
+    payload = {
+        "error": False,
+        "page#": page,
+        "pages": pages
+    }
+    if "autoget" in request.args:
+        payload["autoget"] = [security.get_account(username) for username in usernames]
+    else:
+        payload["index"] = usernames
+    return payload, 200
+
+
 @app.errorhandler(400)  # Bad request
 async def bad_request(e):
 	return {"error": True, "type": "badRequest"}, 400
