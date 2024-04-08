@@ -14,6 +14,7 @@ from .uploads import uploads_bp
 from .admin import admin_bp
 
 from database import db, blocked_ips, registration_blocked_ips
+import security
 
 
 # Init app
