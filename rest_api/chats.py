@@ -108,7 +108,7 @@ async def create_chat():
     chat = {
         "_id": str(uuid.uuid4()),
         "type": 0,
-        "nickname": app.supporter.wordfilter(body.nickname),
+        "nickname": body.nickname,
         "icon": body.icon,
         "icon_color": body.icon_color,
         "owner": request.user,
@@ -181,7 +181,7 @@ async def update_chat(chat_id):
     # Get updated values
     updated_vals = {"_id": chat_id}
     if body.nickname is not None and chat["nickname"] != body.nickname:
-        updated_vals["nickname"] = app.supporter.wordfilter(body.nickname)
+        updated_vals["nickname"] = body.nickname
         app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the nickname of the group chat to '{chat['nickname']}'.", chat_members=chat["members"])
     if body.icon is not None and chat["icon"] != body.icon:
         updated_vals["icon"] = body.icon

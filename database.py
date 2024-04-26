@@ -5,7 +5,7 @@ from radix import Radix
 
 from utils import log
 
-CURRENT_DB_VERSION = 2
+CURRENT_DB_VERSION = 3
 
 # Create Redis connection
 log("Connecting to Redis...")
@@ -188,13 +188,6 @@ try:
         "registration": True
     })
 except: pass
-try:
-    db.config.insert_one({
-        "_id": "filter",
-        "whitelist": [],
-        "blacklist": []
-    })
-except: pass
 
 
 # Load netblocks
@@ -243,6 +236,12 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
     log("[Migrator] Adding chat icons to database")
     db.chats.update_many({"icon": {"$exists": False}}, {"$set": {"icon": ""}})
     db.chats.update_many({"icon_color": {"$exists": False}}, {"$set": {"icon_color": "000000"}})
+
+    # Profanity filter
+    log("[Migrator] Removing profanity filter")
+    db.config.delete_one({"_id": "filter"})
+    db.posts.update_many({"unfiltered_p": {"$exists": True}}, {"$set": {"p": "$unfiltered_p"}})
+    db.posts.update_many({"unfiltered_p": {"$exists": True}}, {"$unset": {"unfiltered_p": ""}})
 
     db.config.update_one({"_id": "migration"}, {"$set": {"database": CURRENT_DB_VERSION}})
     log(f"[Migrator] Finished Migrating DB to version {CURRENT_DB_VERSION}")

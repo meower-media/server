@@ -99,7 +99,7 @@ async def update_post():
         return {"error": True, "type": "accountBanned"}, 403
 
     # Make sure new content isn't the same as the old content
-    if post.get("unfiltered_p", post["p"]) == body.content:
+    if post["p"] == body.content:
         post["error"] = False
         return post, 200
 
@@ -107,32 +107,18 @@ async def update_post():
     db.post_revisions.insert_one({
         "_id": str(uuid.uuid4()),
         "post_id": post["_id"],
-        "old_content": post.get("unfiltered_p", post["p"]),
+        "old_content": post["p"],
         "new_content": body.content,
         "time": int(time.time())
     })
 
     # Update post
     post["edited_at"] = int(time.time())
-    filtered_content = app.supporter.wordfilter(body.content)
-    if filtered_content != body.content:
-        post["p"] = filtered_content
-        post["unfiltered_p"] = body.content
-        db.posts.update_one({"_id": post_id}, {"$set": {
-            "p": post["p"],
-            "unfiltered_p": post["unfiltered_p"],
-            "edited_at": post["edited_at"]
-        }})
-    else:
-        post["p"] = body.content
-        if "unfiltered_p" in post:
-            del post["unfiltered_p"]
-        db.posts.update_one({"_id": post_id}, {"$set": {
-            "p": post["p"],
-            "edited_at": post["edited_at"]
-        }, "$unset": {
-            "unfiltered_p": ""
-        }})
+    post["p"] = body.content
+    db.posts.update_one({"_id": post_id}, {"$set": {
+        "p": post["p"],
+        "edited_at": post["edited_at"]
+    }})
 
     # Send update post event
     app.cl.broadcast({

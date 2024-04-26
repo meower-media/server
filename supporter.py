@@ -1,4 +1,3 @@
-from better_profanity import profanity
 from threading import Thread
 import uuid
 import time
@@ -10,7 +9,7 @@ from utils import timestamp
 
 """
 Meower Supporter Module
-This module provides constant variables, profanity filtering, and other miscellaneous supporter utilities.
+This module provides constant variables, and other miscellaneous supporter utilities.
 """
 
 class Supporter:
@@ -35,18 +34,11 @@ class Supporter:
         # Constant vars
         self.repair_mode = True
         self.registration = False
-        self.filter = {
-            "whitelist": [],
-            "blacklist": []
-        }
 
         # Set status
         status = db.config.find_one({"_id": "status"})
         self.repair_mode = status["repair_mode"]
         self.registration = status["registration"]
-
-        # Set filter
-        self.filter = db.config.find_one({"_id": "filter"})
 
         # Start admin pub/sub listener
         Thread(target=self.listen_for_admin_pubsub, daemon=True).start()
@@ -60,13 +52,6 @@ class Supporter:
             db.usersv0.update_one({"_id": client.username, "last_seen": {"$ne": None}}, {"$set": {
                 "last_seen": int(time.time())
             }})
-    
-    def wordfilter(self, message: str) -> str:
-        profanity.load_censor_words(whitelist_words=self.filter["whitelist"])
-        message = profanity.censor(message)
-        profanity.load_censor_words(whitelist_words=self.filter["whitelist"], custom_words=self.filter["blacklist"])
-        message = profanity.censor(message)
-        return message
 
     def create_post(self, origin: str, author: str, content: str, chat_members: list[str] = []) -> (bool, dict):
         # Create post ID and get timestamp
@@ -85,12 +70,6 @@ class Supporter:
             "isDeleted": False,
             "pinned": False
         }
-        
-        # Profanity filter
-        filtered_content = self.wordfilter(content)
-        if filtered_content != content:
-            post["p"] = filtered_content
-            post["unfiltered_p"] = content
 
         # Add database item
         if origin != "livechat":
