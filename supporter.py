@@ -1,4 +1,5 @@
 from threading import Thread
+from typing import Optional
 import uuid
 import time
 import msgpack
@@ -53,7 +54,7 @@ class Supporter:
                 "last_seen": int(time.time())
             }})
 
-    def create_post(self, origin: str, author: str, content: str, chat_members: list[str] = []) -> (bool, dict):
+    def create_post(self, origin: str, author: str, content: str, nonce: Optional[str] = None, chat_members: list[str] = []) -> (bool, dict):
         # Create post ID and get timestamp
         post_id = str(uuid.uuid4())
         ts = timestamp(1).copy()
@@ -74,6 +75,10 @@ class Supporter:
         # Add database item
         if origin != "livechat":
             db.posts.insert_one(post)
+
+        # Add nonce for WebSocket
+        if nonce:
+            post["nonce"] = nonce
 
         # Add database item and send live packet
         if origin == "home":

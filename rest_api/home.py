@@ -1,5 +1,6 @@
 from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
+from typing import Optional
 import pymongo
 
 import security
@@ -11,6 +12,7 @@ home_bp = Blueprint("home_bp", __name__, url_prefix="/home")
 
 class PostBody(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
+    nonce: Optional[str] = Field(default=None, max_length=64)
 
     class Config:
         validate_assignment = True
@@ -66,7 +68,7 @@ async def create_home_post():
     except: abort(400)
 
     # Create post
-    post = app.supporter.create_post("home", request.user, body.content)
+    post = app.supporter.create_post("home", request.user, body.content, nonce=body.nonce)
 
     # Return new post
     post["error"] = False

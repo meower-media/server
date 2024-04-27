@@ -1,5 +1,6 @@
 from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
+from typing import Optional
 from threading import Thread
 import pymongo
 import uuid
@@ -14,6 +15,7 @@ posts_bp = Blueprint("posts_bp", __name__, url_prefix="/posts")
 
 class PostBody(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
+    nonce: Optional[str] = Field(default=None, max_length=64)
 
     class Config:
         validate_assignment = True
@@ -352,7 +354,7 @@ async def create_chat_post(chat_id):
             ],)).start()
 
     # Create post
-    post = app.supporter.create_post(chat_id, request.user, body.content, chat_members=(None if chat_id == "livechat" else chat["members"]))
+    post = app.supporter.create_post(chat_id, request.user, body.content, nonce=body.nonce, chat_members=(None if chat_id == "livechat" else chat["members"]))
 
     # Return new post
     post["error"] = False
