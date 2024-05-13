@@ -5,7 +5,7 @@ from radix import Radix
 
 from utils import log
 
-CURRENT_DB_VERSION = 4
+CURRENT_DB_VERSION = 5
 
 # Create Redis connection
 log("Connecting to Redis...")
