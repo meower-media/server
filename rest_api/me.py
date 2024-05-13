@@ -1,4 +1,5 @@
 from quart import Blueprint, current_app as app, request, abort
+from quart_schema import validate_request, validate_querystring
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from copy import copy
@@ -8,10 +9,15 @@ import time
 
 import security
 from database import db, rdb, get_total_pages
+from uploads import claim_file, delete_file
+from utils import log
 
 
 me_bp = Blueprint("me_bp", __name__, url_prefix="/me")
 
+
+class DeleteAccountBody(BaseModel):
+    password: str = Field(min_length=1, max_length=255)
 
 class UpdateConfigBody(BaseModel):
     pfp_data: Optional[int] = Field(default=None)
@@ -33,6 +39,13 @@ class UpdateConfigBody(BaseModel):
         validate_assignment = True
         str_strip_whitespace = True
 
+class ChangePasswordBody(BaseModel):
+    old: str = Field(min_length=1, max_length=255)
+    new: str = Field(min_length=8, max_length=72)
+
+class GetReportsQueryArgs(BaseModel):
+    page: Optional[int] = Field(default=1, ge=1)
+
 
 @me_bp.get("/")
 async def get_me():
@@ -44,8 +57,41 @@ async def get_me():
     return security.get_account(request.user, include_config=True), 200
 
 
+@me_bp.delete("/")
+@validate_request(DeleteAccountBody)
+async def delete_account(data: DeleteAccountBody):
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Check ratelimit
+    if security.ratelimited(f"login:u:{request.user}:f"):
+        abort(429)
+
+    # Ratelimit
+    security.ratelimit(f"login:u:{request.user}:f", 5, 60)
+
+    # Check password
+    account = db.usersv0.find_one({"_id": request.user}, projection={"pswd": 1})
+    if not security.check_password_hash(data.password, account["pswd"]):
+        return {"error": True, "type": "invalidCredentials"}, 401
+    
+    # Schedule account for deletion
+    db.usersv0.update_one({"_id": request.user}, {"$set": {
+        "tokens": [],
+        "delete_after": int(time.time())+604800  # 7 days
+    }})
+
+    # Disconnect clients
+    for client in app.cl.usernames.get(request.user, []):
+        client.kick(statuscode="LoggedOut")
+
+    return {"error": False}, 200
+
+
 @me_bp.patch("/config")
-async def update_config():
+@validate_request(UpdateConfigBody)
+async def update_config(data: UpdateConfigBody):
     # Check authorization
     if not request.user:
         abort(401)
@@ -58,9 +104,7 @@ async def update_config():
     security.ratelimit(f"config:{request.user}", 10, 5)
 
     # Get new config
-    try:
-        new_config = UpdateConfigBody(**await request.json).model_dump()
-    except: abort(400)
+    new_config = data.model_dump()
 
     # Filter values that are set to None
     for k, v in copy(new_config).items():
@@ -77,6 +121,21 @@ async def update_config():
             del new_config["avatar_color"]
         if "quote" in new_config:
             del new_config["quote"]
+
+    # Claim avatar (and delete old one)
+    if "avatar" in new_config:
+        cur_avatar = db.usersv0.find_one({"_id": request.user}, projection={"avatar": 1})["avatar"]
+        if new_config["avatar"] != "":
+            try:
+                claim_file(new_config["avatar"], "icons")
+            except Exception as e:
+                log(f"Unable to claim avatar: {e}")
+                return {"error": True, "type": "unableToClaimAvatar"}, 500
+        if cur_avatar:
+            try:
+                delete_file(cur_avatar)
+            except Exception as e:
+                log(f"Unable to delete avatar: {e}")
 
     # Update config
     security.update_settings(request.user, new_config)
@@ -106,17 +165,53 @@ async def update_config():
     return {"error": False}, 200
 
 
-@me_bp.get("/reports")
-async def get_report_history():
+@me_bp.patch("/password")
+@validate_request(ChangePasswordBody)
+async def change_password(data: ChangePasswordBody):
     # Check authorization
     if not request.user:
         abort(401)
 
-    # Get page
-    try:
-        page = int(request.args["page"])
-    except:
-        page = 1
+    # Check ratelimit
+    if security.ratelimited(f"login:u:{request.user}:f"):
+        abort(429)
+
+    # Ratelimit
+    security.ratelimit(f"login:u:{request.user}:f", 5, 60)
+
+    # Check password
+    account = db.usersv0.find_one({"_id": request.user}, projection={"pswd": 1})
+    if not security.check_password_hash(data.old, account["pswd"]):
+        return {"error": True, "type": "invalidCredentials"}, 401
+
+    # Update password
+    db.usersv0.update_one({"_id": request.user}, {"$set": {"pswd": security.hash_password(data.new)}})
+
+    return {"error": False}, 200
+
+
+@me_bp.delete("/tokens")
+async def delete_tokens():
+    # Check authorization
+    if not request.user:
+        abort(401)
+    
+    # Revoke tokens
+    db.usersv0.update_one({"_id": request.user}, {"$set": {"tokens": []}})
+
+    # Disconnect clients
+    for client in app.cl.usernames.get(request.user, []):
+        client.kick(statuscode="LoggedOut")
+
+    return {"error": False}, 200
+
+
+@me_bp.get("/reports")
+@validate_querystring(GetReportsQueryArgs)
+async def get_report_history(query_args: GetReportsQueryArgs):
+    # Check authorization
+    if not request.user:
+        abort(401)
 
     # Get reports
     reports = list(
@@ -124,7 +219,7 @@ async def get_report_history():
             {"reports.user": request.user},
             projection={"escalated": 0},
             sort=[("reports.time", pymongo.DESCENDING)],
-            skip=(page - 1) * 25,
+            skip=(query_args.page - 1) * 25,
             limit=25,
         )
     )
@@ -150,16 +245,12 @@ async def get_report_history():
             report["content"] = security.get_account(report.get("content_id"))
 
     # Return reports
-    payload = {
+    return {
         "error": False,
-        "page#": page,
+        "autoget": reports,
+        "page#": query_args.page,
         "pages": get_total_pages("reports", {"reports.user": request.user}),
-    }
-    if "autoget" in request.args:
-        payload["autoget"] = reports
-    else:
-        payload["index"] = [report["_id"] for report in reports]
-    return payload, 200
+    }, 200
 
 
 @me_bp.get("/export")

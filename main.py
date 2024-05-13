@@ -12,6 +12,7 @@ from cloudlink import CloudlinkServer
 from supporter import Supporter
 from commands import MeowerCommands
 from security import background_tasks_loop
+from grpc_auth import service as grpc_auth
 from rest_api import app as rest_api
 
 
@@ -33,6 +34,9 @@ if __name__ == "__main__":
 
     # Start background tasks loop
     Thread(target=background_tasks_loop, daemon=True).start()
+
+    # Start gRPC services
+    Thread(target=grpc_auth.serve, daemon=True).start()
 
     # Initialise REST API
     rest_api.cl = cl

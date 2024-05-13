@@ -220,12 +220,12 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
     log("[Migrator] Adding pinned messages to database")
     db.posts.update_many({"pinned": {"$exists": False}}, {"$set": {"pinned": False}})
 
-    log("[Migrator] Adding Perm for pinning messages")
+    log("[Migrator] Adding perm for pinning posts")
     db.chats.update_many({"allow_pinning": {"$exists": False}}, {"$set": {"allow_pinning": False}})
 
     # Experiments
-    log("[Migrator] Adding experiments to database")
-    db.usersv0.update_many({"experiments": {"$exists": False}}, {"$set": {"experiments": 0}})
+    log("[Migrator] Removing experiments from database")
+    db.usersv0.update_many({"experiments": {"$exists": True}}, {"$unset": {"experiments": ""}})
 
     # Custom profile pictures
     log("[Migrator] Adding custom profile pictures to database")
@@ -236,6 +236,10 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
     log("[Migrator] Adding chat icons to database")
     db.chats.update_many({"icon": {"$exists": False}}, {"$set": {"icon": ""}})
     db.chats.update_many({"icon_color": {"$exists": False}}, {"$set": {"icon_color": "000000"}})
+
+    # Post attachments
+    log("[Migrator] Adding post attachments to database")
+    db.posts.update_many({"attachments": {"$exists": False}}, {"$set": {"attachments": []}})
 
     # Profanity filter
     log("[Migrator] Removing profanity filter")

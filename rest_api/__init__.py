@@ -1,7 +1,8 @@
 from quart import Quart, request
 from quart_cors import cors
-import time
-import os
+from quart_schema import QuartSchema, RequestSchemaValidationError, validate_headers, hide, deprecate
+from pydantic import BaseModel
+import time, os
 
 from .home import home_bp
 from .me import me_bp
@@ -22,6 +23,11 @@ app = Quart(__name__)
 app.config["APPLICATION_ROOT"] = os.getenv("API_ROOT", "")
 app.url_map.strict_slashes = False
 cors(app, allow_origin="*")
+QuartSchema(app)
+
+
+class TokenHeader(BaseModel):
+    token: str | None = None
 
 
 @app.before_request
@@ -38,19 +44,19 @@ async def check_ip():
 
 
 @app.before_request
-async def check_auth():
+@validate_headers(TokenHeader)
+async def check_auth(headers: TokenHeader):
     # Init request user and permissions
     request.user = None
     request.permissions = 0
 
     # Get token
-    token = request.headers.get("token")
+    token = headers.token
 
     # Authenticate request
     if token and request.path != "/status":
         account = db.usersv0.find_one({"tokens": token}, projection={
             "_id": 1,
-            "experiments": 1,
             "permissions": 1,
             "ban.state": 1,
             "ban.expires": 1
@@ -59,21 +65,23 @@ async def check_auth():
             if account["ban"]["state"] == "perm_ban" or (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time()):
                 return {"error": True, "type": "accountBanned"}, 403
             request.user = account["_id"]
-            request.experiments = account["experiments"]
             request.permissions = account["permissions"]
 
 
 @app.get("/")  # Welcome message
+@hide
 async def index():
 	return "Hello world! The Meower API is working, but it's under construction. Please come back later.", 200
 
 
 @app.get("/ip")  # Deprecated
+@deprecate()
 async def ip_tracer():
 	return "", 410
 
 
 @app.get("/favicon.ico")  # Favicon, my ass. We need no favicon for an API.
+@hide
 async def favicon_my_ass():
 	return "", 200
 
@@ -119,16 +127,17 @@ async def get_ulist():
     usernames = usernames[((page-1)*25):(((page-1)*25)+25)]
 
     # Return users
-    payload = {
+    return {
         "error": False,
+        "autoget": [security.get_account(username) for username in usernames],
         "page#": page,
         "pages": pages
-    }
-    if "autoget" in request.args:
-        payload["autoget"] = [security.get_account(username) for username in usernames]
-    else:
-        payload["index"] = usernames
-    return payload, 200
+    }, 200
+
+
+@app.errorhandler(RequestSchemaValidationError)
+async def validation_error(e):
+    return {"error": True, "type": "badRequest"}, 400
 
 
 @app.errorhandler(400)  # Bad request
