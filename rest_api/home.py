@@ -1,18 +1,25 @@
 from quart import Blueprint, current_app as app, request, abort
+from quart_schema import validate_querystring, validate_request
 from pydantic import BaseModel, Field
 from typing import Optional
 import pymongo
 
 import security
 from database import db, get_total_pages
+from uploads import claim_file
+from utils import log
 
 
 home_bp = Blueprint("home_bp", __name__, url_prefix="/home")
 
 
+class GetHomeQueryArgs(BaseModel):
+    page: Optional[int] = Field(default=1, ge=1)
+
 class PostBody(BaseModel):
-    content: str = Field(min_length=1, max_length=4000)
+    content: Optional[str] = Field(default="", min_length=1, max_length=4000)
     nonce: Optional[str] = Field(default=None, max_length=64)
+    attachments: Optional[list[str]] = Field(default_factory=list)
 
     class Config:
         validate_assignment = True
@@ -20,33 +27,24 @@ class PostBody(BaseModel):
 
 
 @home_bp.get("/")
-async def get_home_posts():
-    # Get page
-    page = 1
-    if request.user:
-        try:
-            page = int(request.args["page"])
-        except: pass
-
+@validate_querystring(GetHomeQueryArgs)
+async def get_home_posts(query_args: GetHomeQueryArgs):
     # Get posts
     query = {"post_origin": "home", "isDeleted": False}
-    posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
+    posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page-1)*25, limit=25))
 
     # Return posts
-    payload = {
+    return {
         "error": False,
-        "page#": page,
+        "autoget": posts,
+        "page#": query_args.page,
         "pages": (get_total_pages("posts", query) if request.user else 1)
-    }
-    if "autoget" in request.args:
-        payload["autoget"] = posts
-    else:
-        payload["index"] = [post["_id"] for post in posts]
-    return payload, 200
+    }, 200
 
 
 @home_bp.post("/")
-async def create_home_post():
+@validate_request(PostBody)
+async def create_home_post(data: PostBody):
     # Check authorization
     if not request.user:
         abort(401)
@@ -62,13 +60,31 @@ async def create_home_post():
     if security.is_restricted(request.user, security.Restrictions.HOME_POSTS):
         return {"error": True, "type": "accountBanned"}, 403
 
-    # Get body
-    try:
-        body = PostBody(**await request.json)
-    except: abort(400)
+    # Make sure there's not too many attachments
+    if len(data.attachments) > 10:
+        return {"error": True, "type": "tooManyAttachments"}, 400
+
+    # Claim attachments
+    attachments = []
+    for attachment_id in set(data.attachments):
+        try:
+            attachments.append(claim_file(attachment_id, "attachments"))
+        except Exception as e:
+            log(f"Unable to claim attachment: {e}")
+            return {"error": True, "type": "unableToClaimAttachment"}, 500
+
+    # Make sure the post has text content or at least 1 attachment
+    if not data.content and not attachments:
+        abort(400)
 
     # Create post
-    post = app.supporter.create_post("home", request.user, body.content, nonce=body.nonce)
+    post = app.supporter.create_post(
+        "home",
+        request.user,
+        data.content,
+        attachments=attachments,
+        nonce=data.nonce
+    )
 
     # Return new post
     post["error"] = False

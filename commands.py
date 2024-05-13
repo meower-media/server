@@ -1,12 +1,12 @@
+import time, re, uuid
+
 from cloudlink import CloudlinkServer, CloudlinkClient
 from supporter import Supporter
-from database import db, registration_blocked_ips, get_total_pages
-from threading import Thread
-import pymongo
+from database import db, registration_blocked_ips
+from uploads import claim_file, delete_file
+from utils import log
 import security
-import time
-import re
-import uuid
+
 
 class MeowerCommands:
     def __init__(self, cl: CloudlinkServer, supporter: Supporter):
@@ -259,6 +259,20 @@ class MeowerCommands:
                 del val["avatar_color"]
             if "quote" in val:
                 del val["quote"]
+
+        # Claim avatar (and delete old one)
+        cur_avatar = db.usersv0.find_one({"_id": client.username}, projection={"avatar": 1})["avatar"]
+        if val["avatar"] != "":
+            try:
+                claim_file(val["avatar"], "icons")
+            except Exception as e:
+                log(f"Unable to claim avatar: {e}")
+                del val["avatar"]
+        if cur_avatar:
+            try:
+                delete_file(cur_avatar)
+            except Exception as e:
+                log(f"Unable to delete avatar: {e}")
 
         # Update config
         security.update_settings(client.username, val)

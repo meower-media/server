@@ -1,17 +1,11 @@
-import time
-import requests
-import os
-import uuid
-import secrets
-import bcrypt
-import msgpack
-import hmac
 from base64 import urlsafe_b64encode
 from hashlib import sha256
 from typing import Optional, Any
+import time, requests, os, uuid, secrets, bcrypt, msgpack, hmac
 
 from database import db, rdb
 from utils import log
+from uploads import clear_files
 
 """
 Meower Security Module
@@ -52,10 +46,6 @@ class UserFlags:
     SYSTEM = 1
     DELETED = 2
     PROTECTED = 4
-
-
-class UserExperiments:
-    POST_ATTACHMENTS = 1
 
 
 class AdminPermissions:
@@ -144,7 +134,6 @@ def create_account(username: str, password: str, token: Optional[str] = None):
         "pswd": hash_password(password),
         "tokens": [token] if token else [],
         "flags": 0,
-        "experiments": 0,
         "permissions": 0,
         "ban": {
             "state": "none",
@@ -311,18 +300,14 @@ def delete_account(username, purge=False):
         "pswd": None,
         "tokens": None,
         "flags": account["flags"],
-        "experiments": None,
         "permissions": None,
         "ban": None,
         "last_seen": None,
         "delete_after": None
     }})
 
-    # Start deleting uploaded attachments
-    rdb.publish("uploads", msgpack.packb({
-        "op": "unclaim_attachment",
-        "uploader": username
-    }))
+    # Delete uploaded files
+    clear_files(username)
 
     # Delete user settings
     db.user_settings.delete_one({"_id": username})

@@ -1,25 +1,32 @@
 from quart import Blueprint, current_app as app, request, abort
+from quart_schema import validate_querystring, validate_request
 from pydantic import BaseModel, Field
-from typing import List, Optional, Literal
+from typing import Optional, Literal
 from base64 import b64decode
 from copy import copy
-import time
-import pymongo
-import msgpack
+import time, pymongo
 
 import security
-from database import db, rdb, get_total_pages, blocked_ips, registration_blocked_ips
+from database import db, get_total_pages, blocked_ips, registration_blocked_ips
 
 
 admin_bp = Blueprint("admin_bp", __name__, url_prefix="/admin")
 
+
+class GetReportsQueryArgs(BaseModel):
+    status: Optional[Literal[
+        "pending",
+        "no_action_taken",
+        "action_taken"
+    ]] = Field(default=None)
+    type: Optional[Literal["post", "user"]] = Field(default=None)
+    page: Optional[int] = Field(default=1, ge=1)
 
 class UpdateReportBody(BaseModel):
     status: Literal["no_action_taken", "action_taken"]
 
     class Config:
         validate_assignment = True
-
 
 class UpdateNotesBody(BaseModel):
     notes: str
@@ -28,6 +35,22 @@ class UpdateNotesBody(BaseModel):
         validate_assignment = True
         str_strip_whitespace = True
 
+class GetUsersQueryArgs(BaseModel):
+    page: Optional[int] = Field(default=1, ge=1)
+
+class UpdateUserBody(BaseModel):
+    permissions: Optional[int] = Field(default=None, ge=0)
+
+    class Config:
+        validate_assignment = True
+
+class DeleteUserQueryArgs(BaseModel):
+    mode: Literal[
+        "cancel",
+        "schedule",
+        "immediate",
+        "purge"
+    ] = Field()
 
 class UpdateUserBanBody(BaseModel):
     state: Literal[
@@ -41,14 +64,12 @@ class UpdateUserBanBody(BaseModel):
         validate_assignment = True
         str_strip_whitespace = True
 
+class GetUserPostsQueryArgs(BaseModel):
+    origin: Optional[str] = Field()
+    page: Optional[int] = Field(default=1, ge=1)
 
-class UpdateUserBody(BaseModel):
-    experiments: Optional[int] = Field(default=None, ge=0)
-    permissions: Optional[int] = Field(default=None, ge=0)
-
-    class Config:
-        validate_assignment = True
-
+class ClearUserPostsQueryArgs(BaseModel):
+    origin: str = Field(min_length=1)
 
 class UpdateChatBody(BaseModel):
     nickname: str = Field(default=None, min_length=1, max_length=32)
@@ -60,6 +81,8 @@ class UpdateChatBody(BaseModel):
         validate_assignment = True
         str_strip_whitespace = True
 
+class GetChatPostsQueryArgs(BaseModel):
+    page: Optional[int] = Field(default=1, ge=1)
 
 class InboxMessageBody(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
@@ -68,12 +91,17 @@ class InboxMessageBody(BaseModel):
         validate_assignment = True
         str_strip_whitespace = True
 
+class GetNetblocksQueryArgs(BaseModel):
+    page: Optional[int] = Field(default=1, ge=1)
 
 class NetblockBody(BaseModel):
-    type: int = Literal[0, 1]
+    type: Literal[0, 1] = Field()
 
     class Config:
         validate_assignment = True
+
+class GetAnnouncementsQueryArgs(BaseModel):
+    page: Optional[int] = Field(default=1, ge=1)
 
 
 @admin_bp.before_request
@@ -84,7 +112,8 @@ async def check_admin_perms():
 
 
 @admin_bp.get("/reports")
-async def get_reports():
+@validate_querystring(GetReportsQueryArgs)
+async def get_reports(query_args: GetReportsQueryArgs):
     # Check permissions
     if not security.has_permission(request.permissions, security.AdminPermissions.VIEW_REPORTS):
         abort(403)
@@ -92,15 +121,9 @@ async def get_reports():
     # Construct query
     query = {}
     if "status" in request.args:
-        query["status"] = request.args["status"]
+        query["status"] = query_args.status
     if "type" in request.args:
-        query["type"] = request.args["type"]
-
-    # Get page
-    try:
-        page = int(request.args["page"])
-    except:
-        page = 1
+        query["type"] = query_args.type
 
     # Get reports
     reports = list(
@@ -108,7 +131,7 @@ async def get_reports():
             query,
             projection={"reports.ip": 0},
             sort=[("escalated", pymongo.DESCENDING), ("reports.time", pymongo.DESCENDING)],
-            skip=(page - 1) * 25,
+            skip=(query_args.page - 1) * 25,
             limit=25,
         )
     )
@@ -130,21 +153,17 @@ async def get_reports():
         {
             "status": request.args.get("status", "any"),
             "type": request.args.get("type", "any"),
-            "page": page,
+            "page": query_args.page,
         },
     )
 
     # Return reports
-    payload = {
+    return {
         "error": False,
-        "page#": page,
+        "autoget": reports,
+        "page#": query_args.page,
         "pages": get_total_pages("reports", query),
-    }
-    if "autoget" in request.args:
-        payload["autoget"] = reports
-    else:
-        payload["index"] = [report["_id"] for report in reports]
-    return payload, 200
+    }, 200
 
 
 @admin_bp.get("/reports/<report_id>")
@@ -179,16 +198,11 @@ async def get_report(report_id):
 
 
 @admin_bp.patch("/reports/<report_id>")
-async def update_report(report_id):
+@validate_request(UpdateReportBody)
+async def update_report(report_id, data: UpdateReportBody):
     # Check permissions
     if not security.has_permission(request.permissions, security.AdminPermissions.EDIT_REPORTS):
         abort(403)
-
-    # Get body
-    try:
-        body = UpdateReportBody(**await request.json)
-    except:
-        abort(400)
 
     # Get report
     report = db.reports.find_one(
@@ -198,10 +212,10 @@ async def update_report(report_id):
         abort(404)
 
     # Update report
-    report["status"] = body.status
+    report["status"] = data.status
     report["escalated"] = False
     db.reports.update_one(
-        {"_id": report_id}, {"$set": {"status": body.status, "escalated": False}}
+        {"_id": report_id}, {"$set": {"status": data.status, "escalated": False}}
     )
 
     # Get content
@@ -217,7 +231,7 @@ async def update_report(report_id):
         "updated_report",
         request.user,
         request.ip,
-        {"report_id": report_id, "status": body.status, "escalated": False},
+        {"report_id": report_id, "status": data.status, "escalated": False},
     )
 
     # Return report
@@ -295,21 +309,16 @@ async def get_admin_notes(identifier):
 
 
 @admin_bp.put("/notes/<identifier>")
-async def edit_admin_note(identifier):
+@validate_request(UpdateNotesBody)
+async def edit_admin_note(identifier, data: UpdateNotesBody):
     # Check permissions
     if not security.has_permission(request.permissions, security.AdminPermissions.EDIT_NOTES):
         abort(403)
 
-    # Get body
-    try:
-        body = UpdateNotesBody(**await request.json)
-    except:
-        abort(400)
-
     # Update notes
     notes = {
         "_id": identifier,
-        "notes": body.notes,
+        "notes": data.notes,
         "last_modified_by": request.user,
         "last_modified_at": int(time.time()),
     }
@@ -322,7 +331,7 @@ async def edit_admin_note(identifier):
         "updated_notes",
         request.user,
         request.ip,
-        {"identifier": identifier, "notes": body.notes},
+        {"identifier": identifier, "notes": data.notes},
     )
 
     # Return new notes
@@ -435,30 +444,21 @@ async def restore_post(post_id):
 
 
 @admin_bp.get("/users")
-async def get_users():
-    # Get page
-    try:
-        page = int(request.args["page"])
-    except:
-        page = 1
-
+@validate_querystring(GetUsersQueryArgs)
+async def get_users(query_args: GetUsersQueryArgs):
     # Get usernames
-    usernames = [user["_id"] for user in db.usersv0.find({}, sort=[("created", pymongo.DESCENDING)], skip=(page-1)*25, limit=25)]
+    usernames = [user["_id"] for user in db.usersv0.find({}, sort=[("created", pymongo.DESCENDING)], skip=(query_args.page-1)*25, limit=25)]
 
     # Add log
-    security.add_audit_log("got_users", request.user, request.ip, {"page": page})
+    security.add_audit_log("got_users", request.user, request.ip, {"page": query_args.page})
 
     # Return users
-    payload = {
+    return {
         "error": False,
-        "page#": page,
+        "autoget": [security.get_account(username) for username in usernames],
+        "page#": query_args.page,
         "pages": get_total_pages("usersv0", {}),
-    }
-    if "autoget" in request.args:
-        payload["autoget"] = [security.get_account(username) for username in usernames]
-    else:
-        payload["index"] = usernames
-    return payload, 200
+    }, 200
 
 
 @admin_bp.get("/users/<username>")
@@ -478,7 +478,6 @@ async def get_user(username):
         "avatar_color": account["avatar_color"],
         "quote": account["quote"],
         "flags": account["flags"],
-        "experiments": account["experiments"],
         "permissions": account["permissions"],
         "last_seen": account["last_seen"],
         "delete_after": account["delete_after"],
@@ -571,16 +570,11 @@ async def get_user(username):
 
 
 @admin_bp.patch("/users/<username>")
-async def update_user(username):
+@validate_request(UpdateUserBody)
+async def update_user(username, data: UpdateUserBody):
     # Check permissions
     if not security.has_permission(request.permissions, security.AdminPermissions.SYSADMIN):
         abort(403)
-
-    # Get body
-    try:
-        body = UpdateUserBody(**await request.json)
-    except:
-        abort(400)
 
     # Make sure user exists
     if not security.account_exists(username):
@@ -589,24 +583,14 @@ async def update_user(username):
     # Create updated fields var
     updated_fields = {}
 
-    # Experiments
-    if body.experiments is not None:
-        updated_fields["experiments"] = body.experiments
-        security.add_audit_log(
-            "updated_experiments",
-            request.user,
-            request.ip,
-            {"username": username, "experiments": body.experiments},
-        )
-
     # Permissions
-    if body.permissions is not None:
-        updated_fields["permissions"] = body.permissions
+    if data.permissions is not None:
+        updated_fields["permissions"] = data.permissions
         security.add_audit_log(
             "updated_permissions",
             request.user,
             request.ip,
-            {"username": username, "permissions": body.permissions},
+            {"username": username, "permissions": data.permissions},
         )
 
     # Update user
@@ -618,13 +602,12 @@ async def update_user(username):
         "payload": updated_fields
     }, direct_wrap=True, usernames=[username])
 
-    # Send updated experiments and permissions to other clients
+    # Send updated values to other clients
     app.cl.broadcast({
         "mode": "update_profile",
         "payload": {
             "_id": username,
-            "experiments": body.experiments,
-            "permissions": body.permissions,
+            "permissions": data.permissions,
         }
     }, direct_wrap=True)
 
@@ -632,7 +615,8 @@ async def update_user(username):
 
 
 @admin_bp.delete("/users/<username>")
-async def delete_user(username):
+@validate_querystring(DeleteUserQueryArgs)
+async def delete_user(username, query_args: DeleteUserQueryArgs):
     # Check permissions
     if not security.has_permission(request.permissions, security.AdminPermissions.DELETE_USERS):
         abort(403)
@@ -650,7 +634,7 @@ async def delete_user(username):
             abort(403)
 
     # Get deletion mode
-    deletion_mode = request.args.get("mode")
+    deletion_mode = query_args.mode
 
     # Delete account (or not, depending on the mode)
     if deletion_mode == "cancel":
@@ -678,18 +662,13 @@ async def delete_user(username):
 
 
 @admin_bp.post("/users/<username>/ban")
-async def ban_user(username):
+@validate_request(UpdateUserBanBody)
+async def ban_user(username, data: UpdateUserBanBody):
     # Check permissions
     if not security.has_permission(
         request.permissions, security.AdminPermissions.EDIT_BAN_STATES
     ):
         abort(403)
-
-    # Get body
-    try:
-        body = UpdateUserBanBody(**await request.json)
-    except:
-        abort(400)
 
     # Make sure user exists
     if not security.account_exists(username):
@@ -705,7 +684,7 @@ async def ban_user(username):
 
     # Update user
     db.usersv0.update_one(
-        {"_id": username}, {"$set": {"ban": body.model_dump()}}
+        {"_id": username}, {"$set": {"ban": data.model_dump()}}
     )
 
     # Add log
@@ -713,12 +692,12 @@ async def ban_user(username):
         "banned",
         request.user,
         request.ip,
-        {"username": username, "ban": body.model_dump()},
+        {"username": username, "ban": data.model_dump()},
     )
 
     # Kick client or send updated ban state
-    if (body.state == "perm_ban") or (
-        body.state == "temp_ban" and body.expires > time.time()
+    if (data.state == "perm_ban") or (
+        data.state == "temp_ban" and data.expires > time.time()
     ):
         for client in app.cl.usernames.get(username, []):
             client.kick(statuscode="Banned")
@@ -726,7 +705,7 @@ async def ban_user(username):
         app.cl.broadcast({
             "mode": "update_config",
             "payload": {
-                "ban": body.model_dump()
+                "ban": data.model_dump()
             }
         }, direct_wrap=True, usernames=[username])
 
@@ -734,24 +713,16 @@ async def ban_user(username):
 
 
 @admin_bp.get("/users/<username>/posts")
-async def get_user_posts(username):
+@validate_querystring(GetUserPostsQueryArgs)
+async def get_user_posts(username, query_args: GetUserPostsQueryArgs):
     # Check permissions
     if not security.has_permission(request.permissions, security.AdminPermissions.VIEW_POSTS):
         abort(401)
 
-    # Get post origin
-    post_origin = request.args.get("origin") 
-
-    # Get page
-    try:
-        page = int(request.args["page"])
-    except:
-        page = 1
-
     # Get posts
-    if post_origin:
+    if query_args.origin:
         query = {
-            "post_origin": post_origin,
+            "post_origin": query_args.origin,
             "$or": [{"isDeleted": False}, {"isDeleted": True}],
             "u": username,
         }
@@ -759,7 +730,7 @@ async def get_user_posts(username):
         query = {"u": username}
     posts = list(
         db.posts.find(
-            query, sort=[("t.e", pymongo.DESCENDING)], skip=(page - 1) * 25, limit=25
+            query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page - 1) * 25, limit=25
         )
     )
 
@@ -768,30 +739,24 @@ async def get_user_posts(username):
         "got_user_posts",
         request.user,
         request.ip,
-        {"username": username, "post_origin": post_origin, "page": page},
+        {"username": username, "post_origin": query_args.origin, "page": query_args.page},
     )
 
     # Return posts
-    payload = {
+    return {
         "error": False,
-        "page#": page,
+        "autoget": posts,
+        "page#": query_args.page,
         "pages": get_total_pages("posts", query),
-    }
-    if "autoget" in request.args:
-        payload["autoget"] = posts
-    else:
-        payload["index"] = [post["_id"] for post in posts]
-    return payload, 200
+    }, 200
 
 
 @admin_bp.delete("/users/<username>/posts")
-async def clear_user_posts(username):
+@validate_querystring(ClearUserPostsQueryArgs)
+async def clear_user_posts(username, query_args: ClearUserPostsQueryArgs):
     # Check permissions
     if not security.has_permission(request.permissions, security.AdminPermissions.DELETE_POSTS):
         abort(401)
-
-    # Get post origin
-    post_origin = request.args.get("origin") 
 
     # Make sure user isn't protected
     if not security.has_permission(request.permissions, security.AdminPermissions.SYSADMIN):
@@ -802,8 +767,8 @@ async def clear_user_posts(username):
             abort(403)
 
     # Delete posts
-    if post_origin:
-        query = {"post_origin": post_origin, "isDeleted": False, "u": username}
+    if query_args.origin:
+        query = {"post_origin": query_args.origin, "isDeleted": False, "u": username}
     else:
         query = {"u": username, "isDeleted": False}
     db.posts.update_many(
@@ -822,37 +787,32 @@ async def clear_user_posts(username):
         "clear_user_posts",
         request.user,
         request.ip,
-        {"username": username, "post_origin": post_origin},
+        {"username": username, "post_origin": query_args.origin},
     )
 
     return {"error": False}, 200
 
 
 @admin_bp.post("/users/<username>/alert")
-async def send_alert(username):
+@validate_request(InboxMessageBody)
+async def send_alert(username, data: InboxMessageBody):
     # Check permissions
     if not security.has_permission(request.permissions, security.AdminPermissions.SEND_ALERTS):
         abort(401)
-
-    # Get body
-    try:
-        body = InboxMessageBody(**await request.json)
-    except:
-        abort(400)
 
     # Make sure user exists
     if not security.account_exists(username):
         abort(404)
 
     # Create inbox message
-    post = app.supporter.create_post("inbox", username, body.content)
+    post = app.supporter.create_post("inbox", username, data.content)
 
     # Add log
     security.add_audit_log(
         "alerted",
         request.user,
         request.ip,
-        {"username": username, "content": body.content},
+        {"username": username, "content": data.content},
     )
 
     # Return new post
@@ -993,15 +953,11 @@ async def get_chat(chat_id):
 
 
 @admin_bp.patch("/chats/<chat_id>")
-async def update_chat(chat_id):
+@validate_request(UpdateChatBody)
+async def update_chat(chat_id, data: UpdateChatBody):
     # Check permissions
     if not security.has_permission(request.permissions, security.AdminPermissions.EDIT_CHATS):
         abort(403)
-
-    # Get body
-    try:
-        body = UpdateChatBody(**await request.json)
-    except: abort(400)
 
     # Get chat
     chat = db.chats.find_one({"_id": chat_id})
@@ -1010,14 +966,14 @@ async def update_chat(chat_id):
 
     # Get updated values
     updated_vals = {"_id": chat_id}
-    if body.nickname is not None and chat["nickname"] != body.nickname:
-        updated_vals["nickname"] = body.nickname
-    if body.icon is not None and chat["icon"] != body.icon:
-        updated_vals["icon"] = body.icon
-    if body.icon_color is not None and chat["icon_color"] != body.icon_color:
-        updated_vals["icon_color"] = body.icon_color
-    if body.allow_pinning is not None:
-        updated_vals["allow_pinning"] = body.allow_pinning
+    if data.nickname is not None and chat["nickname"] != data.nickname:
+        updated_vals["nickname"] = data.nickname
+    if data.icon == "":
+        updated_vals["icon"] = data.icon
+    if data.icon_color is not None and chat["icon_color"] != data.icon_color:
+        updated_vals["icon_color"] = data.icon_color
+    if data.allow_pinning is not None:
+        updated_vals["allow_pinning"] = data.allow_pinning
     
     # Update chat
     db.chats.update_one({"_id": chat_id}, {"$set": updated_vals})
@@ -1095,94 +1051,6 @@ async def restore_chat(chat_id):
     return chat, 200
 
 
-@admin_bp.put("/chats/<chat_id>/members/<username>")
-async def add_chat_member(chat_id, username):
-    # Check permissions
-    if not security.has_permission(request.permissions, security.AdminPermissions.EDIT_CHATS):
-        abort(403)
-
-    # Get chat
-    chat = db.chats.find_one({"_id": chat_id})
-    if not chat:
-        abort(404)
-
-    # Make sure the user isn't already in the chat
-    if username in chat["members"]:
-        return {"error": True, "type": "chatMemberAlreadyExists"}, 409
-
-    # Make sure requested user exists and isn't deleted
-    user = db.usersv0.find_one({"_id": username}, projection={"permissions": 1})
-    if (not user) or (user["permissions"] is None):
-        abort(404)
-
-    # Update chat
-    chat["members"].append(username)
-    db.chats.update_one({"_id": chat_id}, {"$addToSet": {"members": username}})
-
-    # Send create chat event
-    app.cl.broadcast({
-        "mode": "create_chat",
-        "payload": chat
-    }, direct_wrap=True, usernames=[username])
-
-    # Send update chat event
-    app.cl.broadcast({
-        "mode": "update_chat",
-        "payload": {
-            "_id": chat_id,
-            "members": chat["members"]
-        }
-    }, direct_wrap=True, usernames=chat["members"])
-
-    # Add log
-    security.add_audit_log("added_chat_member", request.user, request.ip, {"chat_id": chat_id, "username": username})
-
-    # Return chat
-    chat["error"] = False
-    return chat, 200
-
-
-@admin_bp.delete("/chats/<chat_id>/members/<username>")
-async def remove_chat_member(chat_id, username):
-    # Check permissions
-    if not security.has_permission(request.permissions, security.AdminPermissions.EDIT_CHATS):
-        abort(403)
-
-    # Get chat
-    chat = db.chats.find_one({
-        "_id": chat_id,
-        "members": username
-    })
-    if not chat:
-        abort(404)
-
-    # Update chat
-    chat["members"].remove(username)
-    db.chats.update_one({"_id": chat_id}, {"$pull": {"members": username}})
-
-    # Send update chat event
-    app.cl.broadcast({
-        "mode": "update_chat",
-        "payload": {
-            "_id": chat_id,
-            "members": chat["members"]
-        }
-    }, direct_wrap=True, usernames=chat["members"])
-
-    # Send delete chat event to user
-    app.cl.broadcast({
-        "mode": "delete",
-        "id": chat_id
-    }, direct_wrap=True, usernames=[username])
-
-    # Add log
-    security.add_audit_log("removed_chat_member", request.user, request.ip, {"chat_id": chat_id, "username": username})
-
-    # Return chat
-    chat["error"] = False
-    return chat, 200
-
-
 @admin_bp.post("/chats/<chat_id>/members/<username>/transfer")
 async def transfer_chat_ownership(chat_id, username):
     # Check permissions
@@ -1224,16 +1092,11 @@ async def transfer_chat_ownership(chat_id, username):
 
 
 @admin_bp.get("/chats/<chat_id>/posts")
-async def get_chat_posts(chat_id):
+@validate_querystring(GetChatPostsQueryArgs)
+async def get_chat_posts(chat_id, query_args: GetChatPostsQueryArgs):
     # Check permissions
     if not security.has_permission(request.permissions, security.AdminPermissions.VIEW_CHATS):
         abort(403)
-
-    # Get page
-    try:
-        page = int(request.args["page"])
-    except:
-        page = 1
 
     # Make sure chat exists
     if db.chats.count_documents({
@@ -1243,19 +1106,15 @@ async def get_chat_posts(chat_id):
 
     # Get posts
     query = {"post_origin": chat_id, "$or": [{"isDeleted": False}, {"isDeleted": True}]}
-    posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
+    posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page-1)*25, limit=25))
 
     # Return posts
-    payload = {
+    return {
         "error": False,
-        "page#": page,
+        "autoget": posts,
+        "page#": query_args.page,
         "pages": get_total_pages("posts", query)
-    }
-    if "autoget" in request.args:
-        payload["autoget"] = posts
-    else:
-        payload["index"] = [post["_id"] for post in posts]
-    return payload, 200
+    }, 200
 
 
 @admin_bp.get("/netinfo/<ip>")
@@ -1299,34 +1158,25 @@ async def get_netinfo(ip):
 
 
 @admin_bp.get("/netblocks")
-async def get_netblocks():
+@validate_querystring(GetNetblocksQueryArgs)
+async def get_netblocks(query_args: GetNetblocksQueryArgs):
     # Check permissions
     if not security.has_permission(request.permissions, security.AdminPermissions.VIEW_IPS):
         abort(401)
 
-    # Get page
-    try:
-        page = int(request.args["page"])
-    except:
-        page = 1
-
     # Get netblocks
-    netblocks = list(db.netblock.find({}, sort=[("created", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
+    netblocks = list(db.netblock.find({}, sort=[("created", pymongo.DESCENDING)], skip=(query_args.page-1)*25, limit=25))
 
     # Add log
-    security.add_audit_log("got_netblocks", request.user, request.ip, {"page": page})
+    security.add_audit_log("got_netblocks", request.user, request.ip, {"page": query_args.page})
 
     # Return netblocks
-    payload = {
+    return {
         "error": False,
-        "page#": page,
+        "autoget": netblocks,
+        "page#": query_args.page,
         "pages": get_total_pages("netblock", {})
-    }
-    if "autoget" in request.args:
-        payload["autoget"] = netblocks
-    else:
-        payload["index"] = [netblock["_id"] for netblock in netblocks]
-    return payload, 200
+    }, 200
 
 
 @admin_bp.get("/netblocks/<cidr>")
@@ -1354,7 +1204,8 @@ async def get_netblock(cidr):
 
 
 @admin_bp.put("/netblocks/<cidr>")
-async def create_netblock(cidr):
+@validate_request(NetblockBody)
+async def create_netblock(cidr, data: NetblockBody):
     # Check permissions
     if not security.has_permission(request.permissions, security.AdminPermissions.BLOCK_IPS):
         abort(401)
@@ -1362,16 +1213,10 @@ async def create_netblock(cidr):
     # b64 decode CIDR
     cidr = b64decode(cidr.encode()).decode()
 
-    # Get body
-    try:
-        body = NetblockBody(**await request.json)
-    except:
-        abort(400)
-
     # Construct netblock obj
     netblock = {
         "_id": cidr,
-        "type": body.type,
+        "type": data.type,
         "created": int(time.time())
     }
 
@@ -1382,9 +1227,9 @@ async def create_netblock(cidr):
         registration_blocked_ips.delete(cidr)
 
     # Add to Radix
-    if body.type == 0:
+    if data.type == 0:
         radix_node = blocked_ips.add(cidr)
-    elif body.type == 1:
+    elif data.type == 1:
         radix_node = registration_blocked_ips.add(cidr)
 
     # Modify netblock with new Radix node prefix
@@ -1396,7 +1241,7 @@ async def create_netblock(cidr):
     )
 
     # Kick clients
-    if body.type == 0:
+    if data.type == 0:
         for client in copy(app.cl.clients):
             if blocked_ips.search_best(client.ip):
                 client.kick(statuscode="Blocked")
@@ -1441,16 +1286,11 @@ async def delete_netblock(cidr):
 
 
 @admin_bp.get("/announcements")
-async def get_announcements():
+@validate_querystring(GetAnnouncementsQueryArgs)
+async def get_announcements(query_args: GetAnnouncementsQueryArgs):
     # Check permissions
     if not security.has_permission(request.permissions, security.AdminPermissions.VIEW_POSTS):
         abort(401)
-
-    # Get page
-    try:
-        page = int(request.args["page"])
-    except:
-        page = 1
 
     # Get posts
     query = {
@@ -1460,48 +1300,39 @@ async def get_announcements():
     }
     posts = list(
         db.posts.find(
-            query, sort=[("t.e", pymongo.DESCENDING)], skip=(page - 1) * 25, limit=25
+            query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page - 1) * 25, limit=25
         )
     )
 
     # Add log
     security.add_audit_log(
-        "got_announcements", request.user, request.ip, {"page": page}
+        "got_announcements", request.user, request.ip, {"page": query_args.page}
     )
 
     # Return posts
-    payload = {
+    return {
         "error": False,
-        "page#": page,
+        "autoget": posts,
+        "page#": query_args.page,
         "pages": get_total_pages("posts", query),
-    }
-    if "autoget" in request.args:
-        payload["autoget"] = posts
-    else:
-        payload["index"] = [post["_id"] for post in posts]
-    return payload, 200
+    }, 200
 
 
 @admin_bp.post("/announcements")
-async def send_announcement():
+@validate_request(InboxMessageBody)
+async def send_announcement(data: InboxMessageBody):
     # Check permissions
     if not security.has_permission(
         request.permissions, security.AdminPermissions.SEND_ANNOUNCEMENTS
     ):
         abort(401)
 
-    # Get body
-    try:
-        body = InboxMessageBody(**await request.json)
-    except:
-        abort(400)
-
     # Create announcement
-    post = app.supporter.create_post("inbox", "Server", body.content)
+    post = app.supporter.create_post("inbox", "Server", data.content)
 
     # Add log
     security.add_audit_log(
-        "sent_announcement", request.user, request.ip, {"content": body.content}
+        "sent_announcement", request.user, request.ip, {"content": data.content}
     )
 
     # Return new post

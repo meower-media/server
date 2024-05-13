@@ -1,4 +1,7 @@
-from quart import Blueprint, request, abort
+from quart import Blueprint, request
+from quart_schema import validate_querystring
+from pydantic import BaseModel, Field
+from typing import Optional
 
 import security
 from database import db, get_total_pages
@@ -7,65 +10,38 @@ from database import db, get_total_pages
 search_bp = Blueprint("search_bp", __name__, url_prefix="/search")
 
 
+class SearchQueryArgs(BaseModel):
+    q: str = Field(min_length=1, max_length=4000)
+    page: Optional[int] = Field(default=1, ge=1)
+
+
 @search_bp.get("/home")
-async def search_home():
-    # Get query
-    q = request.args.get("q")
-    if not q:
-        abort(400)
-    elif len(q) > 4000:
-        q = q[:4000]
-
-    # Get page
-    try:
-        page = int(request.args["page"])
-    except:
-        page = 1
-
+@validate_querystring(SearchQueryArgs)
+async def search_home(query_args: SearchQueryArgs):
     # Get posts
-    query = {"post_origin": "home", "isDeleted": False, "$text": {"$search": q}}
-    posts = list(db.posts.find(query, skip=(page-1)*25, limit=25))
+    query = {"post_origin": "home", "isDeleted": False, "$text": {"$search": query_args.q}}
+    posts = list(db.posts.find(query, skip=(query_args.page-1)*25, limit=25))
 
     # Return posts
-    payload = {
+    return {
         "error": False,
-        "page#": page,
+        "autoget": posts,
+        "page#": query_args.page,
         "pages": get_total_pages("posts", query)
-    }
-    if "autoget" in request.args:
-        payload["autoget"] = posts
-    else:
-        payload["index"] = [post["_id"] for post in posts]
-    return payload, 200
+    }, 200
 
 
 @search_bp.get("/users")
-async def search_users():
-    # Get query
-    q = request.args.get("q")
-    if not q:
-        abort(400)
-    elif len(q) > 20:
-        q = q[:20]
-
-    # Get page
-    try:
-        page = int(request.args["page"])
-    except:
-        page = 1
-
+@validate_querystring(SearchQueryArgs)
+async def search_users(query_args: SearchQueryArgs):
     # Get users
-    query = {"pswd": {"$type": "string"}, "$text": {"$search": q}}
-    usernames = [user["_id"] for user in db.usersv0.find(query, skip=(page-1)*25, limit=25, projection={"_id": 1})]
+    query = {"pswd": {"$type": "string"}, "$text": {"$search": query_args.q}}
+    usernames = [user["_id"] for user in db.usersv0.find(query, skip=(query_args.page-1)*25, limit=25, projection={"_id": 1})]
 
     # Return users
-    payload = {
+    return {
         "error": False,
-        "page#": page,
+        "autoget": [security.get_account(username) for username in usernames],
+        "page#": query_args.page,
         "pages": get_total_pages("usersv0", query)
-    }
-    if "autoget" in request.args:
-        payload["autoget"] = [security.get_account(username) for username in usernames]
-    else:
-        payload["index"] = usernames
-    return payload, 200
+    }, 200

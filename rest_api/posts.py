@@ -1,21 +1,30 @@
 from quart import Blueprint, current_app as app, request, abort
+from quart_schema import validate_querystring, validate_request
 from pydantic import BaseModel, Field
 from typing import Optional
 from threading import Thread
-import pymongo
-import uuid
-import time
+from copy import copy
+import pymongo, uuid, time
 
 import security
 from database import db, get_total_pages
+from uploads import claim_file, delete_file
+from utils import log
 
 
 posts_bp = Blueprint("posts_bp", __name__, url_prefix="/posts")
 
 
+class PostIdQueryArgs(BaseModel):
+    id: str = Field()
+
+class GetChatPostsQueryArgs(BaseModel):
+    page: Optional[int] = Field(default=1, ge=1)
+
 class PostBody(BaseModel):
-    content: str = Field(min_length=1, max_length=4000)
+    content: Optional[str] = Field(default="", min_length=1, max_length=4000)
     nonce: Optional[str] = Field(default=None, max_length=64)
+    attachments: Optional[list[str]] = Field(default_factory=list)
 
     class Config:
         validate_assignment = True
@@ -23,14 +32,10 @@ class PostBody(BaseModel):
 
 
 @posts_bp.get("/")
-async def get_post():
-    # Get post ID
-    post_id = request.args.get("id")
-    if not post_id:
-        abort(400)
-    
+@validate_querystring(PostIdQueryArgs)
+async def get_post(query_args: PostIdQueryArgs):    
     # Get post
-    post = db.posts.find_one({"_id": post_id, "isDeleted": False})
+    post = db.posts.find_one({"_id": query_args.id, "isDeleted": False})
     if not post:
         abort(404)
 
@@ -51,7 +56,9 @@ async def get_post():
 
 
 @posts_bp.patch("/")
-async def update_post():
+@validate_querystring(PostIdQueryArgs)
+@validate_request(PostBody)
+async def update_post(query_args: PostIdQueryArgs, data: PostBody):
     # Check authorization
     if not request.user:
         abort(401)
@@ -62,19 +69,9 @@ async def update_post():
 
     # Ratelimit
     security.ratelimit(f"post:{request.user}", 6, 5)
-
-    # Get body
-    try:
-        body = PostBody(**await request.json)
-    except: abort(400)
-
-    # Get post ID
-    post_id = request.args.get("id")
-    if not post_id:
-        abort(400)
     
     # Get post
-    post = db.posts.find_one({"_id": post_id, "isDeleted": False})
+    post = db.posts.find_one({"_id": query_args.id, "isDeleted": False})
     if not post:
         abort(404)
 
@@ -101,23 +98,27 @@ async def update_post():
         return {"error": True, "type": "accountBanned"}, 403
 
     # Make sure new content isn't the same as the old content
-    if post["p"] == body.content:
+    if post["p"] == data.content:
         post["error"] = False
         return post, 200
+
+    # Make sure the post has text content
+    if not data.content:
+        abort(400)
 
     # Add revision
     db.post_revisions.insert_one({
         "_id": str(uuid.uuid4()),
         "post_id": post["_id"],
         "old_content": post["p"],
-        "new_content": body.content,
+        "new_content": data.content,
         "time": int(time.time())
     })
 
     # Update post
     post["edited_at"] = int(time.time())
-    post["p"] = body.content
-    db.posts.update_one({"_id": post_id}, {"$set": {
+    post["p"] = data.content
+    db.posts.update_one({"_id": query_args.id}, {"$set": {
         "p": post["p"],
         "edited_at": post["edited_at"]
     }})
@@ -131,6 +132,7 @@ async def update_post():
     # Return post
     post["error"] = False
     return post, 200
+
 
 @posts_bp.post("/<post_id>/pin")
 async def pin_post(post_id):
@@ -208,8 +210,8 @@ async def unpin_post(post_id):
     return post, 200
 
 
-@posts_bp.delete("/")
-async def delete_post():
+@posts_bp.delete("/<post_id>/attachments/<attachment_id>")
+async def delete_attachment(post_id: str, attachment_id: str):
     # Check authorization
     if not request.user:
         abort(401)
@@ -220,14 +222,82 @@ async def delete_post():
 
     # Ratelimit
     security.ratelimit(f"post:{request.user}", 6, 5)
-
-    # Get post ID
-    post_id = request.args.get("id")
-    if not post_id:
-        abort(400)
     
     # Get post
     post = db.posts.find_one({"_id": post_id, "isDeleted": False})
+    if not post:
+        abort(404)
+
+    # Check access
+    if (post["post_origin"] == "inbox") and (post["u"] != request.user):
+        abort(404)
+    elif post["post_origin"] not in ["home", "inbox"]:
+        chat = db.chats.find_one({
+            "_id": post["post_origin"],
+            "members": request.user,
+            "deleted": False
+        })
+        if not chat:
+            abort(404)
+
+    # Check permissions
+    if post["post_origin"] == "inbox" or post["u"] != request.user:
+        abort(403)
+
+    # Delete attachment
+    for attachment in copy(post["attachments"]):
+        if attachment["id"] == attachment_id:
+            try:
+                delete_file(attachment_id)
+            except Exception as e:
+                log(f"Unable to delete attachment: {e}")
+            post["attachments"].remove(attachment)
+
+    if post["p"] or post["attachments"] > 0:
+        # Update post
+        db.posts.update_one({"_id": post_id}, {"$set": {
+            "attachments": post["attachments"]
+        }})
+
+        # Send update post event
+        app.cl.broadcast({
+            "mode": "update_post",
+            "payload": post
+        }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+    else:  # delete post if no content and attachments remain
+        # Update post
+        db.posts.update_one({"_id": post_id}, {"$set": {
+            "isDeleted": True,
+            "deleted_at": int(time.time())
+        }})
+
+        # Send delete post event
+        app.cl.broadcast({
+            "mode": "delete",
+            "id": post_id
+        }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+
+    # Return post
+    post["error"] = False
+    return post, 200
+
+
+@posts_bp.delete("/")
+@validate_querystring(PostIdQueryArgs)
+async def delete_post(query_args: PostIdQueryArgs):
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Check ratelimit
+    if security.ratelimited(f"post:{request.user}"):
+        abort(429)
+
+    # Ratelimit
+    security.ratelimit(f"post:{request.user}", 6, 5)
+    
+    # Get post
+    post = db.posts.find_one({"_id": query_args.id, "isDeleted": False})
     if not post:
         abort(404)
 
@@ -244,8 +314,15 @@ async def delete_post():
         if (post["post_origin"] in ["home", "inbox"]) or (chat["owner"] != request.user):
             abort(403)
 
+    # Delete attachments
+    for attachment in post["attachments"]:
+        try:
+            delete_file(attachment["id"])
+        except Exception as e:
+            log(f"Unable to delete attachment: {e}")
+
     # Update post
-    db.posts.update_one({"_id": post_id}, {"$set": {
+    db.posts.update_one({"_id": query_args.id}, {"$set": {
         "isDeleted": True,
         "deleted_at": int(time.time())
     }})
@@ -253,23 +330,18 @@ async def delete_post():
     # Send delete post event
     app.cl.broadcast({
         "mode": "delete",
-        "id": post_id
+        "id": query_args.id
     }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
 
     return {"error": False}, 200
 
 
 @posts_bp.get("/<chat_id>")
-async def get_chat_posts(chat_id):
+@validate_querystring(GetChatPostsQueryArgs)
+async def get_chat_posts(chat_id, query_args: GetChatPostsQueryArgs):
     # Check authorization
     if not request.user:
         abort(401)
-
-    # Get page
-    try:
-        page = int(request.args["page"])
-    except:
-        page = 1
 
     # Make sure chat exists
     if db.chats.count_documents({
@@ -281,23 +353,20 @@ async def get_chat_posts(chat_id):
 
     # Get posts
     query = {"post_origin": chat_id, "isDeleted": False}
-    posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
+    posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page-1)*25, limit=25))
 
     # Return posts
-    payload = {
+    return {
         "error": False,
-        "page#": page,
+        "autoget": posts,
+        "page#": query_args.page,
         "pages": get_total_pages("posts", query)
-    }
-    if "autoget" in request.args:
-        payload["autoget"] = posts
-    else:
-        payload["index"] = [post["_id"] for post in posts]
-    return payload, 200
+    }, 200
 
 
 @posts_bp.post("/<chat_id>")
-async def create_chat_post(chat_id):
+@validate_request(PostBody)
+async def create_chat_post(chat_id, data: PostBody):
     # Check authorization
     if not request.user:
         abort(401)
@@ -313,10 +382,23 @@ async def create_chat_post(chat_id):
     if security.is_restricted(request.user, security.Restrictions.CHAT_POSTS):
         return {"error": True, "type": "accountBanned"}, 403
 
-    # Get body
-    try:
-        body = PostBody(**await request.json)
-    except: abort(400)
+    # Make sure there's not too many attachments
+    if len(data.attachments) > 10:
+        return {"error": True, "type": "tooManyAttachments"}, 400
+
+    # Claim attachments
+    attachments = []
+    if chat_id != "livechat":
+        for attachment_id in set(data.attachments):
+            try:
+                attachments.append(claim_file(attachment_id, "attachments"))
+            except Exception as e:
+                log(f"Unable to claim attachment: {e}")
+                return {"error": True, "type": "unableToClaimAttachment"}, 500
+
+    # Make sure the post has text content or at least 1 attachment
+    if not data.content and not attachments:
+        abort(400)
 
     if chat_id != "livechat":
         # Get chat
@@ -354,7 +436,14 @@ async def create_chat_post(chat_id):
             ],)).start()
 
     # Create post
-    post = app.supporter.create_post(chat_id, request.user, body.content, nonce=body.nonce, chat_members=(None if chat_id == "livechat" else chat["members"]))
+    post = app.supporter.create_post(
+        chat_id,
+        request.user,
+        data.content,
+        attachments=attachments,
+        nonce=data.nonce,
+        chat_members=(None if chat_id == "livechat" else chat["members"])
+    )
 
     # Return new post
     post["error"] = False

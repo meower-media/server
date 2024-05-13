@@ -1,12 +1,11 @@
 from threading import Thread
 from typing import Optional
-import uuid
-import time
-import msgpack
+import uuid, time, msgpack
 
 from cloudlink import CloudlinkServer, CloudlinkClient
 from database import db, rdb, blocked_ips
 from utils import timestamp
+from uploads import FileDetails
 
 """
 Meower Supporter Module
@@ -54,7 +53,15 @@ class Supporter:
                 "last_seen": int(time.time())
             }})
 
-    def create_post(self, origin: str, author: str, content: str, nonce: Optional[str] = None, chat_members: list[str] = []) -> (bool, dict):
+    def create_post(
+        self,
+        origin: str,
+        author: str,
+        content: str,
+        attachments: list[FileDetails] = [],
+        nonce: Optional[str] = None,
+        chat_members: list[str] = []
+    ) -> tuple[bool, dict]:
         # Create post ID and get timestamp
         post_id = str(uuid.uuid4())
         ts = timestamp(1).copy()
@@ -67,6 +74,7 @@ class Supporter:
             "u": author,
             "t": ts, 
             "p": content,
+            "attachments": attachments,
             "post_id": post_id, 
             "isDeleted": False,
             "pinned": False
