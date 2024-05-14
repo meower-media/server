@@ -17,7 +17,7 @@ class GetHomeQueryArgs(BaseModel):
     page: Optional[int] = Field(default=1, ge=1)
 
 class PostBody(BaseModel):
-    content: Optional[str] = Field(default="", min_length=1, max_length=4000)
+    content: Optional[str] = Field(default="", max_length=4000)
     nonce: Optional[str] = Field(default=None, max_length=64)
     attachments: Optional[list[str]] = Field(default_factory=list)
 

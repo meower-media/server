@@ -65,7 +65,7 @@ class UpdateUserBanBody(BaseModel):
         str_strip_whitespace = True
 
 class GetUserPostsQueryArgs(BaseModel):
-    origin: Optional[str] = Field()
+    origin: Optional[str] = Field(default=None)
     page: Optional[int] = Field(default=1, ge=1)
 
 class ClearUserPostsQueryArgs(BaseModel):
