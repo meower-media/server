@@ -54,6 +54,10 @@ class UserFlags:
     PROTECTED = 4
 
 
+class UserExperiments:
+    POST_ATTACHMENTS = 1
+
+
 class AdminPermissions:
     SYSADMIN = 1
 
@@ -81,14 +85,15 @@ class AdminPermissions:
     EDIT_CHATS = 131072
 
     SEND_ANNOUNCEMENTS = 262144
+    CHANGE_PROFANITY = 524288
 
 
 class Restrictions:
     HOME_POSTS = 1
     CHAT_POSTS = 2
     NEW_CHATS = 4
-    EDITING_CHAT_NICKNAMES = 8
-    EDITING_QUOTE = 16
+    EDITING_CHAT_DETAILS = 8
+    EDITING_PROFILE = 16
 
 
 def ratelimited(bucket_id: str):
@@ -134,10 +139,13 @@ def create_account(username: str, password: str, token: Optional[str] = None):
         "uuid": str(uuid.uuid4()),
         "created": int(time.time()),
         "pfp_data": 1,
+        "avatar": "",
+        "avatar_color": "000000",
         "quote": "",
         "pswd": hash_password(password),
         "tokens": [token] if token else [],
         "flags": 0,
+        "experiments": 0,
         "permissions": 0,
         "ban": {
             "state": "none",
@@ -202,8 +210,8 @@ def update_settings(username, newdata):
         log(f"Error on update_settings: Expected str for newdata, got {type(newdata)}")
         return False
     
-    # Get user UUID
-    account = db.usersv0.find_one({"lower_username": username.lower()}, projection={"_id": 1, "uuid": 1})
+    # Get user UUID and avatar
+    account = db.usersv0.find_one({"lower_username": username.lower()}, projection={"_id": 1, "uuid": 1, "avatar": 1})
     if not account:
         return False
     
@@ -212,19 +220,19 @@ def update_settings(username, newdata):
     updated_user_settings_vals = {}
 
     # Update pfp
-    if "pfp_data" in newdata:
-        if isinstance(newdata["pfp_data"], int):
-            updated_user_vals["pfp_data"] = newdata["pfp_data"]
+    if "pfp_data" in newdata and isinstance(newdata["pfp_data"], int):
+        updated_user_vals["pfp_data"] = newdata["pfp_data"]
+    if "avatar" in newdata and isinstance(newdata["avatar"], str) and len(newdata["avatar"]) <= 24:
+        updated_user_vals["avatar"] = newdata["avatar"]
+    if "avatar_color" in newdata and isinstance(newdata["avatar_color"], str) and len(newdata["avatar_color"]) == 6:
+        updated_user_vals["avatar_color"] = newdata["avatar_color"]
     
     # Update quote
-    if "quote" in newdata:
-        if isinstance(newdata["quote"], str) and len(newdata["quote"]) <= 360:
-            updated_user_vals["quote"] = newdata["quote"]
+    if "quote" in newdata and isinstance(newdata["quote"], str) and len(newdata["quote"]) <= 360:
+        updated_user_vals["quote"] = newdata["quote"]
 
     # Update settings
     for key, default_val in DEFAULT_USER_SETTINGS.items():
-        if key == "tos_revisions":
-            continue
         if key in newdata:
             if isinstance(newdata[key], type(default_val)):
                 if key == "favorited_chats" and len(newdata[key]) > 50:
@@ -298,15 +306,24 @@ def delete_account(username, purge=False):
     # Update account
     db.usersv0.update_one({"_id": username}, {"$set": {
         "pfp_data": None,
+        "avatar": None,
+        "avatar_color": None,
         "quote": None,
         "pswd": None,
         "tokens": None,
         "flags": account["flags"],
+        "experiments": None,
         "permissions": None,
         "ban": None,
         "last_seen": None,
         "delete_after": None
     }})
+
+    # Start deleting uploaded attachments
+    rdb.publish("uploads", msgpack.packb({
+        "op": "unclaim_attachment",
+        "uploader": username
+    }))
 
     # Delete user settings
     db.user_settings.delete_one({"_id": username})
@@ -420,7 +437,7 @@ def add_audit_log(action_type, mod_username, mod_ip, data):
     })
 
 
-def create_token(token_type: str, ttl: int, data: dict[str, Any]) -> (str, int):
+def create_token(token_type: str, ttl: int, data: dict[str, Any]) -> tuple[str, int]:
     # Get expiration
     expires_at = int(time.time()) + ttl
 

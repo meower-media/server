@@ -20,6 +20,8 @@ me_bp = Blueprint("me_bp", __name__, url_prefix="/me")
 
 class UpdateConfigBody(BaseModel):
     pfp_data: Optional[int] = Field(default=None)
+    avatar: Optional[str] = Field(default=None, max_length=24)
+    avatar_color: Optional[str] = Field(default=None, min_length=6, max_length=6)  # hex code without the #
     quote: Optional[str] = Field(default=None, max_length=360)
     unread_inbox: Optional[bool] = Field(default=None)
     theme: Optional[str] = Field(default=None, min_length=1, max_length=256)
@@ -70,9 +72,15 @@ async def update_config():
         if v is None:
             del new_config[k]
 
-    # Delete quote if account is restricted
-    if "quote" in new_config:
-        if security.is_restricted(request.user, security.Restrictions.EDITING_QUOTE):
+    # Delete updated profile data if account is restricted
+    if security.is_restricted(request.user, security.Restrictions.EDITING_PROFILE):
+        if "pfp_data" in new_config:
+            del new_config["pfp_data"]
+        if "avatar" in new_config:
+            del new_config["avatar"]
+        if "avatar_color" in new_config:
+            del new_config["avatar_color"]
+        if "quote" in new_config:
             del new_config["quote"]
 
     # Update config
@@ -83,6 +91,22 @@ async def update_config():
         "mode": "update_config",
         "payload": new_config
     }, direct_wrap=True, usernames=[request.user])
+
+    # Send updated pfp and quote to other clients
+    updated_profile_data = {"_id": request.user}
+    if "pfp_data" in new_config:
+        updated_profile_data["pfp_data"] = new_config["pfp_data"]
+    if "avatar" in new_config:
+        updated_profile_data["avatar"] = new_config["avatar"]
+    if "avatar_color" in new_config:
+        updated_profile_data["avatar_color"] = new_config["avatar_color"]
+    if "quote" in new_config:
+        updated_profile_data["quote"] = new_config["quote"]
+    if len(updated_profile_data) > 1:
+        app.cl.broadcast({
+            "mode": "update_profile",
+            "payload": updated_profile_data
+        }, direct_wrap=True)
 
     return {"error": False}, 200
 

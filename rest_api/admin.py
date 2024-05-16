@@ -1,15 +1,17 @@
 # noinspection PyTypeChecker
 from quart import Blueprint, current_app as app, request, abort
 from pydantic import BaseModel, Field
-from typing import Optional, Literal
+from typing import List, Optional, Literal
 from base64 import b64decode
 from copy import copy
 import time
 import pymongo
+import msgpack
 
 import security
-from database import db, get_total_pages, blocked_ips, registration_blocked_ips
+from database import db, rdb, get_total_pages, blocked_ips, registration_blocked_ips
 from .api_types import AuthenticatedRequest, BanBody, MeowerQuart
+
 
 request: AuthenticatedRequest
 app: MeowerQuart
@@ -46,6 +48,7 @@ class UpdateUserBanBody(BaseModel):
 
 
 class UpdateUserBody(BaseModel):
+    experiments: Optional[int] = Field(default=None, ge=0)
     permissions: Optional[int] = Field(default=None, ge=0)
 
     class Config:
@@ -53,12 +56,21 @@ class UpdateUserBody(BaseModel):
 
 
 class UpdateChatBody(BaseModel):
-    nickname: str = Field(min_length=1, max_length=32)
+    nickname: str = Field(default=None, min_length=1, max_length=32)
+    icon: str = Field(default=None, max_length=24)
+    icon_color: str = Field(default=None, min_length=1, max_length=6)
+    allow_pinning: bool = Field(default=None)
 
     class Config:
         validate_assignment = True
         str_strip_whitespace = True
 
+class UpdateProfanityBody(BaseModel):
+    items: List[str]
+
+    class Config:
+        validate_assignment = True
+        str_strip_whitespace = True
 
 class InboxMessageBody(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
@@ -473,8 +485,11 @@ async def get_user(username):
         "created": account["created"],
         "uuid": account["uuid"],
         "pfp_data": account["pfp_data"],
+        "avatar": account["avatar"],
+        "avatar_color": account["avatar_color"],
         "quote": account["quote"],
         "flags": account["flags"],
+        "experiments": account["experiments"],
         "permissions": account["permissions"],
         "last_seen": account["last_seen"],
         "delete_after": account["delete_after"],
@@ -582,14 +597,22 @@ async def update_user(username):
     if not security.account_exists(username):
         abort(404)
 
-    # Permissions
-    if body.permissions is not None:
-        # Update user
-        db.usersv0.update_one(
-            {"_id": username}, {"$set": {"permissions": body.permissions}}
+    # Create updated fields var
+    updated_fields = {}
+
+    # Experiments
+    if body.experiments is not None:
+        updated_fields["experiments"] = body.experiments
+        security.add_audit_log(
+            "updated_experiments",
+            request.user,
+            request.ip,
+            {"username": username, "experiments": body.experiments},
         )
 
-        # Add log
+    # Permissions
+    if body.permissions is not None:
+        updated_fields["permissions"] = body.permissions
         security.add_audit_log(
             "updated_permissions",
             request.user,
@@ -597,13 +620,24 @@ async def update_user(username):
             {"username": username, "permissions": body.permissions},
         )
 
-        # Sync config between sessions
-        app.cl.broadcast({
-            "mode": "update_config",
-            "payload": {
-                "permissions": body.permissions
-            }
-        }, direct_wrap=True, usernames=[username])
+    # Update user
+    db.usersv0.update_one({"_id": username}, {"$set": updated_fields})
+
+    # Sync config between sessions
+    app.cl.broadcast({
+        "mode": "update_config",
+        "payload": updated_fields
+    }, direct_wrap=True, usernames=[username])
+
+    # Send updated experiments and permissions to other clients
+    app.cl.broadcast({
+        "mode": "update_profile",
+        "payload": {
+            "_id": username,
+            "experiments": body.experiments,
+            "permissions": body.permissions,
+        }
+    }, direct_wrap=True)
 
     return {"error": False}, 200
 
@@ -858,11 +892,57 @@ async def kick_user(username):
     return {"error": False}, 200
 
 
+@admin_bp.delete("/users/<username>/avatar")
+async def clear_avatar(username):
+    # Check permissions
+    if not security.has_permission(
+        request.permissions, security.AdminPermissions.CLEAR_PROFILE_DETAILS
+    ):
+        abort(401)
+
+    # Make sure user isn't protected
+    if not security.has_permission(request.permissions, security.AdminPermissions.SYSADMIN):
+        account = db.usersv0.find_one(
+            {"_id": username}, projection={"flags": 1}
+        )
+        if account and (account["flags"] & security.UserFlags.PROTECTED) == security.UserFlags.PROTECTED:
+            abort(403)
+
+    # Update user
+    db.usersv0.update_one(
+        {"_id": username, "$ne": {"avatar": None}}, {"$set": {"avatar": ""}}
+    )
+
+    # Sync config between sessions
+    app.cl.broadcast({
+        "mode": "update_config",
+        "payload": {
+            "avatar": ""
+        }
+    }, direct_wrap=True, usernames=[username])
+
+    # Send updated avatar to other clients
+    app.cl.broadcast({
+        "mode": "update_profile",
+        "payload": {
+            "_id": username,
+            "avatar": ""
+        }
+    }, direct_wrap=True)
+
+    # Add log
+    security.add_audit_log(
+        "cleared_avatar", request.user, request.ip, {"username": username}
+    )
+
+    return {"error": False}, 200
+
+
 @admin_bp.delete("/users/<username>/quote")
 async def clear_quote(username):
     # Check permissions
     if not security.has_permission(
-        request.permissions, security.AdminPermissions.CLEAR_USER_QUOTES
+        request.permissions, security.AdminPermissions.CLEAR_PROFILE_DETAILS
     ):
         abort(401)
 
@@ -886,6 +966,15 @@ async def clear_quote(username):
             "quote": ""
         }
     }, direct_wrap=True, usernames=[username])
+
+     # Send updated quote to other clients
+    app.cl.broadcast({
+        "mode": "update_profile",
+        "payload": {
+            "_id": username,
+            "quote": ""
+        }
+    }, direct_wrap=True)
 
     # Add log
     security.add_audit_log(
@@ -930,26 +1019,29 @@ async def update_chat(chat_id):
     if not chat:
         abort(404)
 
-    # Make sure new nickname isn't the same as the old nickname
-    if chat["nickname"] == body.nickname:
-        chat["error"] = False
-        return chat, 200
+    # Get updated values
+    updated_vals = {"_id": chat_id}
+    if body.nickname is not None and chat["nickname"] != body.nickname:
+        updated_vals["nickname"] = app.supporter.wordfilter(body.nickname)
+    if body.icon is not None and chat["icon"] != body.icon:
+        updated_vals["icon"] = body.icon
+    if body.icon_color is not None and chat["icon_color"] != body.icon_color:
+        updated_vals["icon_color"] = body.icon_color
+    if body.allow_pinning is not None:
+        updated_vals["allow_pinning"] = body.allow_pinning
     
     # Update chat
-    chat["nickname"] = body.nickname
-    db.chats.update_one({"_id": chat_id}, {"$set": {"nickname": chat["nickname"]}})
+    db.chats.update_one({"_id": chat_id}, {"$set": updated_vals})
 
     # Send update chat event
     app.cl.broadcast({
         "mode": "update_chat",
-        "payload": {
-            "_id": chat_id,
-            "nickname": chat["nickname"]
-        }
+        "payload": updated_vals
     }, direct_wrap=True, usernames=chat["members"])
 
     # Add log
-    security.add_audit_log("updated_chat", request.user, request.ip, {"chat_id": chat_id, "nickname": body.nickname})
+    updated_vals["chat_id"] = updated_vals.pop("_id")
+    security.add_audit_log("updated_chat", request.user, request.ip, updated_vals)
 
     # Return chat
     chat["error"] = False
@@ -1698,3 +1790,81 @@ async def get_bans(chat_id):
         "page#": page,
         "pages": get_total_pages("chat_bans", {"_id.chat": chat_id})
     }, 200
+@admin_bp.post("/server/profanity/<mode>/")
+async def add_profanity_blacklist(mode):
+    if not security.has_permission(request.permissions, security.AdminPermissions.CHANGE_PROFANITY):
+        abort(401)
+
+    if mode not in ["whitelist", "blacklist"]: abort(404)
+
+    try:
+        data = UpdateProfanityBody(**await request.json)
+    except: abort(400)
+
+    db.config.update_one({"_id": "filter"}, {
+            "$push": {
+                mode: {
+                    "$each": data.items
+                }
+            }
+    })
+
+    for item in data.items:
+        if item in app.supporter.filter[mode]: continue
+        app.supporter.filter[mode].append(item)
+
+    return {"error": False}
+
+# When testing the lib, that mb.py uses, does not support DELETE bodies
+@admin_bp.post("/server/profanity/<mode>/delete")
+async def delete_profanity_whitelist(mode):
+    if not security.has_permission(request.permissions, security.AdminPermissions.CHANGE_PROFANITY):
+        abort(401)
+
+    if mode not in ["whitelist", "blacklist"]: abort(404)
+
+    try:
+        data = UpdateProfanityBody(**await request.json)
+    except: abort(400)
+
+    db.config.update_one({"_id": "filter"}, {
+        "$pull": {
+            mode: {
+                "$in": data.items
+            }
+        }
+    })
+
+    for word in data.items:
+        if word not in app.supporter.filter[mode]: continue
+        app.supporter.filter[mode].remove(word)
+
+    return {"error": False}
+
+
+@admin_bp.get("/server/profanity/<mode>")
+async def get_profanity_whitelist(mode: str):
+    if not security.has_permission(request.permissions, security.AdminPermissions.CHANGE_PROFANITY):
+        abort(401)
+
+    try:
+        page = int(request.args["page"])
+    except:
+        page = 1
+
+    if mode not in ["whitelist", "blacklist"]:
+        abort(404)
+
+    page_size = 25
+    max_pages = len(app.supporter.filter[mode])//page_size
+
+    if page > max_pages:
+        page = max_pages
+
+    return {
+        "error": False,
+        "page#": page,
+        "pages": max_pages,
+        mode: app.supporter.filter[mode][page * 25: page * 25 + 25]
+    }
+

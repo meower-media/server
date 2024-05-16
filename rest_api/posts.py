@@ -150,6 +150,81 @@ async def update_post():
     post["error"] = False
     return post, 200
 
+@posts_bp.post("/<post_id>/pin")
+async def pin_post(post_id):
+    if not request.user:
+        abort(401)
+    post = db.posts.find_one({"_id": post_id})
+    if not post:
+        abort(404)
+    query = {"_id": post["post_origin"]}
+
+    has_perm = security.has_permission(request.permissions, security.AdminPermissions.EDIT_CHATS)
+    if not has_perm:
+        query["members"] = request.user
+        query["deleted"] = False
+
+
+
+    chat = db.chats.find_one(query)
+    if not chat:
+        abort(401)
+
+    if not (request.user == chat["owner"] or chat["allow_pinning"] or has_perm):
+        abort(401)
+
+    db.posts.update_one({"_id": post_id}, {"$set": {
+        "pinned": True
+    }})
+
+    post["pinned"] = True
+
+    app.cl.broadcast({
+        "mode": "update_post",
+        "payload": post
+    }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+
+    post["error"] = False
+    return post, 200
+
+
+@posts_bp.delete("/<post_id>/pin")
+async def unpin_post(post_id):
+    if not request.user:
+        abort(401)
+
+    post = db.posts.find_one({"_id": post_id})
+    if not post:
+        abort(404)
+
+    query = {"_id": post["post_origin"]}
+    has_perm = security.has_permission(request.permissions, security.AdminPermissions.EDIT_CHATS)
+    if not has_perm:
+        query["members"] = request.user
+        query["deleted"] = False
+
+    chat = db.chats.find_one(query)
+    if not chat:
+        abort(401)
+
+    if not (request.user == chat["owner"] or chat["allow_pinning"] or has_perm):
+        abort(401)
+
+
+    db.posts.update_one({"_id": post_id}, {"$set": {
+        "pinned": False
+    }})
+
+    post["pinned"] = False
+
+    app.cl.broadcast({
+        "mode": "update_post",
+        "payload": post
+    }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+
+    post["error"] = False
+    return post, 200
+
 
 @posts_bp.delete("/")
 async def delete_post():
