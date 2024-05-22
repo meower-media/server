@@ -33,7 +33,7 @@ class UpdateConfigBody(BaseModel):
     bgm_song: Optional[int] = Field(default=None)
     debug: Optional[bool] = Field(default=None)
     hide_blocked_users: Optional[bool] = Field(default=None)
-    active_dms: Optional[List[str]] = Field(default=None)
+    favorited_chats: Optional[List[str]] = Field(default=None)
 
     class Config:
         validate_assignment = True
