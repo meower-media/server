@@ -270,12 +270,6 @@ async def get_current_data_export():
     if not data_export:
         abort(404)
 
-    # Add download token that lasts 15 minutes
-    if data_export["status"] == "completed":
-        data_export["download_token"], _ = security.create_token("access_data_export", 900, {
-            "id": data_export["_id"]
-        })
-
     # Return data export request
     return data_export, 200
 
