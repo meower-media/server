@@ -1,9 +1,8 @@
-from threading import Thread
 from typing import Optional
-import uuid, time, msgpack
+import uuid, time, msgpack, asyncio
 
 from cloudlink import CloudlinkServer, CloudlinkClient, cl3_broadcast
-from database import db, admin_pubsub, blocked_ips
+from database import db, rdb, blocked_ips
 from utils import timestamp
 from uploads import FileDetails
 
@@ -41,11 +40,13 @@ class Supporter:
         self.registration = status["registration"]
 
         # Start admin pub/sub listener
-        Thread(target=self.listen_for_admin_pubsub, daemon=True).start()
+        #Thread(target=self.listen_for_admin_pubsub, daemon=True).start()
+        asyncio.create_task(self.listen_for_admin_pubsub())
+        #asyncio.create_task(self.listen_for_admin_pubsub())
     
     async def on_open(self, client: CloudlinkClient):
         if self.repair_mode or blocked_ips.search_best(client.ip):
-            client.kick(statuscode="Blocked")
+            await client.websocket.close(code=4000, reason="Kicked")
 
     async def on_close(self, client: CloudlinkClient):
         if client.username:
@@ -53,7 +54,7 @@ class Supporter:
                 "last_seen": int(time.time())
             }})
 
-    def create_post(
+    async def create_post(
         self,
         origin: str,
         author: str,
@@ -90,33 +91,35 @@ class Supporter:
 
         # Add database item and send live packet
         if origin == "home":
-            cl3_broadcast({"mode": 1, **post}, direct_wrap=True)
+            await cl3_broadcast({"mode": 1, **post}, direct_wrap=True)
         elif origin == "inbox":
             if author == "Server":
                 db.user_settings.update_many({}, {"$set": {"unread_inbox": True}})
             else:
                 db.user_settings.update_one({"_id": author}, {"$set": {"unread_inbox": True}})
 
-            cl3_broadcast({
+            await cl3_broadcast({
                 "mode": "inbox_message",
                 "payload": post
             }, direct_wrap=True, usernames=(None if author == "Server" else [author]))
         elif origin == "livechat":
-            cl3_broadcast({"state": 2, **post}, direct_wrap=True)
+            await cl3_broadcast({"state": 2, **post}, direct_wrap=True)
         else:
             db.chats.update_one({"_id": origin}, {"$set": {"last_active": int(time.time())}})
-            cl3_broadcast({"state": 2, **post}, direct_wrap=True, usernames=chat_members)
+            await cl3_broadcast({"state": 2, **post}, direct_wrap=True, usernames=chat_members)
         
         # Return post
         return post
 
-    def listen_for_admin_pubsub(self):
-        for msg in admin_pubsub.listen():
+    async def listen_for_admin_pubsub(self):
+        admin_pubsub = rdb.pubsub(ignore_subscribe_messages=True)
+        await admin_pubsub.subscribe("admin")
+        async for msg in admin_pubsub.listen():
             try:
                 msg = msgpack.loads(msg["data"])
                 match msg.pop("op"):
                     case "alert_user":
-                        self.create_post("inbox", msg["user"], msg["content"])
+                        await self.create_post("inbox", msg["user"], msg["content"])
                     case "ban_user":
                         # Get user details
                         username = msg.pop("user")
@@ -135,16 +138,8 @@ class Supporter:
                         # Set new ban state
                         db.usersv0.update_one({"_id": username}, {"$set": {"ban": ban_state}})
 
-                        # Send update config event
-                        # The user doesn't get kicked when banned like usual,
-                        # but async is a pain and the client can't do "write" actions while banned anyway.
-                        # Which is the most important thing since this is meant to be used by anti-abuse systems.
-                        cl3_broadcast({
-                            "mode": "update_config",
-                            "payload": {
-                                "ban": ban_state
-                            }
-                        }, direct_wrap=True, usernames=[username])
+                        # Kick clients
+                        await cl3_broadcast({"cmd": "kick"}, usernames=[username])
 
                         # Add note to admin notes
                         if "note" in msg:

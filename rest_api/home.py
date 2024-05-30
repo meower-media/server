@@ -51,11 +51,11 @@ async def create_home_post(data: PostBody):
         abort(401)
 
     # Check ratelimit
-    if security.ratelimited(f"post:{request.user}"):
+    if await security.ratelimited(f"post:{request.user}"):
         abort(429)
 
     # Ratelimit
-    security.ratelimit(f"post:{request.user}", 6, 5)
+    await security.ratelimit(f"post:{request.user}", 6, 5)
 
     # Check restrictions
     if security.is_restricted(request.user, security.Restrictions.HOME_POSTS):
@@ -79,7 +79,7 @@ async def create_home_post(data: PostBody):
         abort(400)
 
     # Create post
-    post = app.supporter.create_post(
+    post = await app.supporter.create_post(
         "home",
         request.user,
         data.content,
@@ -99,18 +99,18 @@ async def emit_typing():
         abort(401)
 
     # Check ratelimit
-    if security.ratelimited(f"typing:{request.user}"):
+    if await security.ratelimited(f"typing:{request.user}"):
         abort(429)
 
     # Ratelimit
-    security.ratelimit(f"typing:{request.user}", 6, 5)
+    await security.ratelimit(f"typing:{request.user}", 6, 5)
 
     # Check restrictions
     if security.is_restricted(request.user, security.Restrictions.HOME_POSTS):
         return {"error": True, "type": "accountBanned"}, 403
 
     # Send new state
-    cl3_broadcast({
+    await cl3_broadcast({
         "chatid": "livechat",
         "u": request.user,
         "state": 101

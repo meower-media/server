@@ -66,11 +66,11 @@ async def delete_account(data: DeleteAccountBody):
         abort(401)
 
     # Check ratelimit
-    if security.ratelimited(f"login:u:{request.user}:f"):
+    if await security.ratelimited(f"login:u:{request.user}:f"):
         abort(429)
 
     # Ratelimit
-    security.ratelimit(f"login:u:{request.user}:f", 5, 60)
+    await security.ratelimit(f"login:u:{request.user}:f", 5, 60)
 
     # Check password
     account = db.usersv0.find_one({"_id": request.user}, projection={"pswd": 1})
@@ -84,8 +84,7 @@ async def delete_account(data: DeleteAccountBody):
     }})
 
     # Disconnect clients
-    for client in app.cl.usernames.get(request.user, []):
-        client.kick(statuscode="LoggedOut")
+    await cl3_broadcast({"cmd": "kick"}, usernames=[request.user])
 
     return {"error": False}, 200
 
@@ -98,11 +97,11 @@ async def update_config(data: UpdateConfigBody):
         abort(401)
 
     # Check ratelimit
-    if security.ratelimited(f"config:{request.user}"):
+    if await security.ratelimited(f"config:{request.user}"):
         abort(429)
     
     # Ratelimit
-    security.ratelimit(f"config:{request.user}", 10, 5)
+    await security.ratelimit(f"config:{request.user}", 10, 5)
 
     # Get new config
     new_config = data.model_dump()
@@ -142,7 +141,7 @@ async def update_config(data: UpdateConfigBody):
     security.update_settings(request.user, new_config)
 
     # Sync config between sessions
-    cl3_broadcast({
+    await cl3_broadcast({
         "mode": "update_config",
         "payload": new_config
     }, direct_wrap=True, usernames=[request.user])
@@ -158,7 +157,7 @@ async def update_config(data: UpdateConfigBody):
     if "quote" in new_config:
         updated_profile_data["quote"] = new_config["quote"]
     if len(updated_profile_data) > 1:
-        cl3_broadcast({
+        await cl3_broadcast({
             "mode": "update_profile",
             "payload": updated_profile_data
         }, direct_wrap=True)
@@ -174,11 +173,11 @@ async def change_password(data: ChangePasswordBody):
         abort(401)
 
     # Check ratelimit
-    if security.ratelimited(f"login:u:{request.user}:f"):
+    if await security.ratelimited(f"login:u:{request.user}:f"):
         abort(429)
 
     # Ratelimit
-    security.ratelimit(f"login:u:{request.user}:f", 5, 60)
+    await security.ratelimit(f"login:u:{request.user}:f", 5, 60)
 
     # Check password
     account = db.usersv0.find_one({"_id": request.user}, projection={"pswd": 1})
@@ -201,8 +200,7 @@ async def delete_tokens():
     db.usersv0.update_one({"_id": request.user}, {"$set": {"tokens": []}})
 
     # Disconnect clients
-    for client in app.cl.usernames.get(request.user, []):
-        client.kick(statuscode="LoggedOut")
+    await cl3_broadcast({"cmd": "kick"}, usernames=[request.user])
 
     return {"error": False}, 200
 
@@ -301,7 +299,7 @@ async def request_data_export():
     db.data_exports.insert_one(data_export)
 
     # Tell the data export service to check for new requests
-    rdb.publish("data_exports", "0")
+    await rdb.publish("data_exports", "0")
 
     # Return data export request
     return data_export, 200

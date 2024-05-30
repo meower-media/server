@@ -4,7 +4,7 @@ load_dotenv()
 
 import asyncio
 import os
-import uvicorn
+import hypercorn
 
 from threading import Thread
 
@@ -16,7 +16,7 @@ from grpc_auth import service as grpc_auth
 from rest_api import app as rest_api
 
 
-if __name__ == "__main__":
+async def run():
     # Create Cloudlink server
     cl = CloudlinkServer()
     cl.set_real_ip_header(os.getenv("REAL_IP_HEADER"))
@@ -43,11 +43,19 @@ if __name__ == "__main__":
     rest_api.supporter = supporter
 
     # Start REST API
-    Thread(target=uvicorn.run, args=(rest_api,), kwargs={
-        "host": os.getenv("API_HOST", "0.0.0.0"),
-        "port": int(os.getenv("API_PORT", 3001)),
-        "root_path": os.getenv("API_ROOT", "")
-    }, daemon=True).start()
+    hypercorn_conf = hypercorn.config.Config()
+    hypercorn_conf.bind = os.getenv("API_HOST", "0.0.0.0")+":"+os.getenv("API_PORT", "3001")
+    asyncio.create_task(hypercorn.asyncio.serve(rest_api, hypercorn_conf))
 
     # Start Cloudlink server
-    asyncio.run(cl.run(host=os.getenv("CL3_HOST", "0.0.0.0"), port=int(os.getenv("CL3_PORT", 3000))))
+    asyncio.create_task(cl.run(
+        host=os.getenv("CL3_HOST", "0.0.0.0"),
+        port=int(os.getenv("CL3_PORT", 3000))
+    ))
+
+    # Run forever
+    await asyncio.Future()
+
+
+if __name__ == "__main__":
+    asyncio.run(run())

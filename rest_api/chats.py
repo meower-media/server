@@ -77,11 +77,11 @@ async def create_chat(data: ChatBody):
         abort(401)
 
     # Check ratelimit
-    if security.ratelimited(f"create_chat:{request.user}"):
+    if await security.ratelimited(f"create_chat:{request.user}"):
         abort(429)
 
     # Ratelimit
-    security.ratelimit(f"create_chat:{request.user}", 5, 30)
+    await security.ratelimit(f"create_chat:{request.user}", 5, 30)
 
     # Check restrictions
     if security.is_restricted(request.user, security.Restrictions.NEW_CHATS):
@@ -122,7 +122,7 @@ async def create_chat(data: ChatBody):
     db.chats.insert_one(chat)
 
     # Tell the requester the chat was created
-    cl3_broadcast({
+    await cl3_broadcast({
         "mode": "create_chat",
         "payload": chat
     }, direct_wrap=True, usernames=[request.user])
@@ -156,11 +156,11 @@ async def update_chat(chat_id, data: ChatBody):
         abort(401)
 
     # Check ratelimit
-    if security.ratelimited(f"update_chat:{request.user}"):
+    if await security.ratelimited(f"update_chat:{request.user}"):
         abort(429)
 
     # Ratelimit
-    security.ratelimit(f"update_chat:{request.user}", 5, 5)
+    await security.ratelimit(f"update_chat:{request.user}", 5, 5)
 
     # Check restrictions
     if security.is_restricted(request.user, security.Restrictions.EDITING_CHAT_DETAILS):
@@ -179,7 +179,7 @@ async def update_chat(chat_id, data: ChatBody):
     updated_vals = {"_id": chat_id}
     if data.nickname is not None and chat["nickname"] != data.nickname:
         updated_vals["nickname"] = data.nickname
-        app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the nickname of the group chat to '{chat['nickname']}'.", chat_members=chat["members"])
+        await app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the nickname of the group chat to '{chat['nickname']}'.", chat_members=chat["members"])
     if data.icon is not None and chat["icon"] != data.icon:
         # Claim icon (and delete old one)
         if data.icon != "":
@@ -193,11 +193,11 @@ async def update_chat(chat_id, data: ChatBody):
                 delete_file(chat["icon"])
             except Exception as e:
                 log(f"Unable to delete icon: {e}")
-        app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the icon of the group chat.", chat_members=chat["members"])
+        await app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the icon of the group chat.", chat_members=chat["members"])
     if data.icon_color is not None and chat["icon_color"] != data.icon_color:
         updated_vals["icon_color"] = data.icon_color
         if data.icon is None or chat["icon"] == data.icon:
-            app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the icon of the group chat.", chat_members=chat["members"])
+            await app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the icon of the group chat.", chat_members=chat["members"])
     if data.allow_pinning is not None:
         chat["allow_pinning"] = data.allow_pinning
     
@@ -205,7 +205,7 @@ async def update_chat(chat_id, data: ChatBody):
     db.chats.update_one({"_id": chat_id}, {"$set": updated_vals})
 
     # Send update chat event
-    cl3_broadcast({
+    await cl3_broadcast({
         "mode": "update_chat",
         "payload": updated_vals
     }, direct_wrap=True, usernames=chat["members"])
@@ -222,11 +222,11 @@ async def leave_chat(chat_id):
         abort(401)
 
     # Check ratelimit
-    if security.ratelimited(f"update_chat:{request.user}"):
+    if await security.ratelimited(f"update_chat:{request.user}"):
         abort(429)
 
     # Ratelimit
-    security.ratelimit(f"update_chat:{request.user}", 5, 5)
+    await security.ratelimit(f"update_chat:{request.user}", 5, 5)
 
     # Get chat
     chat = db.chats.find_one({"_id": chat_id, "members": request.user, "deleted": False})
@@ -250,7 +250,7 @@ async def leave_chat(chat_id):
             })
 
             # Send update chat event
-            cl3_broadcast({
+            await cl3_broadcast({
                 "mode": "update_chat",
                 "payload": {
                     "_id": chat_id,
@@ -260,7 +260,7 @@ async def leave_chat(chat_id):
             }, direct_wrap=True, usernames=chat["members"])
 
             # Send in-chat notification
-            app.supporter.create_post(chat_id, "Server", f"@{request.user} has left the group chat.", chat_members=chat["members"])
+            await app.supporter.create_post(chat_id, "Server", f"@{request.user} has left the group chat.", chat_members=chat["members"])
         else:
             if chat["icon"]:
                 try:
@@ -278,7 +278,7 @@ async def leave_chat(chat_id):
         abort(500)
 
     # Send delete event to client
-    cl3_broadcast({
+    await cl3_broadcast({
         "mode": "delete",
         "id": chat_id
     }, direct_wrap=True, usernames=[request.user])
@@ -293,11 +293,11 @@ async def emit_typing(chat_id):
         abort(401)
 
     # Check ratelimit
-    if security.ratelimited(f"typing:{request.user}"):
+    if await security.ratelimited(f"typing:{request.user}"):
         abort(429)
 
     # Ratelimit
-    security.ratelimit(f"typing:{request.user}", 6, 5)
+    await security.ratelimit(f"typing:{request.user}", 6, 5)
 
     # Check restrictions
     if security.is_restricted(request.user, security.Restrictions.CHAT_POSTS):
@@ -314,7 +314,7 @@ async def emit_typing(chat_id):
             abort(404)
 
     # Send new state
-    cl3_broadcast({
+    await cl3_broadcast({
         "chatid": chat_id,
         "u": request.user,
         "state": 100
@@ -330,11 +330,11 @@ async def add_chat_member(chat_id, username):
         abort(401)
 
     # Check ratelimit
-    if security.ratelimited(f"update_chat:{request.user}"):
+    if await security.ratelimited(f"update_chat:{request.user}"):
         abort(429)
 
     # Ratelimit
-    security.ratelimit(f"update_chat:{request.user}", 5, 5)
+    await security.ratelimit(f"update_chat:{request.user}", 5, 5)
 
     # Check restrictions
     if security.is_restricted(request.user, security.Restrictions.NEW_CHATS):
@@ -376,13 +376,13 @@ async def add_chat_member(chat_id, username):
     db.chats.update_one({"_id": chat_id}, {"$addToSet": {"members": username}})
 
     # Send create chat event
-    cl3_broadcast({
+    await cl3_broadcast({
         "mode": "create_chat",
         "payload": chat
     }, direct_wrap=True, usernames=[username])
 
     # Send update chat event
-    cl3_broadcast({
+    await cl3_broadcast({
         "mode": "update_chat",
         "payload": {
             "_id": chat_id,
@@ -391,10 +391,10 @@ async def add_chat_member(chat_id, username):
     }, direct_wrap=True, usernames=chat["members"])
 
     # Send inbox message to user
-    app.supporter.create_post("inbox", username, f"You have been added to the group chat '{chat['nickname']}' by @{request.user}!")
+    await app.supporter.create_post("inbox", username, f"You have been added to the group chat '{chat['nickname']}' by @{request.user}!")
 
     # Send in-chat notification
-    app.supporter.create_post(chat_id, "Server", f"@{request.user} added @{username} to the group chat.", chat_members=chat["members"])
+    await app.supporter.create_post(chat_id, "Server", f"@{request.user} added @{username} to the group chat.", chat_members=chat["members"])
 
     # Return chat
     chat["error"] = False
@@ -408,11 +408,11 @@ async def remove_chat_member(chat_id, username):
         abort(401)
 
     # Check ratelimit
-    if security.ratelimited(f"update_chat:{request.user}"):
+    if await security.ratelimited(f"update_chat:{request.user}"):
         abort(429)
 
     # Ratelimit
-    security.ratelimit(f"update_chat:{request.user}", 5, 5)
+    await security.ratelimit(f"update_chat:{request.user}", 5, 5)
 
     # Get chat
     chat = db.chats.find_one({
@@ -432,13 +432,13 @@ async def remove_chat_member(chat_id, username):
     db.chats.update_one({"_id": chat_id}, {"$pull": {"members": username}})
 
     # Send delete chat event to user
-    cl3_broadcast({
+    await cl3_broadcast({
         "mode": "delete",
         "id": chat_id
     }, direct_wrap=True, usernames=[username])
 
     # Send update chat event
-    cl3_broadcast({
+    await cl3_broadcast({
         "mode": "update_chat",
         "id": {
             "_id": chat_id,
@@ -447,10 +447,10 @@ async def remove_chat_member(chat_id, username):
     }, direct_wrap=True, usernames=chat["members"])
 
     # Send inbox message to user
-    app.supporter.create_post("inbox", username, f"You have been removed from the group chat '{chat['nickname']}' by @{request.user}!")
+    await app.supporter.create_post("inbox", username, f"You have been removed from the group chat '{chat['nickname']}' by @{request.user}!")
 
     # Send in-chat notification
-    app.supporter.create_post(chat_id, "Server", f"@{request.user} removed @{username} from the group chat.", chat_members=chat["members"])
+    await app.supporter.create_post(chat_id, "Server", f"@{request.user} removed @{username} from the group chat.", chat_members=chat["members"])
 
     # Return chat
     chat["error"] = False
@@ -464,11 +464,11 @@ async def transfer_chat_ownership(chat_id, username):
         abort(401)
 
     # Check ratelimit
-    if security.ratelimited(f"update_chat:{request.user}"):
+    if await security.ratelimited(f"update_chat:{request.user}"):
         abort(429)
 
     # Ratelimit
-    security.ratelimit(f"update_chat:{request.user}", 5, 5)
+    await security.ratelimit(f"update_chat:{request.user}", 5, 5)
 
     # Get chat
     chat = db.chats.find_one({
@@ -493,7 +493,7 @@ async def transfer_chat_ownership(chat_id, username):
     db.chats.update_one({"_id": chat_id}, {"$set": {"owner": username}})
 
     # Send update chat event
-    cl3_broadcast({
+    await cl3_broadcast({
         "mode": "update_chat",
         "payload": {
             "_id": chat_id,
@@ -502,7 +502,7 @@ async def transfer_chat_ownership(chat_id, username):
     }, direct_wrap=True, usernames=chat["members"])
 
     # Send in-chat notification
-    app.supporter.create_post(chat_id, "Server", f"@{request.user} transferred ownership of the group chat to @{username}.", chat_members=chat["members"])
+    await app.supporter.create_post(chat_id, "Server", f"@{request.user} transferred ownership of the group chat to @{username}.", chat_members=chat["members"])
 
     # Return chat
     chat["error"] = False

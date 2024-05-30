@@ -85,31 +85,27 @@ class Restrictions:
     EDITING_PROFILE = 16
 
 
-def ratelimited(bucket_id: str):
-    remaining = rdb.get(f"rtl:{bucket_id}")
+async def ratelimited(bucket_id: str):
+    remaining = await rdb.get(f"rtl:{bucket_id}")
     if remaining is not None and int(remaining.decode()) < 1:
         return True
     else:
         return False
 
 
-def ratelimit(bucket_id: str, limit: int, seconds: int):
-    remaining = rdb.get(f"rtl:{bucket_id}")
+async def ratelimit(bucket_id: str, limit: int, seconds: int):
+    remaining = await rdb.get(f"rtl:{bucket_id}")
     if remaining is None:
         remaining = limit
     else:
         remaining = int(remaining.decode())
 
-    expires = rdb.ttl(f"rtl:{bucket_id}")
+    expires = await rdb.ttl(f"rtl:{bucket_id}")
     if expires <= 0:
         expires = seconds
 
     remaining -= 1
-    rdb.set(f"rtl:{bucket_id}", remaining, ex=expires)
-
-
-def clear_ratelimit(bucket_id: str):
-    rdb.delete(f"rtl:{bucket_id}")
+    await rdb.set(f"rtl:{bucket_id}", remaining, ex=expires)
 
 
 def account_exists(username, ignore_case=False):

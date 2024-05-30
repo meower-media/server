@@ -57,11 +57,11 @@ class MeowerCommands:
             f"login:u:{username}:s",
             f"login:u:{username}:f"
         ]:
-            if security.ratelimited(bucket_id):
+            if await security.ratelimited(bucket_id):
                 return await client.send_statuscode("RateLimit", listener)
         
         # Ratelimit IP
-        security.ratelimit(f"login:i:{client.ip}", 100, 1800)
+        await security.ratelimit(f"login:i:{client.ip}", 100, 1800)
 
         # Get tokens, password, permissions, ban state, and delete after timestamp
         account = db.usersv0.find_one({"_id": username}, projection={
@@ -75,12 +75,12 @@ class MeowerCommands:
         if not account:
             return await client.send_statuscode("IDNotFound", listener)
         elif (account["flags"] & security.UserFlags.DELETED) or (account["delete_after"] and account["delete_after"] <= time.time()+60):
-            security.ratelimit(f"login:u:{username}:f", 5, 60)
+            await security.ratelimit(f"login:u:{username}:f", 5, 60)
             return await client.send_statuscode("Deleted", listener)
         
         # Check password
         if (password not in account["tokens"]) and (not security.check_password_hash(password, account["pswd"])):
-            security.ratelimit(f"login:u:{username}:f", 5, 60)
+            await security.ratelimit(f"login:u:{username}:f", 5, 60)
             return await client.send_statuscode("PasswordInvalid", listener)
         
         # Update netlog
@@ -88,7 +88,7 @@ class MeowerCommands:
 
         # Check ban
         if (account["ban"]["state"] == "perm_ban") or (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time()):
-            security.ratelimit(f"login:u:{username}:f", 5, 60)
+            await security.ratelimit(f"login:u:{username}:f", 5, 60)
             await client.send({
                 "mode": "banned",
                 "payload": account["ban"]
@@ -96,15 +96,15 @@ class MeowerCommands:
             return await client.send_statuscode("Banned", listener)
 
         # Ratelimit successful login
-        security.ratelimit(f"login:u:{username}:s", 25, 300)
+        await security.ratelimit(f"login:u:{username}:s", 25, 300)
 
         # Alert user of new IP address if user has admin permissions
         if account["permissions"] and netlog_result.upserted_id:
-            self.supporter.create_post("inbox", username, f"Your account was logged into on a new IP address ({client.ip})! You are receiving this message because you have admin permissions. Please make sure to keep your account secure.")
+            await self.supporter.create_post("inbox", username, f"Your account was logged into on a new IP address ({client.ip})! You are receiving this message because you have admin permissions. Please make sure to keep your account secure.")
         
         # Alert user if account was pending deletion
         if account["delete_after"]:
-            self.supporter.create_post("inbox", username, f"Your account was scheduled for deletion but you logged back in. Your account is no longer scheduled for deletion! If you didn't request for your account to be deleted, please change your password immediately.")
+            await self.supporter.create_post("inbox", username, f"Your account was scheduled for deletion but you logged back in. Your account is no longer scheduled for deletion! If you didn't request for your account to be deleted, please change your password immediately.")
 
         # Generate new token
         token = security.generate_token()
@@ -116,7 +116,7 @@ class MeowerCommands:
         })
 
         # Authenticate client
-        client.set_username(username)
+        await client.set_username(username)
 
         # Get relationships
         relationships = [{
@@ -172,17 +172,17 @@ class MeowerCommands:
             return await client.send_statuscode("IllegalChars", listener)
         
         # Check ratelimit
-        if security.ratelimited(f"registration:{client.ip}:f") or security.ratelimited(f"registration:{client.ip}:s"):
+        if await security.ratelimited(f"registration:{client.ip}:f") or await security.ratelimited(f"registration:{client.ip}:s"):
             return await client.send_statuscode("RateLimit", listener)
 
         # Check whether IP is blocked from creating new accounts
         if registration_blocked_ips.search_best(client.ip):
-            security.ratelimit(f"registration:{client.ip}:f", 5, 30)
+            await security.ratelimit(f"registration:{client.ip}:f", 5, 30)
             return await client.send_statuscode("Blocked", listener)
 
         # Make sure username doesn't already exist
         if security.account_exists(username, ignore_case=True):
-            security.ratelimit(f"registration:{client.ip}:f", 5, 30)
+            await security.ratelimit(f"registration:{client.ip}:f", 5, 30)
             return await client.send_statuscode("IDExists", listener)
 
         # Generate new token
@@ -192,16 +192,16 @@ class MeowerCommands:
         security.create_account(username, password, token=token)
 
         # Ratelimit
-        security.ratelimit(f"registration:{client.ip}:s", 5, 900)
+        await security.ratelimit(f"registration:{client.ip}:s", 5, 900)
 
         # Update netlog
         db.netlog.update_one({"_id": {"ip": client.ip, "user": username}}, {"$set": {"last_used": int(time.time())}}, upsert=True)
 
         # Send welcome message
-        self.supporter.create_post("inbox", username, "Welcome to Meower! We welcome you with open arms! You can get started by making friends in the global chat or home, or by searching for people and adding them to a group chat. We hope you have fun!")
+        await self.supporter.create_post("inbox", username, "Welcome to Meower! We welcome you with open arms! You can get started by making friends in the global chat or home, or by searching for people and adding them to a group chat. We hope you have fun!")
 
         # Authenticate client
-        client.set_username(username)
+        await client.set_username(username)
 
         # Return info to sender
         await client.send({
@@ -243,11 +243,11 @@ class MeowerCommands:
             return await client.send_statuscode("Datatype", listener)
         
         # Check ratelimit
-        if security.ratelimited(f"config:{client.username}"):
+        if await security.ratelimited(f"config:{client.username}"):
             return await client.send_statuscode("RateLimit", listener)
         
         # Ratelimit
-        security.ratelimit(f"config:{client.username}", 10, 5)
+        await security.ratelimit(f"config:{client.username}", 10, 5)
 
         # Delete updated profile data if account is restricted
         if security.is_restricted(client.username, security.Restrictions.EDITING_PROFILE):
@@ -278,7 +278,7 @@ class MeowerCommands:
         security.update_settings(client.username, val)
 
         # Sync config between sessions
-        cl3_broadcast({
+        await cl3_broadcast({
             "mode": "update_config",
             "payload": val
         }, direct_wrap=True, usernames=[client.username])
@@ -294,7 +294,7 @@ class MeowerCommands:
         if "quote" in val:
             updated_profile_data["quote"] = val["quote"]
         if len(updated_profile_data) > 1:
-            cl3_broadcast({
+            await cl3_broadcast({
                 "mode": "update_profile",
                 "payload": updated_profile_data
             }, direct_wrap=True)
@@ -328,11 +328,11 @@ class MeowerCommands:
             return await client.send_statuscode("Syntax", listener)
         
         # Check ratelimit
-        if security.ratelimited(f"login:u:{client.username}:f"):
+        if await security.ratelimited(f"login:u:{client.username}:f"):
             return await client.send_statuscode("RateLimit", listener)
 
         # Ratelimit
-        security.ratelimit(f"login:u:{client.username}:f", 5, 60)
+        await security.ratelimit(f"login:u:{client.username}:f", 5, 60)
 
         # Check password
         account = db.usersv0.find_one({"_id": client.username}, projection={"pswd": 1})
@@ -357,8 +357,7 @@ class MeowerCommands:
         await client.send_statuscode("OK", listener)
 
         # Disconnect the client
-        for client in self.cl.usernames.get(client.username, []):
-            client.kick(statuscode="LoggedOut")
+        await cl3_broadcast({"cmd": "kick"}, usernames=[client.username])
 
     async def del_account(self, client: CloudlinkClient, val, listener: str = None):
         # Make sure the client is authenticated
@@ -374,11 +373,11 @@ class MeowerCommands:
             return await client.send_statuscode("Syntax", listener)
         
         # Check ratelimit
-        if security.ratelimited(f"login:u:{client.username}:f"):
+        if await security.ratelimited(f"login:u:{client.username}:f"):
             return await client.send_statuscode("RateLimit", listener)
 
         # Ratelimit
-        security.ratelimit(f"login:u:{client.username}:f", 5, 60)
+        await security.ratelimit(f"login:u:{client.username}:f", 5, 60)
         
         # Check password
         account = db.usersv0.find_one({"_id": client.username}, projection={"pswd": 1})
@@ -395,8 +394,7 @@ class MeowerCommands:
         await client.send_statuscode("OK", listener)
 
         # Disconnect the client
-        for client in self.cl.usernames.get(client.username, []):
-            client.kick(statuscode="LoggedOut")
+        await cl3_broadcast({"cmd": "kick"}, usernames=[client.username])
 
     async def report(self, client: CloudlinkClient, val: str, listener: str = None):
         # Make sure the client is authenticated

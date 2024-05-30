@@ -1,5 +1,5 @@
 import pymongo
-import redis
+import redis.asyncio as redis
 import os
 from radix import Radix
 
@@ -16,15 +16,6 @@ except Exception as e:
     exit()
 else:
     log("Successfully connected to Redis!")
-
-
-# Redis pub/sub
-cl3_pubsub = rdb.pubsub(ignore_subscribe_messages=True)
-cl3_pubsub.subscribe("cl3")
-
-admin_pubsub = rdb.pubsub(ignore_subscribe_messages=True)
-admin_pubsub.subscribe("admin")
-
 
 # Create database connection
 log("Connecting to database...")
