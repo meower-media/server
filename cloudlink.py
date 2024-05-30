@@ -68,7 +68,7 @@ class CloudlinkServer:
     def pubsub_loop(self):
         for msg in cl3_pubsub.listen():
             try:
-                msg: dict = msgpack.unpackb(msg)
+                msg: dict = msgpack.unpackb(msg["data"])
                 packet: CloudlinkPacket = msg.pop("p")
                 direct_wrap: bool = msg.pop("dw")
                 usernames: Optional[list[str]] = msg.pop("unames")

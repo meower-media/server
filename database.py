@@ -19,10 +19,10 @@ else:
 
 
 # Redis pub/sub
-cl3_pubsub = rdb.pubsub()
+cl3_pubsub = rdb.pubsub(ignore_subscribe_messages=True)
 cl3_pubsub.subscribe("cl3")
 
-admin_pubsub = rdb.pubsub()
+admin_pubsub = rdb.pubsub(ignore_subscribe_messages=True)
 admin_pubsub.subscribe("admin")
 
 
