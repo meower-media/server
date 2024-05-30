@@ -8,6 +8,7 @@ import time
 
 import security
 from database import db, get_total_pages
+from cloudlink import cl3_broadcast
 
 
 users_bp = Blueprint("users_bp", __name__, url_prefix="/users/<username>")
@@ -124,7 +125,7 @@ async def update_relationship(username, data: UpdateRelationshipBody):
         db.relationships.update_one({"_id": {"from": request.user, "to": username}}, {"$set": relationship}, upsert=True)
 
     # Sync relationship between sessions
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "update_relationship",
         "payload": {
             "username": username,

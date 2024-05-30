@@ -9,6 +9,7 @@ import time
 
 import security
 from database import db, rdb, get_total_pages
+from cloudlink import cl3_broadcast
 from uploads import claim_file, delete_file
 from utils import log
 
@@ -141,7 +142,7 @@ async def update_config(data: UpdateConfigBody):
     security.update_settings(request.user, new_config)
 
     # Sync config between sessions
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "update_config",
         "payload": new_config
     }, direct_wrap=True, usernames=[request.user])
@@ -157,7 +158,7 @@ async def update_config(data: UpdateConfigBody):
     if "quote" in new_config:
         updated_profile_data["quote"] = new_config["quote"]
     if len(updated_profile_data) > 1:
-        app.cl.broadcast({
+        cl3_broadcast({
             "mode": "update_profile",
             "payload": updated_profile_data
         }, direct_wrap=True)

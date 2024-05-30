@@ -6,6 +6,7 @@ import pymongo
 
 import security
 from database import db, get_total_pages
+from cloudlink import cl3_broadcast
 from uploads import claim_file
 from utils import log
 
@@ -109,7 +110,7 @@ async def emit_typing():
         return {"error": True, "type": "accountBanned"}, 403
 
     # Send new state
-    app.cl.broadcast({
+    cl3_broadcast({
         "chatid": "livechat",
         "u": request.user,
         "state": 101

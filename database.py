@@ -18,6 +18,14 @@ else:
     log("Successfully connected to Redis!")
 
 
+# Redis pub/sub
+cl3_pubsub = rdb.pubsub()
+cl3_pubsub.subscribe("cl3")
+
+admin_pubsub = rdb.pubsub()
+admin_pubsub.subscribe("admin")
+
+
 # Create database connection
 log("Connecting to database...")
 try:

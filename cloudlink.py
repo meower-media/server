@@ -1,12 +1,14 @@
 import websockets
 import asyncio
-import json
+import json, msgpack
 from typing import Optional, Iterable, TypedDict
 from inspect import getfullargspec
+from threading import Thread
 
+from database import rdb, cl3_pubsub
 from utils import full_stack
 
-VERSION = "0.1.7.7"
+VERSION = "0.1.7.8"
 
 class CloudlinkPacket(TypedDict):
     cmd: str
@@ -59,7 +61,39 @@ class CloudlinkServer:
 
         # Initialise default commands
         CloudlinkCommands(self)
+
+        # Start pub/sub loop
+        Thread(target=self.pubsub_loop, daemon=True).start()
     
+    def pubsub_loop(self):
+        for msg in cl3_pubsub.listen():
+            try:
+                msg: dict = msgpack.unpackb(msg)
+                packet: CloudlinkPacket = msg.pop("p")
+                direct_wrap: bool = msg.pop("dw")
+                usernames: Optional[list[str]] = msg.pop("unames")
+
+                # Collect clients
+                clients = set()
+                if usernames:
+                    for username in usernames:
+                        clients = clients.union({
+                            c.websocket
+                            for c in self.usernames.get(username, [])
+                        })
+                else:
+                    clients = clients.union({c.websocket for c in self.clients})
+
+                # Make sure there's at least 1 matching client to send to
+                if len(clients) == 0:
+                    continue
+
+                # Prepare and send packet
+                if direct_wrap:
+                    packet = {"cmd": "direct", "val": packet.copy()}
+                websockets.broadcast(clients, json.dumps(packet))
+            except: continue
+
     async def client_handler(self, websocket: websockets.WebSocketServerProtocol):
         # Create CloudlinkClient
         cl_client = CloudlinkClient(self, websocket)
@@ -193,28 +227,6 @@ class CloudlinkServer:
         if command_name in self.commands:
             del self.commands[command_name]
 
-    def broadcast(
-        self,
-        packet: CloudlinkPacket,
-        direct_wrap: bool = False,
-        clients: Optional[Iterable] = None,
-        usernames: Optional[Iterable] = None
-    ):
-        if direct_wrap:
-            packet = {"cmd": "direct", "val": packet.copy()}
-
-        if clients is None and usernames is None:
-            _clients = self.clients
-        else:
-            _clients = []
-            if clients is not None:
-                _clients += clients
-            if usernames is not None:
-                for username in usernames:
-                    _clients += self.usernames.get(username, [])
-
-        websockets.broadcast({client.websocket for client in _clients}, json.dumps(packet))
-
     def get_ulist(self):
         ulist = ";".join(self.usernames.keys())
         if ulist:
@@ -337,7 +349,7 @@ class CloudlinkCommands:
             "val": val,
             "origin": client.username
         }
-        self.cl.broadcast(packet)
+        cl3_broadcast(packet)
         await client.send_statuscode("OK", listener)
 
     async def pmsg(self, client: CloudlinkClient, val, listener: str = None, id: str = None):
@@ -353,7 +365,7 @@ class CloudlinkCommands:
             "val": val,
             "origin": client.username
         }
-        self.cl.broadcast(packet, usernames=[id])
+        cl3_broadcast(packet, usernames=[id])
         await client.send_statuscode("OK", listener)
 
     async def gvar(self, client: CloudlinkClient, val, listener: str = None, name: str = None):
@@ -367,7 +379,7 @@ class CloudlinkCommands:
             "name": name,
             "origin": client.username
         }
-        self.cl.broadcast(packet)
+        cl3_broadcast(packet)
         await client.send_statuscode("OK", listener)
 
     async def pvar(self, client: CloudlinkClient, val, listener: str = None, id: str = None, name: str = None):
@@ -384,5 +396,16 @@ class CloudlinkCommands:
             "name": name,
             "origin": client.username
         }
-        self.cl.broadcast(packet, usernames=[id])
+        cl3_broadcast(packet, usernames=[id])
         await client.send_statuscode("OK", listener)
+
+def cl3_broadcast(
+    packet: CloudlinkPacket,
+    direct_wrap: bool = False,
+    usernames: Optional[Iterable[str]] = None
+):
+    rdb.publish("cl3", msgpack.packb({
+        "p": packet,
+        "dw": direct_wrap,
+        "unames": list(usernames) if usernames else None
+    }))

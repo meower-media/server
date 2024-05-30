@@ -1,6 +1,6 @@
 import time, re, uuid
 
-from cloudlink import CloudlinkServer, CloudlinkClient
+from cloudlink import CloudlinkServer, CloudlinkClient, cl3_broadcast
 from supporter import Supporter
 from database import db, registration_blocked_ips
 from uploads import claim_file, delete_file
@@ -278,7 +278,7 @@ class MeowerCommands:
         security.update_settings(client.username, val)
 
         # Sync config between sessions
-        self.cl.broadcast({
+        cl3_broadcast({
             "mode": "update_config",
             "payload": val
         }, direct_wrap=True, usernames=[client.username])
@@ -294,7 +294,7 @@ class MeowerCommands:
         if "quote" in val:
             updated_profile_data["quote"] = val["quote"]
         if len(updated_profile_data) > 1:
-            self.cl.broadcast({
+            cl3_broadcast({
                 "mode": "update_profile",
                 "payload": updated_profile_data
             }, direct_wrap=True)

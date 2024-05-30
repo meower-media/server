@@ -2,8 +2,8 @@ from threading import Thread
 from typing import Optional
 import uuid, time, msgpack
 
-from cloudlink import CloudlinkServer, CloudlinkClient
-from database import db, rdb, blocked_ips
+from cloudlink import CloudlinkServer, CloudlinkClient, cl3_broadcast
+from database import db, admin_pubsub, blocked_ips
 from utils import timestamp
 from uploads import FileDetails
 
@@ -90,30 +90,28 @@ class Supporter:
 
         # Add database item and send live packet
         if origin == "home":
-            self.cl.broadcast({"mode": 1, **post}, direct_wrap=True)
+            cl3_broadcast({"mode": 1, **post}, direct_wrap=True)
         elif origin == "inbox":
             if author == "Server":
                 db.user_settings.update_many({}, {"$set": {"unread_inbox": True}})
             else:
                 db.user_settings.update_one({"_id": author}, {"$set": {"unread_inbox": True}})
 
-            self.cl.broadcast({
+            cl3_broadcast({
                 "mode": "inbox_message",
                 "payload": post
             }, direct_wrap=True, usernames=(None if author == "Server" else [author]))
         elif origin == "livechat":
-            self.cl.broadcast({"state": 2, **post}, direct_wrap=True)
+            cl3_broadcast({"state": 2, **post}, direct_wrap=True)
         else:
             db.chats.update_one({"_id": origin}, {"$set": {"last_active": int(time.time())}})
-            self.cl.broadcast({"state": 2, **post}, direct_wrap=True, usernames=chat_members)
+            cl3_broadcast({"state": 2, **post}, direct_wrap=True, usernames=chat_members)
         
         # Return post
         return post
 
     def listen_for_admin_pubsub(self):
-        pubsub = rdb.pubsub()
-        pubsub.subscribe("admin")
-        for msg in pubsub.listen():
+        for msg in admin_pubsub.listen():
             try:
                 msg = msgpack.loads(msg["data"])
                 match msg.pop("op"):
@@ -141,7 +139,7 @@ class Supporter:
                         # The user doesn't get kicked when banned like usual,
                         # but async is a pain and the client can't do "write" actions while banned anyway.
                         # Which is the most important thing since this is meant to be used by anti-abuse systems.
-                        self.cl.broadcast({
+                        cl3_broadcast({
                             "mode": "update_config",
                             "payload": {
                                 "ban": ban_state

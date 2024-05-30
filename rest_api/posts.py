@@ -8,6 +8,7 @@ import pymongo, uuid, time
 
 import security
 from database import db, get_total_pages
+from cloudlink import cl3_broadcast
 from uploads import claim_file, delete_file
 from utils import log
 
@@ -124,7 +125,7 @@ async def update_post(query_args: PostIdQueryArgs, data: PostBody):
     }})
 
     # Send update post event
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "update_post",
         "payload": post
     }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
@@ -163,7 +164,7 @@ async def pin_post(post_id):
 
     post["pinned"] = True
 
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "update_post",
         "payload": post
     }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
@@ -201,7 +202,7 @@ async def unpin_post(post_id):
 
     post["pinned"] = False
 
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "update_post",
         "payload": post
     }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
@@ -260,7 +261,7 @@ async def delete_attachment(post_id: str, attachment_id: str):
         }})
 
         # Send update post event
-        app.cl.broadcast({
+        cl3_broadcast({
             "mode": "update_post",
             "payload": post
         }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
@@ -272,7 +273,7 @@ async def delete_attachment(post_id: str, attachment_id: str):
         }})
 
         # Send delete post event
-        app.cl.broadcast({
+        cl3_broadcast({
             "mode": "delete",
             "id": post_id
         }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
@@ -328,7 +329,7 @@ async def delete_post(query_args: PostIdQueryArgs):
     }})
 
     # Send delete post event
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "delete",
         "id": query_args.id
     }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))

@@ -5,6 +5,7 @@ import pymongo, uuid, time
 
 import security
 from database import db, get_total_pages
+from cloudlink import cl3_broadcast
 from uploads import claim_file, delete_file
 from utils import log
 
@@ -121,7 +122,7 @@ async def create_chat(data: ChatBody):
     db.chats.insert_one(chat)
 
     # Tell the requester the chat was created
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "create_chat",
         "payload": chat
     }, direct_wrap=True, usernames=[request.user])
@@ -204,7 +205,7 @@ async def update_chat(chat_id, data: ChatBody):
     db.chats.update_one({"_id": chat_id}, {"$set": updated_vals})
 
     # Send update chat event
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "update_chat",
         "payload": updated_vals
     }, direct_wrap=True, usernames=chat["members"])
@@ -249,7 +250,7 @@ async def leave_chat(chat_id):
             })
 
             # Send update chat event
-            app.cl.broadcast({
+            cl3_broadcast({
                 "mode": "update_chat",
                 "payload": {
                     "_id": chat_id,
@@ -277,7 +278,7 @@ async def leave_chat(chat_id):
         abort(500)
 
     # Send delete event to client
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "delete",
         "id": chat_id
     }, direct_wrap=True, usernames=[request.user])
@@ -313,7 +314,7 @@ async def emit_typing(chat_id):
             abort(404)
 
     # Send new state
-    app.cl.broadcast({
+    cl3_broadcast({
         "chatid": chat_id,
         "u": request.user,
         "state": 100
@@ -375,13 +376,13 @@ async def add_chat_member(chat_id, username):
     db.chats.update_one({"_id": chat_id}, {"$addToSet": {"members": username}})
 
     # Send create chat event
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "create_chat",
         "payload": chat
     }, direct_wrap=True, usernames=[username])
 
     # Send update chat event
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "update_chat",
         "payload": {
             "_id": chat_id,
@@ -431,13 +432,13 @@ async def remove_chat_member(chat_id, username):
     db.chats.update_one({"_id": chat_id}, {"$pull": {"members": username}})
 
     # Send delete chat event to user
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "delete",
         "id": chat_id
     }, direct_wrap=True, usernames=[username])
 
     # Send update chat event
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "update_chat",
         "id": {
             "_id": chat_id,
@@ -492,7 +493,7 @@ async def transfer_chat_ownership(chat_id, username):
     db.chats.update_one({"_id": chat_id}, {"$set": {"owner": username}})
 
     # Send update chat event
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "update_chat",
         "payload": {
             "_id": chat_id,

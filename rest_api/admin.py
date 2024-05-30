@@ -8,6 +8,7 @@ import time, pymongo
 
 import security
 from database import db, get_total_pages, blocked_ips, registration_blocked_ips
+from cloudlink import cl3_broadcast
 
 
 admin_bp = Blueprint("admin_bp", __name__, url_prefix="/admin")
@@ -390,12 +391,12 @@ async def delete_post(post_id):
 
     # Send delete post event
     if post["post_origin"] == "home" or (post["post_origin"] == "inbox" and post["u"] == "Server"):
-        app.cl.broadcast({
+        cl3_broadcast({
             "mode": "delete",
             "id": post_id
         }, direct_wrap=True)
     elif post["post_origin"] == "inbox":
-        app.cl.broadcast({
+        cl3_broadcast({
             "mode": "delete",
             "id": post_id
         }, direct_wrap=True, usernames=[post["u"]])
@@ -406,7 +407,7 @@ async def delete_post(post_id):
             "deleted": False
         }, projection={"members": 1})
         if chat:
-            app.cl.broadcast({
+            cl3_broadcast({
                 "mode": "delete",
                 "id": post_id
             }, direct_wrap=True, usernames=chat["members"])
@@ -597,13 +598,13 @@ async def update_user(username, data: UpdateUserBody):
     db.usersv0.update_one({"_id": username}, {"$set": updated_fields})
 
     # Sync config between sessions
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "update_config",
         "payload": updated_fields
     }, direct_wrap=True, usernames=[username])
 
     # Send updated values to other clients
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "update_profile",
         "payload": {
             "_id": username,
@@ -702,7 +703,7 @@ async def ban_user(username, data: UpdateUserBanBody):
         for client in app.cl.usernames.get(username, []):
             client.kick(statuscode="Banned")
     else:
-        app.cl.broadcast({
+        cl3_broadcast({
             "mode": "update_config",
             "payload": {
                 "ban": data.model_dump()
@@ -863,7 +864,7 @@ async def clear_avatar(username):
     )
 
     # Sync config between sessions
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "update_config",
         "payload": {
             "avatar": ""
@@ -871,7 +872,7 @@ async def clear_avatar(username):
     }, direct_wrap=True, usernames=[username])
 
     # Send updated avatar to other clients
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "update_profile",
         "payload": {
             "_id": username,
@@ -909,7 +910,7 @@ async def clear_quote(username):
     )
 
     # Sync config between sessions
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "update_config",
         "payload": {
             "quote": ""
@@ -917,7 +918,7 @@ async def clear_quote(username):
     }, direct_wrap=True, usernames=[username])
 
      # Send updated quote to other clients
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "update_profile",
         "payload": {
             "_id": username,
@@ -979,7 +980,7 @@ async def update_chat(chat_id, data: UpdateChatBody):
     db.chats.update_one({"_id": chat_id}, {"$set": updated_vals})
 
     # Send update chat event
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "update_chat",
         "payload": updated_vals
     }, direct_wrap=True, usernames=chat["members"])
@@ -1009,7 +1010,7 @@ async def delete_chat(chat_id):
     db.chats.update_one({"_id": chat_id}, {"$set": {"deleted": True}})
 
     # Send delete chat event
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "delete",
         "id": chat_id
     }, direct_wrap=True, usernames=chat["members"])
@@ -1038,7 +1039,7 @@ async def restore_chat(chat_id):
     db.chats.update_one({"_id": chat_id}, {"$set": {"deleted": False}})
 
     # Send create chat event
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "create_chat",
         "payload": chat
     }, direct_wrap=True, usernames=chat["members"])
@@ -1075,7 +1076,7 @@ async def transfer_chat_ownership(chat_id, username):
     db.chats.update_one({"_id": chat_id}, {"$set": {"owner": username}})
 
     # Send update chat event
-    app.cl.broadcast({
+    cl3_broadcast({
         "mode": "update_chat",
         "payload": {
             "_id": chat_id,
