@@ -13,3 +13,4 @@ pydantic
 msgpack
 grpcio
 protobuf
+websockets
