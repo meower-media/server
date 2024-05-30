@@ -28,14 +28,6 @@ except Exception as e:
 else:
     log("Successfully connected to database!")
 
-
-# Create database collections
-existing_collections = db.list_collection_names()
-for collection_name in []:
-    if collection_name not in existing_collections:
-        log(f"Creating {collection_name} database collection...")
-        db.create_collection(collection_name)
-
 # Create usersv0 indexes
 try: db.usersv0.create_index([("lower_username", pymongo.ASCENDING)], name="lower_username", unique=True)
 except: pass
@@ -200,8 +192,8 @@ for netblock in db.netblock.find({}):
             registration_blocked_ips.add(netblock["_id"])
     except Exception as e:
         log(f"Failed to load netblock {netblock['_id']}: {e}")
-    log(f"Successfully loaded {len(blocked_ips.nodes())} netblock(s) into Radix!")
-    log(f"Successfully loaded {len(registration_blocked_ips.nodes())} registration netblock(s) into Radix!")
+log(f"Successfully loaded {len(blocked_ips.nodes())} netblock(s) into Radix!")
+log(f"Successfully loaded {len(registration_blocked_ips.nodes())} registration netblock(s) into Radix!")
 
 
 def get_total_pages(collection: str, query: dict, page_size: int = 25) -> int:

@@ -75,7 +75,7 @@ async def index():
 
 
 @app.get("/ip")  # Deprecated
-@deprecate()
+@deprecate
 async def ip_tracer():
 	return "", 410
 
