@@ -4,6 +4,8 @@ from quart_schema import QuartSchema, RequestSchemaValidationError, validate_hea
 from pydantic import BaseModel
 import time, os
 
+from .auth import auth_bp
+from .session import session_bp
 from .home import home_bp
 from .me import me_bp
 from .inbox import inbox_bp
@@ -14,8 +16,9 @@ from .search import search_bp
 from .uploads import uploads_bp
 from .admin import admin_bp
 
+from entities import users
 from database import db, blocked_ips, registration_blocked_ips
-import security
+import security, errors
 
 
 # Init app
@@ -28,6 +31,14 @@ QuartSchema(app)
 
 class TokenHeader(BaseModel):
     token: str | None = None
+
+
+"""
+@app.before_request
+async def check_origin_header():
+    if "Origin" not in request.headers:
+        return {"error": True, "type": "noOriginHeader"}, 400
+"""
 
 
 @app.before_request
@@ -144,10 +155,25 @@ async def validation_error(e):
 async def bad_request(e):
 	return {"error": True, "type": "badRequest"}, 400
 
+@app.errorhandler(errors.InvalidCredentials)
+async def invalid_credentials(e):
+    return {"error": True, "type": "invalidCredentials"}, 401
 
-@app.errorhandler(401)  # Unauthorized
+@app.errorhandler(errors.SessionNotFound)
 async def unauthorized(e):
-	return {"error": True, "type": "Unauthorized"}, 401
+    return {"error": True, "type": "Unauthorized"}, 401
+
+@app.errorhandler(errors.MFANotVerified)
+async def mfa_not_verified():
+    return {"error": True, "type": "mfaNotVerified"}, 401
+
+@app.errorhandler(errors.UserBanned)
+async def user_banned(e):
+    return {
+        "error": True,
+        "type": "accountBanned",
+        "ban": users.ban_db_to_v0(e.ban)
+    }, 403
 
 
 @app.errorhandler(403)  # Missing permissions
@@ -164,6 +190,9 @@ async def not_found(e):
 async def method_not_allowed(e):
 	return {"error": True, "type": "methodNotAllowed"}, 405
 
+@app.errorhandler(errors.Ratelimited)
+async def ratelimited(e):
+    return {"error": True, "type": "tooManyRequests"}, 429
 
 @app.errorhandler(429)  # Too many requests
 async def too_many_requests(e):
@@ -181,12 +210,14 @@ async def not_implemented(e):
 
 
 # Register blueprints
+app.register_blueprint(auth_bp)
+app.register_blueprint(session_bp)
 app.register_blueprint(home_bp)
 app.register_blueprint(me_bp)
-app.register_blueprint(inbox_bp)
-app.register_blueprint(posts_bp)
+#app.register_blueprint(inbox_bp)
+#app.register_blueprint(posts_bp)
 app.register_blueprint(users_bp)
-app.register_blueprint(chats_bp)
-app.register_blueprint(search_bp)
-app.register_blueprint(uploads_bp)
-app.register_blueprint(admin_bp)
+#app.register_blueprint(chats_bp)
+#app.register_blueprint(search_bp)
+#app.register_blueprint(uploads_bp)
+#app.register_blueprint(admin_bp)

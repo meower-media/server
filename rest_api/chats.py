@@ -1,6 +1,7 @@
 from quart import Blueprint, current_app as app, request, abort
 from quart_schema import validate_request
 from pydantic import BaseModel, Field
+from typing import Optional
 import pymongo, uuid, time
 
 import security
@@ -12,10 +13,10 @@ chats_bp = Blueprint("chats_bp", __name__, url_prefix="/chats")
 
 
 class ChatBody(BaseModel):
-    nickname: str = Field(default=None, min_length=1, max_length=32)
-    icon: str = Field(default=None, max_length=24)
-    icon_color: str = Field(default=None, min_length=6, max_length=6)  # hex code without the #
-    allow_pinning: bool = Field(default=None)
+    nickname: Optional[str] = Field(default=None, min_length=1, max_length=32)
+    icon: Optional[str] = Field(default=None, max_length=24)
+    icon_color: Optional[str] = Field(default=None, min_length=6, max_length=6)  # hex code without the #
+    allow_pinning: Optional[bool] = Field(default=None)
 
     class Config:
         validate_assignment = True

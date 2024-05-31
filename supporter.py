@@ -2,6 +2,7 @@ from threading import Thread
 from typing import Optional
 import uuid, time, msgpack
 
+from entities import ids
 from cloudlink import CloudlinkServer, CloudlinkClient
 from database import db, rdb, blocked_ips
 from utils import timestamp
@@ -63,7 +64,7 @@ class Supporter:
         chat_members: list[str] = []
     ) -> tuple[bool, dict]:
         # Create post ID and get timestamp
-        post_id = str(uuid.uuid4())
+        post_id = ids.gen_id()
         ts = timestamp(1).copy()
 
         # Construct post object

@@ -8,9 +8,12 @@ import uuid
 import time
 
 import security
+import models, errors
+from entities import users
 from database import db, rdb, get_total_pages
 from uploads import claim_file, delete_file
 from utils import log
+from .utils import auto_ratelimit, check_auth
 
 
 me_bp = Blueprint("me_bp", __name__, url_prefix="/me")
@@ -48,39 +51,22 @@ class GetReportsQueryArgs(BaseModel):
 
 
 @me_bp.get("/")
-async def get_me():
-    # Check authorization
-    if not request.user:
-        abort(401)
-
-    # Get and return account
-    return security.get_account(request.user, include_config=True), 200
+@check_auth()
+async def get_me(requester: models.db.User):
+    return users.db_to_v0(requester, include_private=True), 200
 
 
 @me_bp.delete("/")
 @validate_request(DeleteAccountBody)
-async def delete_account(data: DeleteAccountBody):
-    # Check authorization
-    if not request.user:
-        abort(401)
-
-    # Check ratelimit
-    if security.ratelimited(f"login:u:{request.user}:f"):
-        abort(429)
-
-    # Ratelimit
-    security.ratelimit(f"login:u:{request.user}:f", 5, 60)
-
+@check_auth()
+@auto_ratelimit("delete_acc", "user", 5, 300)
+async def delete_account(data: DeleteAccountBody, requester: models.db.User):
     # Check password
-    account = db.usersv0.find_one({"_id": request.user}, projection={"pswd": 1})
-    if not security.check_password_hash(data.password, account["pswd"]):
-        return {"error": True, "type": "invalidCredentials"}, 401
+    if not users.check_password_hash(data.password, requester["password"]):
+        raise errors.InvalidCredentials
     
     # Schedule account for deletion
-    db.usersv0.update_one({"_id": request.user}, {"$set": {
-        "tokens": [],
-        "delete_after": int(time.time())+604800  # 7 days
-    }})
+    users.delete_user(requester["_id"], delay=(60*60*24*7))
 
     # Disconnect clients
     for client in app.cl.usernames.get(request.user, []):
@@ -162,6 +148,35 @@ async def update_config(data: UpdateConfigBody):
             "payload": updated_profile_data
         }, direct_wrap=True)
 
+    return {"error": False}, 200
+
+
+@me_bp.get("/config/client")
+async def get_client_settings():
+    # Check authorization
+    requester: models.db.User = request.user
+    if not requester:
+        abort(401)
+
+    # Get and return settings
+    return users.get_client_settings(requester["_id"], request.headers["Origin"])
+
+
+@me_bp.patch("/config/client")
+async def update_client_settings():
+    # Check authorization
+    requester: models.db.User = request.user
+    if not requester:
+        abort(401)
+
+    # Get body
+    try:
+        body = await request.json
+    except: abort(400)
+
+    # Update settings
+    users.update_client_settings(requester["_id"], request.headers["Origin"], body)
+    
     return {"error": False}, 200
 
 
