@@ -6,7 +6,8 @@ import pymongo
 import uuid
 import time
 
-import security
+import security, models, errors
+from entities import users
 from database import db, get_total_pages
 from cloudlink import cl3_broadcast
 
@@ -28,20 +29,32 @@ class UpdateRelationshipBody(BaseModel):
 
 
 @users_bp.before_request
-async def check_user_exists():
-    username = request.view_args.get("username")
-    user = db.usersv0.find_one({"lower_username": username.lower()}, projection={"_id": 1, "flags": 1})
-    if (not user) or (user["flags"] & security.UserFlags.DELETED == security.UserFlags.DELETED):
+async def get_user():
+    username: str = request.view_args["username"]
+    try:
+        if username.startswith("$"):
+            try:
+                user_id = int(username[1:])
+            except ValueError:
+                abort(400)
+            request.requested_user = users.get_user(user_id)
+        else:
+            request.requested_user = users.get_user_by_username(username)
+    except errors.UserNotFound:
         abort(404)
     else:
-        request.view_args["username"] = user["_id"]
+        if not request.requested_user:
+            abort(500)
 
 
 @users_bp.get("/")
-async def get_user(username):
-    account = security.get_account(username, (request.user and request.user.lower() == username.lower()))
-    account["error"] = False
-    return account, 200
+async def get_user(_):
+    user = users.db_to_v0(
+        request.requested_user,
+        (request.user["_id"] == request.requested_user["_id"]),
+    )
+    user["error"] = False
+    return user
 
 
 @users_bp.get("/posts")

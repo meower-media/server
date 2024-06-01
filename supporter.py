@@ -1,6 +1,7 @@
 from typing import Optional
 import uuid, time, msgpack, asyncio
 
+from entities import ids
 from cloudlink import CloudlinkServer, CloudlinkClient, cl3_broadcast
 from database import db, rdb, blocked_ips
 from utils import timestamp
@@ -40,9 +41,7 @@ class Supporter:
         self.registration = status["registration"]
 
         # Start admin pub/sub listener
-        #Thread(target=self.listen_for_admin_pubsub, daemon=True).start()
         asyncio.create_task(self.listen_for_admin_pubsub())
-        #asyncio.create_task(self.listen_for_admin_pubsub())
     
     async def on_open(self, client: CloudlinkClient):
         if self.repair_mode or blocked_ips.search_best(client.ip):
