@@ -57,6 +57,7 @@ async def check_auth(headers: TokenHeader):
     if token and request.path != "/status":
         account = db.usersv0.find_one({"tokens": token}, projection={
             "_id": 1,
+            "flags": 1,
             "permissions": 1,
             "ban.state": 1,
             "ban.expires": 1
@@ -65,6 +66,7 @@ async def check_auth(headers: TokenHeader):
             if account["ban"]["state"] == "perm_ban" or (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time()):
                 return {"error": True, "type": "accountBanned"}, 403
             request.user = account["_id"]
+            request.flags = account["flags"]
             request.permissions = account["permissions"]
 
 

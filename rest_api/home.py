@@ -49,12 +49,13 @@ async def create_home_post(data: PostBody):
     if not request.user:
         abort(401)
 
-    # Check ratelimit
-    if security.ratelimited(f"post:{request.user}"):
-        abort(429)
+    if not (request.flags & security.UserFlags.POST_RATELIMIT_BYPASS):
+        # Check ratelimit
+        if security.ratelimited(f"post:{request.user}"):
+            abort(429)
 
-    # Ratelimit
-    security.ratelimit(f"post:{request.user}", 6, 5)
+        # Ratelimit
+        security.ratelimit(f"post:{request.user}", 6, 5)
 
     # Check restrictions
     if security.is_restricted(request.user, security.Restrictions.HOME_POSTS):

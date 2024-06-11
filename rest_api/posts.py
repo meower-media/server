@@ -63,12 +63,13 @@ async def update_post(query_args: PostIdQueryArgs, data: PostBody):
     if not request.user:
         abort(401)
 
-    # Check ratelimit
-    if security.ratelimited(f"post:{request.user}"):
-        abort(429)
+    if not (request.flags & security.UserFlags.POST_RATELIMIT_BYPASS):
+        # Check ratelimit
+        if security.ratelimited(f"post:{request.user}"):
+            abort(429)
 
-    # Ratelimit
-    security.ratelimit(f"post:{request.user}", 6, 5)
+        # Ratelimit
+        security.ratelimit(f"post:{request.user}", 6, 5)
     
     # Get post
     post = db.posts.find_one({"_id": query_args.id, "isDeleted": False})
@@ -215,13 +216,6 @@ async def delete_attachment(post_id: str, attachment_id: str):
     # Check authorization
     if not request.user:
         abort(401)
-
-    # Check ratelimit
-    if security.ratelimited(f"post:{request.user}"):
-        abort(429)
-
-    # Ratelimit
-    security.ratelimit(f"post:{request.user}", 6, 5)
     
     # Get post
     post = db.posts.find_one({"_id": post_id, "isDeleted": False})
@@ -289,12 +283,13 @@ async def delete_post(query_args: PostIdQueryArgs):
     if not request.user:
         abort(401)
 
-    # Check ratelimit
-    if security.ratelimited(f"post:{request.user}"):
-        abort(429)
+    if not (request.flags & security.UserFlags.POST_RATELIMIT_BYPASS):
+        # Check ratelimit
+        if security.ratelimited(f"post:{request.user}"):
+            abort(429)
 
-    # Ratelimit
-    security.ratelimit(f"post:{request.user}", 6, 5)
+        # Ratelimit
+        security.ratelimit(f"post:{request.user}", 6, 5)
     
     # Get post
     post = db.posts.find_one({"_id": query_args.id, "isDeleted": False})
@@ -371,12 +366,13 @@ async def create_chat_post(chat_id, data: PostBody):
     if not request.user:
         abort(401)
 
-    # Check ratelimit
-    if security.ratelimited(f"post:{request.user}"):
-        abort(429)
+    if not (request.flags & security.UserFlags.POST_RATELIMIT_BYPASS):
+        # Check ratelimit
+        if security.ratelimited(f"post:{request.user}"):
+            abort(429)
 
-    # Ratelimit
-    security.ratelimit(f"post:{request.user}", 6, 5)
+        # Ratelimit
+        security.ratelimit(f"post:{request.user}", 6, 5)
 
     # Check restrictions
     if security.is_restricted(request.user, security.Restrictions.CHAT_POSTS):

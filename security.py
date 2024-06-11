@@ -46,6 +46,7 @@ class UserFlags:
     SYSTEM = 1
     DELETED = 2
     PROTECTED = 4
+    POST_RATELIMIT_BYPASS = 8
 
 
 class AdminPermissions:
