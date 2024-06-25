@@ -69,11 +69,6 @@ class CloudlinkServer:
         
         origin = cl_client.get_origin()
         
-        if origin is None:
-            print("Blocking None origin")
-            await cl_client.send_statuscode("OriginBlocked", None)
-            return
-        
         result = db.config.find_one({"_id": "origin_blocklist"})
         
         if not result:
