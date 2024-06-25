@@ -143,7 +143,7 @@ async def update_post(query_args: PostIdQueryArgs, data: PostBody):
 
 @posts_bp.post("/<post_id>/report")
 @validate_request(ReportBody)
-async def report_post(post_id):
+async def report_post(post_id, data: ReportBody):
     if not request.user:
         abort(401)
     post = db.posts.find_one({"_id": post_id})
@@ -151,10 +151,6 @@ async def report_post(post_id):
         abort(404)
     
     security.ratelimit(f"report:{request.user}", 3, 5)
-
-    try:
-        body = ReportBody(**await request.json)
-    except: abort(400)
     
     report = db.reports.find_one({
         "content_id": post_id,
@@ -180,8 +176,8 @@ async def report_post(post_id):
     report["reports"].append({
         "user": request.user,
         "ip": request.ip,
-        "reason": body["reason"],
-        "comment": body["comment"],
+        "reason": data["reason"],
+        "comment": data["comment"],
         "time": int(time.time())
     })
 
@@ -197,7 +193,7 @@ async def report_post(post_id):
             "deleted_at": int(time.time())
         }})
 
-    return { "error": False }, 200
+    return {"error": False}, 200
 
 
 @posts_bp.post("/<post_id>/pin")
