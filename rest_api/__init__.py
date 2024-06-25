@@ -41,6 +41,20 @@ async def check_ip():
     request.ip = (request.headers.get("Cf-Connecting-Ip", request.remote_addr))
     if request.path != "/status" and blocked_ips.search_best(request.ip):
         return {"error": True, "type": "ipBlocked"}, 403
+        
+@app.before_request
+async def origin_blocker():
+    origin = request.headers.get("Host")
+    result = db.config.find_one({"_id": "origin_blocklist"})
+    
+    if not result:
+       return {"error": True, "type": "Internal", "message": "There was an error reading the origin block list. Please notify a member of the backend team immediately."}, 500
+    
+    if origin is None:
+        return {"error": True, "type": "Unauthorized", "message": "An origin header is mandatory to use this service. If this is a mistake, please contact support@meower.org."}, 401
+    
+    if origin in result["contents"]:
+        return {"error": True, "type": "Unauthorized", "message": "This host has been blocked from accessing Meower. If this is a mistake, please contact support@meower.org."}, 401
 
 
 @app.before_request
