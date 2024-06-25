@@ -140,11 +140,11 @@ async def update_relationship(username, data: UpdateRelationshipBody):
         }
     }, direct_wrap=True, usernames=[request.user])
 
-    # Return updated relationship
+    # Return updated relationshipFeat/api accounts
     del relationship["_id"]
     return relationship, 200
 
-@users_bp.post("/<post_id>/report")
+@users_bp.post("/<username>/report")
 @validate_request(ReportBody)
 async def report_post(username, data: ReportBody):
     if not request.user:
@@ -176,8 +176,8 @@ async def report_post(username, data: ReportBody):
     report["reports"].append({
         "user": request.user,
         "ip": request.ip,
-        "reason": data["reason"],
-        "comment": data["comment"],
+        "reason": data.reason,
+        "comment": data.comment,
         "time": int(time.time())
     })
 
