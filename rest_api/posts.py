@@ -176,8 +176,8 @@ async def report_post(post_id, data: ReportBody):
     report["reports"].append({
         "user": request.user,
         "ip": request.ip,
-        "reason": data["reason"],
-        "comment": data["comment"],
+        "reason": data.reason,
+        "comment": data.comment,
         "time": int(time.time())
     })
 
