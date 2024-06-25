@@ -144,7 +144,7 @@ async def update_relationship(username, data: UpdateRelationshipBody):
     del relationship["_id"]
     return relationship, 200
 
-@users_bp.post("/<username>/report")
+@users_bp.post("/report")
 @validate_request(ReportBody)
 async def report_post(username, data: ReportBody):
     if not request.user:
