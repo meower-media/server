@@ -3,6 +3,7 @@ import asyncio
 import json
 from typing import Optional, Iterable, TypedDict
 from inspect import getfullargspec
+from database import db
 
 from utils import full_stack
 
@@ -55,14 +56,31 @@ class CloudlinkServer:
             #"IPRequred": "E:120 | IP Address required",  -- deprecated
             #"TooManyUserNameChanges": "E:121 | Too Many Username Changes",  -- deprecated
             "Disabled": "E:122 | Command disabled by sysadmin",
+            "OriginBlocked": "E:123 | Origin Blocked",
         })
 
         # Initialise default commands
         CloudlinkCommands(self)
     
     async def client_handler(self, websocket: websockets.WebSocketServerProtocol):
+        
         # Create CloudlinkClient
         cl_client = CloudlinkClient(self, websocket)
+        
+        origin = cl_client.get_origin()
+        
+        result = db.config.find_one({"_id": "origin_blocklist"})
+        
+        if not result:
+            print("Failed to load origin blocklist")
+            await cl_client.send_statuscode("InternalServerError", None)
+            return
+        
+        if origin in result["contents"]:
+            print("Blocking origin", origin)
+            await cl_client.send_statuscode("OriginBlocked", None)
+            return
+        
 
         # Add to websockets and clients sets
         self.websockets.add(websocket)
@@ -252,6 +270,15 @@ class CloudlinkClient:
             return self.websocket.remote_address[0]
         else:
             return self.websocket.remote_address
+            
+    def get_origin(self):
+        try:
+            origin = self.websocket.request_headers["Origin"]
+            origin = origin.replace("https://", "", 1).replace("http://", "", 1)
+            return origin
+        except Exception as e:
+            print(e)
+            return None
 
     def set_username(self, username: str):
         if self.username:
