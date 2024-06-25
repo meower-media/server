@@ -31,7 +31,7 @@ class PostBody(BaseModel):
         str_strip_whitespace = True
 
 class ReportBody(BaseModel):
-    reason: str = Field(default="No reason provided", min_length=1, max_length=2000)
+    reason: str = Field(default="No reason provided", max_length=2000)
     comment: str = Field(default="", max_length=2000)
 
     class Config:
