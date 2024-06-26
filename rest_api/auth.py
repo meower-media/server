@@ -13,7 +13,7 @@ auth_bp = Blueprint("auth_bp", __name__, url_prefix="/auth")
 class AuthRequest(BaseModel):
     username: str = Field(min_length=1, max_length=20)
     password: str = Field(min_length=1, max_length=255)
-    captcha: Optional[str] = Field(min_length=1, max_length=2000)
+    captcha: Optional[str] = Field(default="", max_length=2000)
 
 
 @auth_bp.post('/login')
