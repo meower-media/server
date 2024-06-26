@@ -9,7 +9,6 @@ from database import db, registration_blocked_ips
 import security
 
 auth_bp = Blueprint("auth_bp", __name__, url_prefix="/auth")
-time
 
 class AuthRequest(BaseModel):
     username: str = Field(min_length=1, max_length=20)
