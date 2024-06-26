@@ -6,7 +6,7 @@ uploads_bp = Blueprint("uploads_bp", __name__, url_prefix="/uploads")
 
 
 @uploads_bp.get("/token/icon")
-@deprecate
+@deprecate()
 async def deprecated_get_icon_uploads_token():
     # Check authorization
     if not request.user:
