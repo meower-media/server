@@ -85,7 +85,12 @@ async def check_auth(headers: TokenHeader):
 @app.get("/")  # Welcome message
 @hide
 async def index():
-	return "Hello world! The Meower API is working, but it's under construction. Please come back later.", 200
+	return {
+        "captcha": {
+            "enabled": os.getenv("CAPTCHA_SECRET") is not None,
+            "sitekey": os.getenv("CAPTCHA_SITEKEY")
+        }
+    }, 200
 
 
 @app.get("/ip")  # Deprecated

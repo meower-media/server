@@ -1,10 +1,10 @@
-import re
+import re, uuid, os, requests
 from time import time
-import uuid
 from pydantic import BaseModel
 from quart import Blueprint, request, abort, current_app as app
 from quart_schema import validate_request
 from pydantic import Field
+from typing import Optional
 from database import db, registration_blocked_ips
 import security
 
@@ -13,6 +13,7 @@ auth_bp = Blueprint("auth_bp", __name__, url_prefix="/auth")
 class AuthRequest(BaseModel):
     username: str = Field(min_length=1, max_length=20)
     password: str = Field(min_length=1, max_length=255)
+    captcha: Optional[str] = Field(min_length=1, max_length=2000)
 
 
 @auth_bp.post('/login')
@@ -82,6 +83,13 @@ async def register(data: AuthRequest):
     if security.account_exists(data.username):
         security.ratelimit(f"register:{request.ip}:f", 5, 30)
         return {"error": True, "type": "usernameExists"}, 409
+
+    if os.getenv("CAPTCHA_SECRET"):
+        if not requests.post("https://challenges.cloudflare.com/turnstile/v0/siteverify", data={
+            "secret": os.getenv("CAPTCHA_SECRET"),
+            "response": data.captcha,
+        }).json()["success"]:
+            return {"error": True, "type": "invalidCaptcha"}, 403
 
     token = security.generate_token()
 
