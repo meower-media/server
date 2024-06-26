@@ -51,6 +51,10 @@ async def login(data: AuthRequest):
 
     security.ratelimit(f"login:u:{data.username}:s", 25, 300)
 
+    # Alert user if account was pending deletion
+    if account["delete_after"]:
+        app.supporter.create_post("inbox", data.username, f"Your account was scheduled for deletion but you logged back in. Your account is no longer scheduled for deletion! If you didn't request for your account to be deleted, please change your password immediately.")
+
     token = security.generate_token()
 
     db.usersv0.update_one({"_id": data.username}, {
@@ -63,7 +67,6 @@ async def login(data: AuthRequest):
 @auth_bp.post('/register')
 @validate_request(AuthRequest)
 async def register(data: AuthRequest):
-    print("test")
     if not app.supporter.registration:
         return {"error": True, "type": "registrationDisabled"}, 403
     
@@ -80,8 +83,6 @@ async def register(data: AuthRequest):
     if security.account_exists(data.username):
         security.ratelimit(f"register:{request.ip}:f", 5, 30)
         return {"error": True, "type": "usernameExists"}, 409
-    
-    print("test")
 
     token = security.generate_token()
 
