@@ -13,6 +13,7 @@ from .chats import chats_bp
 from .search import search_bp
 from .uploads import uploads_bp
 from .admin import admin_bp
+from .auth import auth_bp
 
 from database import db, blocked_ips, registration_blocked_ips
 import security
@@ -88,7 +89,7 @@ async def index():
 
 
 @app.get("/ip")  # Deprecated
-@deprecate()
+@deprecate
 async def ip_tracer():
 	return "", 410
 
@@ -203,3 +204,4 @@ app.register_blueprint(chats_bp)
 app.register_blueprint(search_bp)
 app.register_blueprint(uploads_bp)
 app.register_blueprint(admin_bp)
+app.register_blueprint(auth_bp)
