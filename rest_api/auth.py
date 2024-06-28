@@ -85,7 +85,7 @@ async def register(data: AuthRequest):
         return {"error": True, "type": "usernameExists"}, 409
 
     if os.getenv("CAPTCHA_SECRET"):
-        if not requests.post("https://challenges.cloudflare.com/turnstile/v0/siteverify", data={
+        if not requests.post("https://api.hcaptcha.com/siteverify", data={
             "secret": os.getenv("CAPTCHA_SECRET"),
             "response": data.captcha,
         }).json()["success"]:
