@@ -80,7 +80,7 @@ async def register(data: AuthRequest):
         security.ratelimit(f"register:{request.ip}:f", 5, 30)
         return {"error": True, "type": "registrationBlocked"}, 403
 
-    if security.account_exists(data.username):
+    if security.account_exists(data.username, ignore_case=True):
         security.ratelimit(f"register:{request.ip}:f", 5, 30)
         return {"error": True, "type": "usernameExists"}, 409
 
