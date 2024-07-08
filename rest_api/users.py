@@ -131,14 +131,11 @@ async def update_relationship(username, data: UpdateRelationshipBody):
         db.relationships.update_one({"_id": {"from": request.user, "to": username}}, {"$set": relationship}, upsert=True)
 
     # Sync relationship between sessions
-    app.cl.broadcast({
-        "mode": "update_relationship",
-        "payload": {
-            "username": username,
-            "state": relationship["state"],
-            "updated_at": relationship["updated_at"]
-        }
-    }, direct_wrap=True, usernames=[request.user])
+    app.cl.send_event("update_relationship", {
+        "username": username,
+        "state": relationship["state"],
+        "updated_at": relationship["updated_at"]
+    }, usernames=[request.user])
 
     # Return updated relationship
     del relationship["_id"]

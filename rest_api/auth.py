@@ -1,5 +1,4 @@
-import re, uuid, os, requests
-from time import time
+import re, os, requests, pyotp, secrets
 from pydantic import BaseModel
 from quart import Blueprint, request, abort, current_app as app
 from quart_schema import validate_request
@@ -13,108 +12,132 @@ auth_bp = Blueprint("auth_bp", __name__, url_prefix="/auth")
 class AuthRequest(BaseModel):
     username: str = Field(min_length=1, max_length=20)
     password: str = Field(min_length=1, max_length=255)
+    totp_code: Optional[str] = Field(default="", min_length=6, max_length=6)
+    mfa_recovery_code: Optional[str] = Field(default="", min_length=10, max_length=10)
     captcha: Optional[str] = Field(default="", max_length=2000)
 
 
-@auth_bp.post('/login')
+@auth_bp.post("/login")
 @validate_request(AuthRequest)
 async def login(data: AuthRequest):
-    for bucket_id in [
-        f"login:i:{request.ip}",
-        f"login:u:{data.username}:s",
-        f"login:u:{data.username}:f"
-    ]:
-        if security.ratelimited(bucket_id):
-            abort(429)
+    # Make sure IP isn't ratelimited
+    if security.ratelimited(f"login:i:{request.ip}"):
+        abort(429)
+    security.ratelimit(f"login:i:{request.ip}", 50, 900)
 
-    account = db.usersv0.find_one({"_id": data.username}, projection={
+    # Get basic account details
+    account = db.usersv0.find_one({"lower_username": data.username.lower()}, projection={
+        "_id": 1,
+        "flags": 1,
         "tokens": 1,
         "pswd": 1,
-        "flags": 1,
-        "permissions": 1,
-        "ban": 1,
-        "delete_after": 1
+        "mfa_recovery_code": 1
     })
-
     if not account:
-        abort(404)
-
-    if (account["flags"] & security.UserFlags.DELETED) or (account["delete_after"] is not None and account["delete_after"] <= time() + 60):
-        security.ratelimit(f"login:u:{data.username}:f", 5, 60)
-        return {"error": True, "type": "accountDeleted"}, 401
-
-    if (data.password not in account["tokens"]) and (not security.check_password_hash(data.password, account["pswd"])):
-        security.ratelimit(f"login:u:{data.username}:f", 5, 60)
         abort(401)
 
-    db.netlog.update_one({"_id": {"ip": request.ip, "user": data.username}}, {"$set": {"last_used": int(time())}}, upsert=True)
+    # Make sure account isn't deleted
+    if account["flags"] & security.UserFlags.DELETED:
+        return {"error": True, "type": "accountDeleted"}, 401
 
-    security.ratelimit(f"login:u:{data.username}:s", 25, 300)
+    # Make sure account isn't ratelimited
+    if security.ratelimited(f"login:u:{account['_id']}"):
+        abort(429)
 
-    # Alert user if account was pending deletion
-    if account["delete_after"]:
-        app.supporter.create_post("inbox", data.username, f"Your account was scheduled for deletion but you logged back in. Your account is no longer scheduled for deletion! If you didn't request for your account to be deleted, please change your password immediately.")
+    # Check credentials
+    if data.password not in account["tokens"]:
+        # Check password
+        if not security.check_password_hash(data.password, account["pswd"]):
+            security.ratelimit(f"login:u:{account['_id']}", 5, 60)
+            abort(401)
 
-    token = security.generate_token()
+        # Check MFA
+        authenticators = list(db.authenticators.find({"user": account["_id"]}))
+        if len(authenticators) > 0:
+            if data.totp_code:
+                passed = False
+                for authenticator in authenticators:
+                    if authenticator["type"] != "totp":
+                        continue
+                    if pyotp.TOTP(authenticator["totp_secret"]).verify(data.totp_code, valid_window=1):
+                        passed = True
+                        break
+                if not passed:
+                    security.ratelimit(f"login:u:{account['_id']}", 5, 60)
+                    abort(401)
+            elif data.mfa_recovery_code:
+                if data.mfa_recovery_code == account["mfa_recovery_code"]:
+                    db.authenticators.delete_many({"user": account["_id"]})
+                    db.usersv0.update_one({"_id": account["_id"]}, {"$set": {
+                        "mfa_recovery_code": secrets.token_hex(5)
+                    }})
+                    app.supporter.create_post("inbox", account["_id"], "All multi-factor authenticators have been removed from your account by someone who used your multi-factor authentication recovery code. If this wasn't you, please secure your account immediately.")
+                else:
+                    security.ratelimit(f"login:u:{account['_id']}", 5, 60)
+                    abort(401)
+            else:
+                mfa_methods = set()
+                for authenticator in authenticators:
+                    mfa_methods.add(authenticator["type"])
+                return {
+                    "error": True,
+                    "type": "mfaRequired",
+                    "mfa_methods": list(mfa_methods)
+                }, 401
 
-    db.usersv0.update_one({"_id": data.username}, {
-        "$addToSet": {"tokens": token},
-        "$set": {"last_seen": int(time()), "delete_after": None}
-    })
+    # Return account and token
+    return {
+        "error": False,
+        "account": security.get_account(account['_id'], True),
+        "token": security.create_user_token(account['_id'], request.ip, used_token=data.password)
+    }, 200
 
-    return {"error": False, "token": token, "account": security.get_account(data.username, True)}, 200
-
-@auth_bp.post('/register')
+@auth_bp.post("/register")
 @validate_request(AuthRequest)
 async def register(data: AuthRequest):
+    # Make sure registration isn't disabled
     if not app.supporter.registration:
         return {"error": True, "type": "registrationDisabled"}, 403
     
-    if security.ratelimited(f"register:{request.ip}:f"):
+    # Make sure IP isn't being ratelimited
+    if security.ratelimited(f"register:{request.ip}:f") or security.ratelimited(f"register:{request.ip}:s"):
         abort(429)
 
+    # Make sure password is between 8-72 characters
+    if len(data.password) < 8 or len(data.password) > 72:
+        abort(400)
+
+    # Make sure username matches regex
     if not re.fullmatch(security.USERNAME_REGEX, data.username):
-        return {"error": True, "type": "invalidUsername"}, 400
+        abort(400)
     
+    # Make sure IP isn't blocked from creating new accounts
     if registration_blocked_ips.search_best(request.ip):
         security.ratelimit(f"register:{request.ip}:f", 5, 30)
         return {"error": True, "type": "registrationBlocked"}, 403
 
+    # Make sure username isn't taken
     if security.account_exists(data.username, ignore_case=True):
         security.ratelimit(f"register:{request.ip}:f", 5, 30)
         return {"error": True, "type": "usernameExists"}, 409
 
-    if os.getenv("CAPTCHA_SECRET"):
+    # Check captcha
+    if os.getenv("CAPTCHA_SECRET") and not (hasattr(request, "bypass_captcha") and request.bypass_captcha):
         if not requests.post("https://api.hcaptcha.com/siteverify", data={
             "secret": os.getenv("CAPTCHA_SECRET"),
             "response": data.captcha,
         }).json()["success"]:
             return {"error": True, "type": "invalidCaptcha"}, 403
 
-    token = security.generate_token()
+    # Create account
+    security.create_account(data.username, data.password, request.ip)
 
-    security.create_account(data.username, data.password, token)
-
+    # Ratelimit
     security.ratelimit(f"register:{request.ip}:s", 5, 900)
-
-    db.netlog.update_one({"_id": {"ip": request.ip, "user": data.username}}, {"$set": {"last_used": int(time())}}, upsert=True)
-
-    app.supporter.create_post("inbox", data.username, "Welcome to Meower! We welcome you with open arms! You can get started by making friends in the global chat or home, or by searching for people and adding them to a group chat. We hope you have fun!")
-
-    if security.get_netinfo(request.ip)["vpn"]:
-        db.reports.insert_one({
-            "_id": str(uuid.uuid4()),
-            "type": "user",
-            "content_id": data.username,
-            "status": "pending",
-            "escalated": False,
-            "reports": [{
-                "user": "Server",
-                "ip": request.ip,
-                "reason": "User registered while using a VPN.",
-                "comment": "",
-                "time": int(time())
-            }]
-        })
     
-    return {"error": False, "token": token, "account": security.get_account(data.username, True)}, 200
+    # Return account and token
+    return {
+        "error": False,
+        "account": security.get_account(data.username, True),
+        "token": security.create_user_token(data.username, request.ip)
+    }, 200

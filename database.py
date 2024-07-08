@@ -1,11 +1,12 @@
 import pymongo
 import redis
 import os
+import secrets
 from radix import Radix
 
 from utils import log
 
-CURRENT_DB_VERSION = 5
+CURRENT_DB_VERSION = 6
 
 # Create Redis connection
 log("Connecting to Redis...")
@@ -53,6 +54,10 @@ except: pass
 try: db.usersv0.create_index([
         ("delete_after", pymongo.ASCENDING)
     ], name="scheduled_deletions", partialFilterExpression={"delete_after": {"$type": "number"}})
+except: pass
+
+# Create authenticators indexes
+try: db.authenticators.create_index([("user", pymongo.ASCENDING)], name="user")
 except: pass
 
 # Create data exports indexes
@@ -201,8 +206,8 @@ for netblock in db.netblock.find({}):
             registration_blocked_ips.add(netblock["_id"])
     except Exception as e:
         log(f"Failed to load netblock {netblock['_id']}: {e}")
-    log(f"Successfully loaded {len(blocked_ips.nodes())} netblock(s) into Radix!")
-    log(f"Successfully loaded {len(registration_blocked_ips.nodes())} registration netblock(s) into Radix!")
+log(f"Successfully loaded {len(blocked_ips.nodes())} netblock(s) into Radix!")
+log(f"Successfully loaded {len(registration_blocked_ips.nodes())} registration netblock(s) into Radix!")
 
 
 def get_total_pages(collection: str, query: dict, page_size: int = 25) -> int:
@@ -229,8 +234,8 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
 
     # Custom profile pictures
     log("[Migrator] Adding custom profile pictures to database")
-    db.usersv0.update_many({"avatar": {"$exists": False}}, {"$set": {"avatar": ""}})
-    db.usersv0.update_many({"avatar_color": {"$exists": False}}, {"$set": {"avatar_color": "000000"}})
+    db.usersv0.update_many({"pswd": {"$ne": None}, "avatar": {"$exists": False}}, {"$set": {"avatar": ""}})
+    db.usersv0.update_many({"pswd": {"$ne": None}, "avatar_color": {"$exists": False}}, {"$set": {"avatar_color": "000000"}})
 
     # Chat icons
     log("[Migrator] Adding chat icons to database")
@@ -246,6 +251,13 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
     db.config.delete_one({"_id": "filter"})
     db.posts.update_many({"unfiltered_p": {"$exists": True}}, [{"$set": {"p": "$unfiltered_p"}}])
     db.posts.update_many({"unfiltered_p": {"$exists": True}}, {"$unset": {"unfiltered_p": ""}})
+
+    # MFA recovery codes
+    log("[Migrator] Adding MFA recovery codes")
+    for user in db.usersv0.find({"pswd": {"$ne": None}, "mfa_recovery_code": {"$exists": False}}, projection={"_id": 1}):
+        db.usersv0.update_one({"_id": user["_id"]}, {"$set": {
+            "mfa_recovery_code": secrets.token_hex(5)
+        }})
 
     db.config.update_one({"_id": "migration"}, {"$set": {"database": CURRENT_DB_VERSION}})
     log(f"[Migrator] Finished Migrating DB to version {CURRENT_DB_VERSION}")

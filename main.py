@@ -10,7 +10,6 @@ from threading import Thread
 
 from cloudlink import CloudlinkServer
 from supporter import Supporter
-from commands import MeowerCommands
 from security import background_tasks_loop
 from grpc_auth import service as grpc_auth
 from rest_api import app as rest_api
@@ -20,17 +19,10 @@ if __name__ == "__main__":
     # Create Cloudlink server
     cl = CloudlinkServer()
     cl.set_real_ip_header(os.getenv("REAL_IP_HEADER"))
-    cl.set_pseudo_trusted_access(True)
-    cl.set_motd("Meower Social Media Platform Server")
-    cl.remove_command("setid")
-    cl.remove_command("gmsg")
-    cl.remove_command("gvar")
 
     # Create Supporter class
     supporter = Supporter(cl)
-
-    # Initialise Meower commands
-    MeowerCommands(cl, supporter)
+    cl.supporter = supporter
 
     # Start background tasks loop
     Thread(target=background_tasks_loop, daemon=True).start()

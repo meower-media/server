@@ -132,10 +132,7 @@ async def update_post(query_args: PostIdQueryArgs, data: PostBody):
     }})
 
     # Send update post event
-    app.cl.broadcast({
-        "mode": "update_post",
-        "payload": post
-    }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+    app.cl.send_event("update_post", post, usernames=(None if post["post_origin"] == "home" else chat["members"]))
 
     # Return post
     post["error"] = False
@@ -225,10 +222,7 @@ async def pin_post(post_id):
 
     post["pinned"] = True
 
-    app.cl.broadcast({
-        "mode": "update_post",
-        "payload": post
-    }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+    app.cl.send_event("update_post", post, usernames=(None if post["post_origin"] == "home" else chat["members"]))
 
     post["error"] = False
     return post, 200
@@ -263,10 +257,7 @@ async def unpin_post(post_id):
 
     post["pinned"] = False
 
-    app.cl.broadcast({
-        "mode": "update_post",
-        "payload": post
-    }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+    app.cl.send_event("update_post", post, usernames=(None if post["post_origin"] == "home" else chat["members"]))
 
     post["error"] = False
     return post, 200
@@ -315,10 +306,7 @@ async def delete_attachment(post_id: str, attachment_id: str):
         }})
 
         # Send update post event
-        app.cl.broadcast({
-            "mode": "update_post",
-            "payload": post
-        }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+        app.cl.send_event("update_post", post, usernames=(None if post["post_origin"] == "home" else chat["members"]))
     else:  # delete post if no content and attachments remain
         # Update post
         db.posts.update_one({"_id": post_id}, {"$set": {
@@ -327,10 +315,10 @@ async def delete_attachment(post_id: str, attachment_id: str):
         }})
 
         # Send delete post event
-        app.cl.broadcast({
-            "mode": "delete",
-            "id": post_id
-        }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+        app.cl.send_event("delete_post", {
+            "chat_id": post["post_origin"],
+            "post_id": post_id
+        }, usernames=(None if post["post_origin"] == "home" else chat["members"]))
 
     # Return post
     post["error"] = False
@@ -384,10 +372,10 @@ async def delete_post(query_args: PostIdQueryArgs):
     }})
 
     # Send delete post event
-    app.cl.broadcast({
-        "mode": "delete",
-        "id": query_args.id
-    }, direct_wrap=True, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+    app.cl.send_event("delete_post", {
+        "chat_id": post["post_origin"],
+        "post_id": query_args.id
+    }, usernames=(None if post["post_origin"] == "home" else chat["members"]))
 
     return {"error": False}, 200
 

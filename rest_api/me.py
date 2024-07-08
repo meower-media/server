@@ -1,11 +1,17 @@
 from quart import Blueprint, current_app as app, request, abort
 from quart_schema import validate_request, validate_querystring
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Literal
 from copy import copy
+from base64 import b64encode
+from io import BytesIO
 import pymongo
 import uuid
 import time
+import pyotp
+import qrcode
+import uuid
+import secrets
 
 import security
 from database import db, rdb, get_total_pages
@@ -17,7 +23,7 @@ me_bp = Blueprint("me_bp", __name__, url_prefix="/me")
 
 
 class DeleteAccountBody(BaseModel):
-    password: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=1, max_length=255)  # change in API v1
 
 class UpdateConfigBody(BaseModel):
     pfp_data: Optional[int] = Field(default=None)
@@ -40,8 +46,24 @@ class UpdateConfigBody(BaseModel):
         str_strip_whitespace = True
 
 class ChangePasswordBody(BaseModel):
-    old: str = Field(min_length=1, max_length=255)
+    old: str = Field(min_length=1, max_length=255)  # change in API v1
     new: str = Field(min_length=8, max_length=72)
+
+class AddAuthenticatorBody(BaseModel):
+    password: str = Field(min_length=1, max_length=255)  # change in API v1
+    type: Literal["totp"] = Field()
+    nickname: str = Field(default="", max_length=32)
+    totp_secret: Optional[str] = Field(default=None, min_length=32, max_length=32)
+    totp_code: Optional[str] = Field(default=None, min_length=6, max_length=6)
+
+class UpdateAuthenticatorBody(BaseModel):
+    nickname: str = Field(default="", max_length=32)
+
+class RemoveAuthenticatorBody(BaseModel):
+    password: str = Field(min_length=1, max_length=255)  # change in API v1
+
+class ResetMFARecoveryCodeBody(BaseModel):
+    password: str = Field(min_length=1, max_length=255)  # change in API v1
 
 class GetReportsQueryArgs(BaseModel):
     page: Optional[int] = Field(default=1, ge=1)
@@ -65,15 +87,13 @@ async def delete_account(data: DeleteAccountBody):
         abort(401)
 
     # Check ratelimit
-    if security.ratelimited(f"login:u:{request.user}:f"):
+    if security.ratelimited(f"login:u:{request.user}"):
         abort(429)
-
-    # Ratelimit
-    security.ratelimit(f"login:u:{request.user}:f", 5, 60)
 
     # Check password
     account = db.usersv0.find_one({"_id": request.user}, projection={"pswd": 1})
     if not security.check_password_hash(data.password, account["pswd"]):
+        security.ratelimit(f"login:u:{request.user}", 5, 60)
         return {"error": True, "type": "invalidCredentials"}, 401
     
     # Schedule account for deletion
@@ -84,7 +104,7 @@ async def delete_account(data: DeleteAccountBody):
 
     # Disconnect clients
     for client in app.cl.usernames.get(request.user, []):
-        client.kick(statuscode="LoggedOut")
+        await client.kick()
 
     return {"error": False}, 200
 
@@ -141,10 +161,7 @@ async def update_config(data: UpdateConfigBody):
     security.update_settings(request.user, new_config)
 
     # Sync config between sessions
-    app.cl.broadcast({
-        "mode": "update_config",
-        "payload": new_config
-    }, direct_wrap=True, usernames=[request.user])
+    app.cl.send_event("update_config", new_config, usernames=[request.user])
 
     # Send updated pfp and quote to other clients
     updated_profile_data = {"_id": request.user}
@@ -157,10 +174,7 @@ async def update_config(data: UpdateConfigBody):
     if "quote" in new_config:
         updated_profile_data["quote"] = new_config["quote"]
     if len(updated_profile_data) > 1:
-        app.cl.broadcast({
-            "mode": "update_profile",
-            "payload": updated_profile_data
-        }, direct_wrap=True)
+        app.cl.send_event("update_profile", updated_profile_data)
 
     return {"error": False}, 200
 
@@ -173,21 +187,206 @@ async def change_password(data: ChangePasswordBody):
         abort(401)
 
     # Check ratelimit
-    if security.ratelimited(f"login:u:{request.user}:f"):
+    if security.ratelimited(f"login:u:{request.user}"):
         abort(429)
-
-    # Ratelimit
-    security.ratelimit(f"login:u:{request.user}:f", 5, 60)
 
     # Check password
     account = db.usersv0.find_one({"_id": request.user}, projection={"pswd": 1})
     if not security.check_password_hash(data.old, account["pswd"]):
+        security.ratelimit(f"login:u:{request.user}", 5, 60)
         return {"error": True, "type": "invalidCredentials"}, 401
 
     # Update password
     db.usersv0.update_one({"_id": request.user}, {"$set": {"pswd": security.hash_password(data.new)}})
 
+    # Send alert
+    app.supporter.create_post("inbox", account["_id"], "Your account password has been changed. If this wasn't requested by you, please secure your account immediately.")
+
     return {"error": False}, 200
+
+
+@me_bp.get("/authenticators")
+async def get_authenticators():
+    return {
+        "error": False,
+        "autoget": list(db.authenticators.find({"user": request.user}, projection={
+            "_id": 1,
+            "type": 1,
+            "nickname": 1,
+            "registered_at": 1,
+        })),
+        "page#": 1,
+        "pages": 1
+    }, 200
+
+
+@me_bp.post("/authenticators")
+@validate_request(AddAuthenticatorBody)
+async def add_authenticator(data: AddAuthenticatorBody):
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Validate
+    if data.type == "totp" and data.totp_secret and data.totp_code:
+        if not pyotp.TOTP(data.totp_secret).verify(data.totp_code, valid_window=1):
+            return {"error": True, "type": "invalidTOTPCode"}, 401
+    else:
+        abort(400)
+
+    # Check ratelimit
+    if security.ratelimited(f"login:u:{request.user}"):
+        abort(429)
+
+    # Check password
+    account = db.usersv0.find_one({"_id": request.user}, projection={"pswd": 1, "mfa_recovery_code": 1})
+    if not security.check_password_hash(data.password, account["pswd"]):
+        security.ratelimit(f"login:u:{request.user}", 5, 60)
+        return {"error": True, "type": "invalidCredentials"}, 401
+    
+    # Register
+    authenticator = {
+        "_id": str(uuid.uuid4()),
+        "user": request.user,
+        "type": data.type,
+        "nickname": data.nickname,
+        "totp_secret": data.totp_secret,
+        "registered_at": int(time.time())
+    }
+    db.authenticators.insert_one(authenticator)
+
+    # Send alert
+    app.supporter.create_post("inbox", account["_id"], "A multi-factor authenticator has been added to your account. If this wasn't requested by you, please secure your account immediately.")
+
+    # Return authenticator and MFA recovery code
+    del authenticator["user"]
+    del authenticator["totp_secret"]
+    return {
+        "error": False,
+        "authenticator": authenticator,
+        "mfa_recovery_code": account["mfa_recovery_code"]
+    }
+
+
+@me_bp.patch("/authenticators/<authenticator_id>")
+@validate_request(UpdateAuthenticatorBody)
+async def update_authenticator(authenticator_id: str, data: UpdateAuthenticatorBody):
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Get authenticator
+    authenticator = db.authenticators.find_one({
+        "_id": authenticator_id,
+        "user": request.user
+    }, projection={
+        "_id": 1,
+        "type": 1,
+        "nickname": 1,
+        "registered_at": 1,
+    })
+    if not authenticator:
+        abort(404)
+
+    # Update
+    updated = {}
+    if data.nickname:
+        updated["nickname"] = data.nickname
+    authenticator.update(updated)
+    db.authenticators.update_one({
+        "_id": authenticator_id,
+        "user": request.user
+    }, {"$set": updated})
+
+    return {"error": False, **authenticator}
+
+
+@me_bp.delete("/authenticators/<authenticator_id>")
+@validate_request(RemoveAuthenticatorBody)
+async def remove_authenticator(authenticator_id: str, data: RemoveAuthenticatorBody):
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Check ratelimit
+    if security.ratelimited(f"login:u:{request.user}"):
+        abort(429)
+
+    # Check password
+    account = db.usersv0.find_one({"_id": request.user}, projection={"pswd": 1, "mfa_recovery_code": 1})
+    if not security.check_password_hash(data.password, account["pswd"]):
+        security.ratelimit(f"login:u:{request.user}", 5, 60)
+        return {"error": True, "type": "invalidCredentials"}, 401
+
+    # Unregister
+    result = db.authenticators.delete_one({
+        "_id": authenticator_id,
+        "user": request.user
+    })
+    if result.deleted_count < 1:
+        abort(404)
+
+    # Send alert
+    app.supporter.create_post("inbox", account["_id"], "A multi-factor authenticator has been removed from your account. If this wasn't requested by you, please secure your account immediately.")
+
+    return {"error": False}
+
+
+@me_bp.get("/authenticators/totp-secret")
+async def get_new_totp_secret():
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Create secret and provisioning URI
+    secret = pyotp.random_base32()
+    provisioning_uri = pyotp.TOTP(secret).provisioning_uri(name=request.user, issuer_name="Meower")
+
+    # Create QR code
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(provisioning_uri)
+    qr.make(fit=True)
+
+    # Create image from QR code
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffered = BytesIO()
+    img.save(buffered, format="WebP")
+    img_str = b64encode(buffered.getvalue()).decode("utf-8")
+
+    return {
+        "error": False,
+        "secret": secret,
+        "provisioning_uri": provisioning_uri,
+        "qr_code_data_uri": f"data:image/webp;base64,{img_str}"
+    }
+
+
+@me_bp.post("/reset-mfa-recovery-code")
+@validate_request(ResetMFARecoveryCodeBody)
+async def reset_mfa_recovery_code(data: ResetMFARecoveryCodeBody):
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Check password
+    account = db.usersv0.find_one({"_id": request.user}, projection={"pswd": 1})
+    if not security.check_password_hash(data.password, account["pswd"]):
+        security.ratelimit(f"login:u:{request.user}", 5, 60)
+        return {"error": True, "type": "invalidCredentials"}, 401
+    
+    # Reset MFA recovery code
+    mfa_recovery_code = secrets.token_hex(5)
+    db.usersv0.update_one({"_id": request.user}, {"$set": {"mfa_recovery_code": mfa_recovery_code}})
+
+    # Send alert
+    app.supporter.create_post("inbox", account["_id"], "Your multi-factor authentication recovery code has been reset. If this wasn't requested by you, please secure your account immediately.")
+
+    return {"error": False, "mfa_recovery_code": mfa_recovery_code}
 
 
 @me_bp.delete("/tokens")
@@ -201,7 +400,7 @@ async def delete_tokens():
 
     # Disconnect clients
     for client in app.cl.usernames.get(request.user, []):
-        client.kick(statuscode="LoggedOut")
+        await client.kick()
 
     return {"error": False}, 200
 

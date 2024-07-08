@@ -1,7 +1,6 @@
-from base64 import urlsafe_b64encode
 from hashlib import sha256
-from typing import Optional, Any
-import time, requests, os, uuid, secrets, bcrypt, msgpack, hmac
+from typing import Optional
+import time, requests, os, uuid, secrets, bcrypt, msgpack
 
 from database import db, rdb
 from utils import log
@@ -14,6 +13,7 @@ This module provides account management and authentication services.
 
 SENSITIVE_ACCOUNT_FIELDS = {
     "pswd",
+    "mfa_recovery_code",
     "tokens",
     "delete_after"
 }
@@ -122,7 +122,8 @@ def account_exists(username, ignore_case=False):
     return (db.usersv0.count_documents(query, limit=1) > 0)
 
 
-def create_account(username: str, password: str, token: Optional[str] = None):
+def create_account(username: str, password: str, ip: str):
+    # Create user
     db.usersv0.insert_one({
         "_id": username,
         "lower_username": username.lower(),
@@ -133,7 +134,8 @@ def create_account(username: str, password: str, token: Optional[str] = None):
         "avatar_color": "000000",
         "quote": "",
         "pswd": hash_password(password),
-        "tokens": [token] if token else [],
+        "mfa_recovery_code": secrets.token_hex(10),
+        "tokens": [],
         "flags": 0,
         "permissions": 0,
         "ban": {
@@ -146,6 +148,30 @@ def create_account(username: str, password: str, token: Optional[str] = None):
         "delete_after": None
     })
     db.user_settings.insert_one({"_id": username})
+
+    # Send welcome message
+    rdb.publish("admin", msgpack.packb({
+        "op": "alert_user",
+        "user": username,
+        "content": "Welcome to Meower! We welcome you with open arms! You can get started by making friends in the global chat or home, or by searching for people and adding them to a group chat. We hope you have fun!"
+    }))
+
+    # Automatically report if VPN is detected
+    if get_netinfo(ip)["vpn"]:
+        db.reports.insert_one({
+            "_id": str(uuid.uuid4()),
+            "type": "user",
+            "content_id": username,
+            "status": "pending",
+            "escalated": False,
+            "reports": [{
+                "user": "Server",
+                "ip": ip,
+                "reason": "User registered while using a VPN.",
+                "comment": "",
+                "time": int(time())
+            }]
+        })
 
 
 def get_account(username, include_config=False):
@@ -188,6 +214,43 @@ def get_account(username, include_config=False):
         del account["ban"]
 
     return account
+
+
+def create_user_token(username: str, ip: str, used_token: Optional[str]) -> str:
+    # Get required account details
+    account = db.usersv0.find_one({"_id": username}, projection={
+        "_id": 1,
+        "tokens": 1,
+        "delete_after": 1
+    })
+
+    # Update netlog
+    db.netlog.update_one({"_id": {
+        "ip": ip,
+        "user": username,
+    }}, {"$set": {"last_used": int(time.time())}}, upsert=True)
+
+    # Restore account
+    if account["delete_after"]:
+        db.usersv0.update_one({"_id": account["_id"]}, {"$set": {"delete_after": None}})
+        rdb.publish("admin", msgpack.packb({
+            "op": "alert_user",
+            "user": account["_id"],
+            "content": "Your account was scheduled for deletion but you logged back in. Your account is no longer scheduled for deletion! If you didn't request for your account to be deleted, please change your password immediately."
+        }))
+    
+    # Generate new token, revoke used token, and update last seen timestamp
+    new_token = secrets.token_urlsafe(TOKEN_BYTES)
+    account["tokens"].append(new_token)
+    if used_token in account["tokens"]:
+        account["tokens"].remove(used_token)
+    db.usersv0.update_one({"_id": account["_id"]}, {"$set": {
+        "tokens": account["tokens"],
+        "last_seen": int(time.time())
+    }})
+
+    # Return new token
+    return new_token
 
 
 def update_settings(username, newdata):
@@ -299,6 +362,7 @@ def delete_account(username, purge=False):
         "avatar_color": None,
         "quote": None,
         "pswd": None,
+        "mfa_recovery_code": None,
         "tokens": None,
         "flags": account["flags"],
         "permissions": None,
@@ -306,6 +370,9 @@ def delete_account(username, purge=False):
         "last_seen": None,
         "delete_after": None
     }})
+
+    # Delete authenticators
+    db.authenticators.delete_many({"user": username})
 
     # Delete uploaded files
     clear_files(username)
@@ -416,27 +483,6 @@ def add_audit_log(action_type, mod_username, mod_ip, data):
     })
 
 
-def create_token(token_type: str, ttl: int, data: dict[str, Any]) -> tuple[str, int]:
-    # Get expiration
-    expires_at = int(time.time()) + ttl
-
-    # Create token claims
-    claims = msgpack.packb({
-        "t": token_type,
-        "e": expires_at,
-        "d": data
-    })
-
-    # Create signature
-    signature = hmac.new(os.environ["TOKEN_SECRET"].encode(), claims, sha256).digest()
-
-    # Create token
-    token = f"{urlsafe_b64encode(claims).decode()}.{urlsafe_b64encode(signature).decode()}"
-
-    # Return token and expiration
-    return token, expires_at
-
-
 def background_tasks_loop():
     while True:
         time.sleep(1800)  # Once every 30 minutes
@@ -482,11 +528,10 @@ def background_tasks_loop():
 
         log("Finished background tasks!")
 
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=BCRYPT_SALT_ROUNDS)).decode()
 
+
 def check_password_hash(password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed_password.encode())
-
-def generate_token() -> str:
-    return secrets.token_urlsafe(TOKEN_BYTES)

@@ -28,41 +28,10 @@ async def get_chats():
     if not request.user:
         abort(401)
 
-    # Get active DMs and favorited chats
-    user_settings = db.user_settings.find_one({"_id": request.user}, projection={
-        "active_dms": 1,
-        "favorited_chats": 1
-    })
-    if not user_settings:
-        user_settings = {
-            "active_dms": [],
-            "favorited_chats": []
-        }
-    if "active_dms" not in user_settings:
-        user_settings["active_dms"] = []
-    if "favorited_chats" not in user_settings:
-        user_settings["favorited_chats"] = []
-
-    # Get chats
-    chats = list(db.chats.find({"$or": [
-        {  # DMs
-            "_id": {
-                "$in": user_settings["active_dms"] + user_settings["favorited_chats"]
-            },
-            "members": request.user,
-            "deleted": False
-        },
-        {  # group chats
-            "members": request.user,
-            "type": 0,
-            "deleted": False
-        }
-    ]}))
-
-    # Return chats
+    # Get and return chats
     return {
         "error": False,
-        "autoget": chats,
+        "autoget": app.supporter.get_chats(request.user),
         "page#": 1,
         "pages": 1
     }, 200
@@ -121,10 +90,7 @@ async def create_chat(data: ChatBody):
     db.chats.insert_one(chat)
 
     # Tell the requester the chat was created
-    app.cl.broadcast({
-        "mode": "create_chat",
-        "payload": chat
-    }, direct_wrap=True, usernames=[request.user])
+    app.cl.send_event("create_chat", chat, usernames=[request.user])
 
     # Return chat
     chat["error"] = False
@@ -204,10 +170,7 @@ async def update_chat(chat_id, data: ChatBody):
     db.chats.update_one({"_id": chat_id}, {"$set": updated_vals})
 
     # Send update chat event
-    app.cl.broadcast({
-        "mode": "update_chat",
-        "payload": updated_vals
-    }, direct_wrap=True, usernames=chat["members"])
+    app.cl.send_event("update_chat", updated_vals, usernames=chat["members"])
 
     # Return chat
     chat["error"] = False
@@ -249,14 +212,11 @@ async def leave_chat(chat_id):
             })
 
             # Send update chat event
-            app.cl.broadcast({
-                "mode": "update_chat",
-                "payload": {
-                    "_id": chat_id,
-                    "owner": chat["owner"],
-                    "members": chat["members"]
-                }
-            }, direct_wrap=True, usernames=chat["members"])
+            app.cl.send_event("update_chat", {
+                "_id": chat_id,
+                "owner": chat["owner"],
+                "members": chat["members"]
+            }, usernames=chat["members"])
 
             # Send in-chat notification
             app.supporter.create_post(chat_id, "Server", f"@{request.user} has left the group chat.", chat_members=chat["members"])
@@ -277,10 +237,7 @@ async def leave_chat(chat_id):
         abort(500)
 
     # Send delete event to client
-    app.cl.broadcast({
-        "mode": "delete",
-        "id": chat_id
-    }, direct_wrap=True, usernames=[request.user])
+    app.cl.send_event("delete_chat", {"chat_id": chat_id}, usernames=[request.user])
 
     return {"error": False}, 200
 
@@ -312,12 +269,10 @@ async def emit_typing(chat_id):
         if not chat:
             abort(404)
 
-    # Send new state
-    app.cl.broadcast({
-        "chatid": chat_id,
-        "u": request.user,
-        "state": 100
-    }, direct_wrap=True, usernames=(None if chat_id == "livechat" else chat["members"]))
+    # Send typing event
+    app.cl.send_event("typing", {
+        "chat_id": chat_id, "username": request.user
+    }, usernames=(None if chat_id == "livechat" else chat["members"]))
 
     return {"error": False}, 200
 
@@ -375,19 +330,13 @@ async def add_chat_member(chat_id, username):
     db.chats.update_one({"_id": chat_id}, {"$addToSet": {"members": username}})
 
     # Send create chat event
-    app.cl.broadcast({
-        "mode": "create_chat",
-        "payload": chat
-    }, direct_wrap=True, usernames=[username])
+    app.cl.send_event("create_chat", chat, usernames=[username])
 
     # Send update chat event
-    app.cl.broadcast({
-        "mode": "update_chat",
-        "payload": {
-            "_id": chat_id,
-            "members": chat["members"]
-        }
-    }, direct_wrap=True, usernames=chat["members"])
+    app.cl.send_event("update_chat", {
+        "_id": chat_id,
+        "members": chat["members"]
+    }, usernames=chat["members"])
 
     # Send inbox message to user
     app.supporter.create_post("inbox", username, f"You have been added to the group chat '{chat['nickname']}' by @{request.user}!")
@@ -431,19 +380,13 @@ async def remove_chat_member(chat_id, username):
     db.chats.update_one({"_id": chat_id}, {"$pull": {"members": username}})
 
     # Send delete chat event to user
-    app.cl.broadcast({
-        "mode": "delete",
-        "id": chat_id
-    }, direct_wrap=True, usernames=[username])
+    app.cl.send_event("delete_chat", {"chat_id": chat_id}, usernames=[username])
 
     # Send update chat event
-    app.cl.broadcast({
-        "mode": "update_chat",
-        "id": {
-            "_id": chat_id,
-            "members": chat["members"]
-        }
-    }, direct_wrap=True, usernames=chat["members"])
+    app.cl.send_event("update_chat", {
+        "_id": chat_id,
+        "members": chat["members"]
+    }, usernames=chat["members"])
 
     # Send inbox message to user
     app.supporter.create_post("inbox", username, f"You have been removed from the group chat '{chat['nickname']}' by @{request.user}!")
@@ -492,13 +435,10 @@ async def transfer_chat_ownership(chat_id, username):
     db.chats.update_one({"_id": chat_id}, {"$set": {"owner": username}})
 
     # Send update chat event
-    app.cl.broadcast({
-        "mode": "update_chat",
-        "payload": {
-            "_id": chat_id,
-            "owner": chat["owner"]
-        }
-    }, direct_wrap=True, usernames=chat["members"])
+    app.cl.send_event("update_chat", {
+        "_id": chat_id,
+        "owner": chat["owner"]
+    }, usernames=chat["members"])
 
     # Send in-chat notification
     app.supporter.create_post(chat_id, "Server", f"@{request.user} transferred ownership of the group chat to @{username}.", chat_members=chat["members"])

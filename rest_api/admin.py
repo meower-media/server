@@ -69,7 +69,7 @@ class GetUserPostsQueryArgs(BaseModel):
     page: Optional[int] = Field(default=1, ge=1)
 
 class ClearUserPostsQueryArgs(BaseModel):
-    origin: str = Field(min_length=1)
+    origin: Optional[str] = Field(default=None)
 
 class UpdateChatBody(BaseModel):
     nickname: str = Field(default=None, min_length=1, max_length=32)
@@ -390,15 +390,15 @@ async def delete_post(post_id):
 
     # Send delete post event
     if post["post_origin"] == "home" or (post["post_origin"] == "inbox" and post["u"] == "Server"):
-        app.cl.broadcast({
-            "mode": "delete",
-            "id": post_id
-        }, direct_wrap=True)
+        app.cl.send_event("delete_post", {
+            "chat_id": post["post_origin"],
+            "post_id": post_id
+        })
     elif post["post_origin"] == "inbox":
-        app.cl.broadcast({
-            "mode": "delete",
-            "id": post_id
-        }, direct_wrap=True, usernames=[post["u"]])
+        app.cl.send_event("delete_post", {
+            "chat_id": post["post_origin"],
+            "post_id": post_id
+        }, usernames=[post["u"]])
     else:
         chat = db.chats.find_one({
             "_id": post["post_origin"],
@@ -406,10 +406,10 @@ async def delete_post(post_id):
             "deleted": False
         }, projection={"members": 1})
         if chat:
-            app.cl.broadcast({
-                "mode": "delete",
-                "id": post_id
-            }, direct_wrap=True, usernames=chat["members"])
+            app.cl.send_event("delete_post", {
+                "chat_id": post["post_origin"],
+                "post_id": post_id
+            }, usernames=chat["members"])
 
     # Return updated post
     post["error"] = False
@@ -597,19 +597,13 @@ async def update_user(username, data: UpdateUserBody):
     db.usersv0.update_one({"_id": username}, {"$set": updated_fields})
 
     # Sync config between sessions
-    app.cl.broadcast({
-        "mode": "update_config",
-        "payload": updated_fields
-    }, direct_wrap=True, usernames=[username])
+    app.cl.send_event("update_config", updated_fields, usernames=[username])
 
     # Send updated values to other clients
-    app.cl.broadcast({
-        "mode": "update_profile",
-        "payload": {
-            "_id": username,
-            "permissions": data.permissions,
-        }
-    }, direct_wrap=True)
+    app.cl.send_event("update_profile", {
+        "_id": username,
+        "permissions": data.permissions,
+    })
 
     return {"error": False}, 200
 
@@ -652,7 +646,7 @@ async def delete_user(username, query_args: DeleteUserQueryArgs):
             },
         )
         for client in app.cl.usernames.get(username, []):
-            client.kick(statuscode="LoggedOut")
+            await client.kick()
         if deletion_mode in ["immediate", "purge"]:
             security.delete_account(username, purge=(deletion_mode == "purge"))
     else:
@@ -700,14 +694,9 @@ async def ban_user(username, data: UpdateUserBanBody):
         data.state == "temp_ban" and data.expires > time.time()
     ):
         for client in app.cl.usernames.get(username, []):
-            client.kick(statuscode="Banned")
+            await client.kick()
     else:
-        app.cl.broadcast({
-            "mode": "update_config",
-            "payload": {
-                "ban": data.model_dump()
-            }
-        }, direct_wrap=True, usernames=[username])
+        app.cl.send_event("update_config", {"ban": data.model_dump()}, usernames=[username])
 
     return {"error": False}, 200
 
@@ -831,7 +820,7 @@ async def kick_user(username):
 
     # Kick clients
     for client in app.cl.usernames.get(username, []):
-        client.kick(statuscode="Kicked")
+        await client.kick()
 
     # Add log
     security.add_audit_log(
@@ -863,21 +852,10 @@ async def clear_avatar(username):
     )
 
     # Sync config between sessions
-    app.cl.broadcast({
-        "mode": "update_config",
-        "payload": {
-            "avatar": ""
-        }
-    }, direct_wrap=True, usernames=[username])
+    app.cl.send_event("update_config", {"avatar": ""}, usernames=[username])
 
     # Send updated avatar to other clients
-    app.cl.broadcast({
-        "mode": "update_profile",
-        "payload": {
-            "_id": username,
-            "avatar": ""
-        }
-    }, direct_wrap=True)
+    app.cl.send_event("update_profile", {"_id": username, "avatar": ""})
 
     # Add log
     security.add_audit_log(
@@ -909,21 +887,10 @@ async def clear_quote(username):
     )
 
     # Sync config between sessions
-    app.cl.broadcast({
-        "mode": "update_config",
-        "payload": {
-            "quote": ""
-        }
-    }, direct_wrap=True, usernames=[username])
+    app.cl.send_event("update_config", {"quote": ""}, usernames=[username])
 
-     # Send updated quote to other clients
-    app.cl.broadcast({
-        "mode": "update_profile",
-        "payload": {
-            "_id": username,
-            "quote": ""
-        }
-    }, direct_wrap=True)
+    # Send updated quote to other clients
+    app.cl.send_event("update_profile", {"_id": username, "quote": ""})
 
     # Add log
     security.add_audit_log(
@@ -979,10 +946,7 @@ async def update_chat(chat_id, data: UpdateChatBody):
     db.chats.update_one({"_id": chat_id}, {"$set": updated_vals})
 
     # Send update chat event
-    app.cl.broadcast({
-        "mode": "update_chat",
-        "payload": updated_vals
-    }, direct_wrap=True, usernames=chat["members"])
+    app.cl.send_event("update_chat", updated_vals, usernames=chat["members"])
 
     # Add log
     updated_vals["chat_id"] = updated_vals.pop("_id")
@@ -1009,10 +973,7 @@ async def delete_chat(chat_id):
     db.chats.update_one({"_id": chat_id}, {"$set": {"deleted": True}})
 
     # Send delete chat event
-    app.cl.broadcast({
-        "mode": "delete",
-        "id": chat_id
-    }, direct_wrap=True, usernames=chat["members"])
+    app.cl.send_event("delete_chat", {"chat_id": chat_id}, usernames=chat["members"])
 
     # Add log
     security.add_audit_log("deleted_chat", request.user, request.ip, {"chat_id": chat_id})
@@ -1038,10 +999,7 @@ async def restore_chat(chat_id):
     db.chats.update_one({"_id": chat_id}, {"$set": {"deleted": False}})
 
     # Send create chat event
-    app.cl.broadcast({
-        "mode": "create_chat",
-        "payload": chat
-    }, direct_wrap=True, usernames=chat["members"])
+    app.cl.send_event("create_chat", chat, usernames=chat["members"])
 
     # Add log
     security.add_audit_log("restored_chat", request.user, request.ip, {"chat_id": chat_id})
@@ -1075,13 +1033,7 @@ async def transfer_chat_ownership(chat_id, username):
     db.chats.update_one({"_id": chat_id}, {"$set": {"owner": username}})
 
     # Send update chat event
-    app.cl.broadcast({
-        "mode": "update_chat",
-        "payload": {
-            "_id": chat_id,
-            "owner": chat["owner"]
-        }
-    }, direct_wrap=True, usernames=chat["members"])
+    app.cl.send_event("update_chat", {"_id": chat_id, "owner": chat["owner"]}, usernames=chat["members"])
 
     # Add log
     security.add_audit_log("transferred_chat_ownership", request.user, request.ip, {"chat_id": chat_id, "username": username})
@@ -1244,7 +1196,7 @@ async def create_netblock(cidr, data: NetblockBody):
     if data.type == 0:
         for client in copy(app.cl.clients):
             if blocked_ips.search_best(client.ip):
-                client.kick(statuscode="Blocked")
+                await client.kick()
 
     # Add log
     security.add_audit_log(
@@ -1348,7 +1300,7 @@ async def kick_all_clients():
 
     # Kick all clients
     for client in copy(app.cl.clients):
-        client.kick()
+        await client.kick()
 
     # Add log
     security.add_audit_log("kicked_all", request.user, request.ip, {})
@@ -1370,7 +1322,7 @@ async def enable_repair_mode():
 
     # Kick all clients
     for client in copy(app.cl.clients):
-        client.kick(statuscode="Kicked")
+        await client.kick()
 
     # Add log
     security.add_audit_log("enabled_repair_mode", request.user, request.ip, {})
