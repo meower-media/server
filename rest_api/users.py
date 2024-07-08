@@ -140,7 +140,7 @@ async def update_relationship(username, data: UpdateRelationshipBody):
         }
     }, direct_wrap=True, usernames=[request.user])
 
-    # Return updated relationshipFeat/api accounts
+    # Return updated relationship
     del relationship["_id"]
     return relationship, 200
 

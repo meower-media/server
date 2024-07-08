@@ -1,19 +1,19 @@
-import re
+import re, uuid, os, requests
 from time import time
-import uuid
 from pydantic import BaseModel
 from quart import Blueprint, request, abort, current_app as app
 from quart_schema import validate_request
 from pydantic import Field
+from typing import Optional
 from database import db, registration_blocked_ips
 import security
 
 auth_bp = Blueprint("auth_bp", __name__, url_prefix="/auth")
-time
 
 class AuthRequest(BaseModel):
     username: str = Field(min_length=1, max_length=20)
     password: str = Field(min_length=1, max_length=255)
+    captcha: Optional[str] = Field(default="", max_length=2000)
 
 
 @auth_bp.post('/login')
@@ -51,6 +51,10 @@ async def login(data: AuthRequest):
 
     security.ratelimit(f"login:u:{data.username}:s", 25, 300)
 
+    # Alert user if account was pending deletion
+    if account["delete_after"]:
+        app.supporter.create_post("inbox", data.username, f"Your account was scheduled for deletion but you logged back in. Your account is no longer scheduled for deletion! If you didn't request for your account to be deleted, please change your password immediately.")
+
     token = security.generate_token()
 
     db.usersv0.update_one({"_id": data.username}, {
@@ -76,10 +80,17 @@ async def register(data: AuthRequest):
         security.ratelimit(f"register:{request.ip}:f", 5, 30)
         return {"error": True, "type": "registrationBlocked"}, 403
 
-    if security.account_exists(data.username):
+    if security.account_exists(data.username, ignore_case=True):
         security.ratelimit(f"register:{request.ip}:f", 5, 30)
         return {"error": True, "type": "usernameExists"}, 409
-    
+
+    if os.getenv("CAPTCHA_SECRET"):
+        if not requests.post("https://api.hcaptcha.com/siteverify", data={
+            "secret": os.getenv("CAPTCHA_SECRET"),
+            "response": data.captcha,
+        }).json()["success"]:
+            return {"error": True, "type": "invalidCaptcha"}, 403
+
     token = security.generate_token()
 
     security.create_account(data.username, data.password, token)
