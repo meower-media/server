@@ -52,6 +52,7 @@ class CloudlinkServer:
             #"Disabled": "E:122 | Command disabled by sysadmin",  -- deprecated
             "PasswordInvalid": "I:011 | Invalid Password",
             "IDExists": "I:015 | Account exists",
+            "2FARequired": "I:016 | 2FA Required",
             #"MissingPermissions": "I:017 | Missing permissions",  -- deprecated
             "Banned": "E:018 | Account Banned",
             #"IllegalChars": "E:019 | Illegal characters detected",  -- deprecated
@@ -351,6 +352,8 @@ class CloudlinkClient:
                     self.send_statuscode("IDExists", listener)
                 case "Unauthorized":
                     self.send_statuscode("PasswordInvalid", listener)
+                case "mfaRequired":
+                    self.send_statuscode("2FARequired", listener)
                 case "accountDeleted":
                     self.send_statuscode("Deleted", listener)
                 case "accountBanned":
