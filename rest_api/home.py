@@ -110,10 +110,6 @@ async def emit_typing():
         return {"error": True, "type": "accountBanned"}, 403
 
     # Send new state
-    app.cl.broadcast({
-        "chatid": "livechat",
-        "u": request.user,
-        "state": 101
-    }, direct_wrap=True)
+    app.cl.send_event("typing", {"chat_id": "home", "username": request.user})
 
     return {"error": False}, 200

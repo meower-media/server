@@ -1,9 +1,9 @@
 from threading import Thread
-from typing import Optional
+from typing import Optional, Any
 import uuid, time, msgpack
 
-from cloudlink import CloudlinkServer, CloudlinkClient
-from database import db, rdb, blocked_ips
+from cloudlink import CloudlinkServer
+from database import db, rdb
 from utils import timestamp
 from uploads import FileDetails
 
@@ -16,24 +16,6 @@ class Supporter:
     def __init__(self, cl: CloudlinkServer):
         # CL server
         self.cl = cl
-        self.cl.add_callback("on_open", self.on_open)
-        self.cl.add_callback("on_close", self.on_close)
-        for code, details in {
-            "PasswordInvalid": "I:011 | Invalid Password",
-            "IDExists": "I:015 | Account exists",
-            "MissingPermissions": "I:017 | Missing permissions",
-            "Banned": "E:018 | Account Banned",
-            "IllegalChars": "E:019 | Illegal characters detected",
-            "Kicked": "E:020 | Kicked",
-            "ChatFull": "E:023 | Chat full",
-            "LoggedOut": "I:024 | Logged out",
-            "Deleted": "E:025 | Deleted"
-        }.items():
-            self.cl.add_statuscode(code, details)
-
-        # Constant vars
-        self.repair_mode = True
-        self.registration = False
 
         # Set status
         status = db.config.find_one({"_id": "status"})
@@ -42,16 +24,38 @@ class Supporter:
 
         # Start admin pub/sub listener
         Thread(target=self.listen_for_admin_pubsub, daemon=True).start()
-    
-    async def on_open(self, client: CloudlinkClient):
-        if self.repair_mode or blocked_ips.search_best(client.ip):
-            client.kick(statuscode="Blocked")
 
-    async def on_close(self, client: CloudlinkClient):
-        if client.username:
-            db.usersv0.update_one({"_id": client.username, "last_seen": {"$ne": None}}, {"$set": {
-                "last_seen": int(time.time())
-            }})
+    def get_chats(self, username: str) -> list[dict[str, Any]]:
+        # Get active DMs and favorited chats
+        user_settings = db.user_settings.find_one({"_id": username}, projection={
+            "active_dms": 1,
+            "favorited_chats": 1
+        })
+        if not user_settings:
+            user_settings = {
+                "active_dms": [],
+                "favorited_chats": []
+            }
+        if "active_dms" not in user_settings:
+            user_settings["active_dms"] = []
+        if "favorited_chats" not in user_settings:
+            user_settings["favorited_chats"] = []
+
+        # Get and return chats
+        return list(db.chats.find({"$or": [
+            {  # DMs
+                "_id": {
+                    "$in": user_settings["active_dms"] + user_settings["favorited_chats"]
+                },
+                "members": username,
+                "deleted": False
+            },
+            {  # group chats
+                "members": username,
+                "type": 0,
+                "deleted": False
+            }
+        ]}))
 
     def create_post(
         self,
@@ -88,25 +92,21 @@ class Supporter:
         if nonce:
             post["nonce"] = nonce
 
-        # Add database item and send live packet
-        if origin == "home":
-            self.cl.broadcast({"mode": 1, **post}, direct_wrap=True)
-        elif origin == "inbox":
+        # Send live packet
+        if origin == "inbox":
+            self.cl.send_event("inbox_message", post, usernames=(None if author == "Server" else [author]))
+        else:
+            self.cl.send_event("post", post, usernames=(None if origin in ["home", "livechat"] else chat_members))
+
+        # Update other database items
+        if origin == "inbox":
             if author == "Server":
                 db.user_settings.update_many({}, {"$set": {"unread_inbox": True}})
             else:
                 db.user_settings.update_one({"_id": author}, {"$set": {"unread_inbox": True}})
-
-            self.cl.broadcast({
-                "mode": "inbox_message",
-                "payload": post
-            }, direct_wrap=True, usernames=(None if author == "Server" else [author]))
-        elif origin == "livechat":
-            self.cl.broadcast({"state": 2, **post}, direct_wrap=True)
-        else:
+        elif origin != "home":
             db.chats.update_one({"_id": origin}, {"$set": {"last_active": int(time.time())}})
-            self.cl.broadcast({"state": 2, **post}, direct_wrap=True, usernames=chat_members)
-        
+
         # Return post
         return post
 
@@ -137,17 +137,6 @@ class Supporter:
                         # Set new ban state
                         db.usersv0.update_one({"_id": username}, {"$set": {"ban": ban_state}})
 
-                        # Send update config event
-                        # The user doesn't get kicked when banned like usual,
-                        # but async is a pain and the client can't do "write" actions while banned anyway.
-                        # Which is the most important thing since this is meant to be used by anti-abuse systems.
-                        self.cl.broadcast({
-                            "mode": "update_config",
-                            "payload": {
-                                "ban": ban_state
-                            }
-                        }, direct_wrap=True, usernames=[username])
-
                         # Add note to admin notes
                         if "note" in msg:
                             notes = db.admin_notes.find_one({"_id": user["uuid"]})
@@ -158,5 +147,9 @@ class Supporter:
                                 "last_modified_by": "Server",
                                 "last_modified_at": int(time.time())
                             }}, upsert=True)
+
+                        # Logout user (can't kick because of async stuff)
+                        for c in self.cl.usernames.get(username, []):
+                            c.logout()
             except:
                 continue
