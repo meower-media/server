@@ -39,7 +39,7 @@ async def check_repair_mode():
 @app.before_request
 async def check_ip():
     request.ip = (request.headers.get("Cf-Connecting-Ip", request.remote_addr))
-    if request.path != "/status" and blocked_ips.search_best(request.ip):
+    if blocked_ips.search_best(request.ip):
         return {"error": True, "type": "ipBlocked"}, 403
 
 
