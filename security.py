@@ -216,7 +216,7 @@ def get_account(username, include_config=False):
     return account
 
 
-def create_user_token(username: str, ip: str, used_token: Optional[str]) -> str:
+def create_user_token(username: str, ip: str, used_token: Optional[str] = None) -> str:
     # Get required account details
     account = db.usersv0.find_one({"_id": username}, projection={
         "_id": 1,
