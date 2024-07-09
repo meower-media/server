@@ -31,6 +31,12 @@ class TokenHeader(BaseModel):
 
 
 @app.before_request
+async def check_repair_mode():
+    if app.supporter.repair_mode:
+        return {"error": True, "type": "repairModeEnabled"}, 503
+
+
+@app.before_request
 async def check_ip():
     request.ip = (request.headers.get("Cf-Connecting-Ip", request.remote_addr))
     if request.path != "/status" and blocked_ips.search_best(request.ip):

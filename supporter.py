@@ -19,6 +19,7 @@ class Supporter:
 
         # Set status
         status = db.config.find_one({"_id": "status"})
+        self.repair_mode = status["repair_mode"]
         self.registration = status["registration"]
 
         # Start admin pub/sub listener
