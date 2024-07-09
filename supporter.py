@@ -4,7 +4,7 @@ import uuid, time, msgpack
 
 from cloudlink import CloudlinkServer
 from database import db, rdb
-from utils import timestamp
+from time import time
 from uploads import FileDetails
 
 """
@@ -19,7 +19,6 @@ class Supporter:
 
         # Set status
         status = db.config.find_one({"_id": "status"})
-        self.repair_mode = status["repair_mode"]
         self.registration = status["registration"]
 
         # Start admin pub/sub listener
@@ -68,7 +67,7 @@ class Supporter:
     ) -> tuple[bool, dict]:
         # Create post ID and get timestamp
         post_id = str(uuid.uuid4())
-        ts = timestamp(1).copy()
+        ts = time()
 
         # Construct post object
         post = {
@@ -76,7 +75,9 @@ class Supporter:
             "type": 2 if origin == "inbox" else 1,
             "post_origin": origin, 
             "u": author,
-            "t": ts, 
+            "t": {
+                "e": ts
+            }, 
             "p": content,
             "attachments": attachments,
             "post_id": post_id, 
@@ -105,7 +106,7 @@ class Supporter:
             else:
                 db.user_settings.update_one({"_id": author}, {"$set": {"unread_inbox": True}})
         elif origin != "home":
-            db.chats.update_one({"_id": origin}, {"$set": {"last_active": int(time.time())}})
+            db.chats.update_one({"_id": origin}, {"$set": {"last_active": int(time())}})
 
         # Return post
         return post

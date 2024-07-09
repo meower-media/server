@@ -61,6 +61,7 @@ async def get_posts(username, query_args: GetPostsQueryArgs):
     return {
         "error": False,
         "autoget": posts,
+        "page": query_args.page,
         "page#": query_args.page,
         "pages": get_total_pages("posts", query)
     }, 200

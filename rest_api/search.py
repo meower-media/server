@@ -1,4 +1,4 @@
-from quart import Blueprint, request
+from quart import Blueprint
 from quart_schema import validate_querystring
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -26,6 +26,7 @@ async def search_home(query_args: SearchQueryArgs):
     return {
         "error": False,
         "autoget": posts,
+        "page": query_args.page,
         "page#": query_args.page,
         "pages": get_total_pages("posts", query)
     }, 200
@@ -42,6 +43,7 @@ async def search_users(query_args: SearchQueryArgs):
     return {
         "error": False,
         "autoget": [security.get_account(username) for username in usernames],
+        "page": query_args.page,
         "page#": query_args.page,
         "pages": get_total_pages("usersv0", query)
     }, 200

@@ -403,6 +403,7 @@ async def get_chat_posts(chat_id, query_args: GetChatPostsQueryArgs):
     return {
         "error": False,
         "autoget": posts,
+        "page": query_args.page,
         "page#": query_args.page,
         "pages": get_total_pages("posts", query)
     }, 200

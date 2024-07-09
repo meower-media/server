@@ -37,6 +37,7 @@ async def get_home_posts(query_args: GetHomeQueryArgs):
     return {
         "error": False,
         "autoget": posts,
+        "page": query_args.page,
         "page#": query_args.page,
         "pages": (get_total_pages("posts", query) if request.user else 1)
     }, 200

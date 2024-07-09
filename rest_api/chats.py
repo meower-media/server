@@ -32,6 +32,7 @@ async def get_chats():
     return {
         "error": False,
         "autoget": app.supporter.get_chats(request.user),
+        "page": 1,
         "page#": 1,
         "pages": 1
     }, 200
@@ -475,6 +476,7 @@ def get_chat_pins(chat_id):
 
     return {
         "error": False,
+        "page": page,
         "page#": page,
         "pages": get_total_pages("posts", query),
         "posts": list(posts)
