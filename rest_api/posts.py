@@ -543,17 +543,17 @@ async def react_to_post(post_id, data: ReactBody):
     if (post["post_origin"] == "inbox") and (post["u"] != request.user):
         abort(404)
     
+    post["reactions"].append({
+        "user": request.user,
+        "emoji": data.emoji,
+    })
+
     db.posts.update_one({"_id": post_id}, {"$addToSet": {"reactions": {
         "user": request.user,
         "emoji": data.emoji,
     }}})
 
-    app.cl.send_event("add_reaction", {
-        "chat_id": post["post_origin"],
-        "post_id": post["_id"],
-        "emoji": data.emoji,
-        "user": request.user
-    }, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+    app.cl.send_event("update_post", post, usernames=(None if post["post_origin"] == "home" else chat["members"]))
     return {"error": False}, 200
 
 @posts_bp.delete("/<post_id>/react")
@@ -593,15 +593,16 @@ async def delete_reaction(post_id, data: ReactBody):
     if (post["post_origin"] == "inbox") and (post["u"] != request.user):
         abort(404)
     
+    # remove the reaction
+    post["reactions"] = [
+        reaction for reaction in post["reactions"]
+        if not (reaction["user"] == request.user and reaction["emoji"] == data.emoji)
+    ]
+
     db.posts.update_one({"_id": post_id}, {"$pull": {"reactions": {
         "user": request.user,
         "emoji": data.emoji,
     }}})
 
-    app.cl.send_event("remove_reaction", {
-        "chat_id": post["post_origin"],
-        "post_id": post["_id"],
-        "emoji": data.emoji,
-        "user": request.user
-    }, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+    app.cl.send_event("remove_reaction", post, usernames=(None if post["post_origin"] == "home" else chat["members"]))
     return {"error": False}, 200
