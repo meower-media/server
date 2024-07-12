@@ -1,6 +1,7 @@
 bcrypt
 requests
 quart-cors
+quart-schema[pydantic]
 uuid
 quart
 pymongo
@@ -10,3 +11,6 @@ uvicorn
 py-radix
 pydantic
 msgpack
+grpcio
+protobuf
+pyotp

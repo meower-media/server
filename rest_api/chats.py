@@ -1,12 +1,12 @@
-import pymongo
 from quart import Blueprint, current_app as app, request, abort
+from quart_schema import validate_request
 from pydantic import BaseModel, Field
-import uuid
-import time
-import msgpack
+import pymongo, uuid, time
 
 import security
-from database import db, rdb, get_total_pages
+from database import db, get_total_pages
+from uploads import claim_file, delete_file
+from utils import log
 
 chats_bp = Blueprint("chats_bp", __name__, url_prefix="/chats")
 
@@ -28,52 +28,18 @@ async def get_chats():
     if not request.user:
         abort(401)
 
-    # Get active DMs and favorited chats
-    user_settings = db.user_settings.find_one({"_id": request.user}, projection={
-        "active_dms": 1,
-        "favorited_chats": 1
-    })
-    if not user_settings:
-        user_settings = {
-            "active_dms": [],
-            "favorited_chats": []
-        }
-    if "active_dms" not in user_settings:
-        user_settings["active_dms"] = []
-    if "favorited_chats" not in user_settings:
-        user_settings["favorited_chats"] = []
-
-    # Get chats
-    chats = list(db.chats.find({"$or": [
-        {  # DMs
-            "_id": {
-                "$in": user_settings["active_dms"] + user_settings["favorited_chats"]
-            },
-            "members": request.user,
-            "deleted": False
-        },
-        {  # group chats
-            "members": request.user,
-            "type": 0,
-            "deleted": False
-        }
-    ]}))
-
-    # Return chats
-    payload = {
+    # Get and return chats
+    return {
         "error": False,
+        "autoget": app.supporter.get_chats(request.user),
         "page#": 1,
         "pages": 1
-    }
-    if "autoget" in request.args:
-        payload["autoget"] = chats
-    else:
-        payload["index"] = [chat["_id"] for chat in chats]
-    return payload, 200
+    }, 200
 
 
 @chats_bp.post("/")
-async def create_chat():
+@validate_request(ChatBody)
+async def create_chat(data: ChatBody):
     # Check authorization
     if not request.user:
         abort(401)
@@ -88,43 +54,43 @@ async def create_chat():
     # Check restrictions
     if security.is_restricted(request.user, security.Restrictions.NEW_CHATS):
         return {"error": True, "type": "accountBanned"}, 403
-
-    # Get body
-    try:
-        body = ChatBody(**await request.json)
-    except: abort(400)
     
     # Make sure the requester isn't in too many chats
     if db.chats.count_documents({"type": 0, "members": request.user}, limit=150) >= 150:
         return {"error": True, "type": "tooManyChats"}, 403
 
+    # Claim icon
+    if data.icon:
+        try:
+            claim_file(data.icon, "icons")
+        except Exception as e:
+            log(f"Unable to claim icon: {e}")
+            return {"error": True, "type": "unableToClaimIcon"}, 500
+
     # Create chat
-    if body.icon is None:
-        body.icon = ""
-    if body.icon_color is None:
-        body.icon_color = "000000"
-    if body.allow_pinning is None:
-        body.allow_pinning = False
+    if data.icon is None:
+        data.icon = ""
+    if data.icon_color is None:
+        data.icon_color = "000000"
+    if data.allow_pinning is None:
+        data.allow_pinning = False
     chat = {
         "_id": str(uuid.uuid4()),
         "type": 0,
-        "nickname": app.supporter.wordfilter(body.nickname),
-        "icon": body.icon,
-        "icon_color": body.icon_color,
+        "nickname": data.nickname,
+        "icon": data.icon,
+        "icon_color": data.icon_color,
         "owner": request.user,
         "members": [request.user],
         "created": int(time.time()),
         "last_active": int(time.time()),
         "deleted": False,
-        "allow_pinning": body.allow_pinning
+        "allow_pinning": data.allow_pinning
     }
     db.chats.insert_one(chat)
 
     # Tell the requester the chat was created
-    app.cl.broadcast({
-        "mode": "create_chat",
-        "payload": chat
-    }, direct_wrap=True, usernames=[request.user])
+    app.cl.send_event("create_chat", chat, usernames=[request.user])
 
     # Return chat
     chat["error"] = False
@@ -148,7 +114,8 @@ async def get_chat(chat_id):
 
 
 @chats_bp.patch("/<chat_id>")
-async def update_chat(chat_id):
+@validate_request(ChatBody)
+async def update_chat(chat_id, data: ChatBody):
     # Check authorization
     if not request.user:
         abort(401)
@@ -159,11 +126,6 @@ async def update_chat(chat_id):
 
     # Ratelimit
     security.ratelimit(f"update_chat:{request.user}", 5, 5)
-
-    # Get body
-    try:
-        body = ChatBody(**await request.json)
-    except: abort(400)
 
     # Check restrictions
     if security.is_restricted(request.user, security.Restrictions.EDITING_CHAT_DETAILS):
@@ -180,27 +142,35 @@ async def update_chat(chat_id):
 
     # Get updated values
     updated_vals = {"_id": chat_id}
-    if body.nickname is not None and chat["nickname"] != body.nickname:
-        updated_vals["nickname"] = app.supporter.wordfilter(body.nickname)
+    if data.nickname is not None and chat["nickname"] != data.nickname:
+        updated_vals["nickname"] = data.nickname
         app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the nickname of the group chat to '{chat['nickname']}'.", chat_members=chat["members"])
-    if body.icon is not None and chat["icon"] != body.icon:
-        updated_vals["icon"] = body.icon
+    if data.icon is not None and chat["icon"] != data.icon:
+        # Claim icon (and delete old one)
+        if data.icon != "":
+            try:
+                updated_vals["icon"] = claim_file(data.icon, "icons")["id"]
+            except Exception as e:
+                log(f"Unable to claim icon: {e}")
+                return {"error": True, "type": "unableToClaimIcon"}, 500
+        if chat["icon"]:
+            try:
+                delete_file(chat["icon"])
+            except Exception as e:
+                log(f"Unable to delete icon: {e}")
         app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the icon of the group chat.", chat_members=chat["members"])
-    if body.icon_color is not None and chat["icon_color"] != body.icon_color:
-        updated_vals["icon_color"] = body.icon_color
-        if body.icon is None or chat["icon"] == body.icon:
+    if data.icon_color is not None and chat["icon_color"] != data.icon_color:
+        updated_vals["icon_color"] = data.icon_color
+        if data.icon is None or chat["icon"] == data.icon:
             app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the icon of the group chat.", chat_members=chat["members"])
-    if body.allow_pinning is not None:
-        chat["allow_pinning"] = body.allow_pinning
+    if data.allow_pinning is not None:
+        chat["allow_pinning"] = data.allow_pinning
     
     # Update chat
     db.chats.update_one({"_id": chat_id}, {"$set": updated_vals})
 
     # Send update chat event
-    app.cl.broadcast({
-        "mode": "update_chat",
-        "payload": updated_vals
-    }, direct_wrap=True, usernames=chat["members"])
+    app.cl.send_event("update_chat", updated_vals, usernames=chat["members"])
 
     # Return chat
     chat["error"] = False
@@ -242,18 +212,20 @@ async def leave_chat(chat_id):
             })
 
             # Send update chat event
-            app.cl.broadcast({
-                "mode": "update_chat",
-                "payload": {
-                    "_id": chat_id,
-                    "owner": chat["owner"],
-                    "members": chat["members"]
-                }
-            }, direct_wrap=True, usernames=chat["members"])
+            app.cl.send_event("update_chat", {
+                "_id": chat_id,
+                "owner": chat["owner"],
+                "members": chat["members"]
+            }, usernames=chat["members"])
 
             # Send in-chat notification
             app.supporter.create_post(chat_id, "Server", f"@{request.user} has left the group chat.", chat_members=chat["members"])
         else:
+            if chat["icon"]:
+                try:
+                    delete_file(chat["icon"])
+                except Exception as e:
+                    log(f"Unable to delete icon: {e}")
             db.posts.delete_many({"post_origin": chat_id, "isDeleted": False})
             db.chats.delete_one({"_id": chat_id})
     elif chat["type"] == 1:
@@ -265,10 +237,7 @@ async def leave_chat(chat_id):
         abort(500)
 
     # Send delete event to client
-    app.cl.broadcast({
-        "mode": "delete",
-        "id": chat_id
-    }, direct_wrap=True, usernames=[request.user])
+    app.cl.send_event("delete_chat", {"chat_id": chat_id}, usernames=[request.user])
 
     return {"error": False}, 200
 
@@ -300,12 +269,10 @@ async def emit_typing(chat_id):
         if not chat:
             abort(404)
 
-    # Send new state
-    app.cl.broadcast({
-        "chatid": chat_id,
-        "u": request.user,
-        "state": 100
-    }, direct_wrap=True, usernames=(None if chat_id == "livechat" else chat["members"]))
+    # Send typing event
+    app.cl.send_event("typing", {
+        "chat_id": chat_id, "username": request.user
+    }, usernames=(None if chat_id == "livechat" else chat["members"]))
 
     return {"error": False}, 200
 
@@ -363,19 +330,13 @@ async def add_chat_member(chat_id, username):
     db.chats.update_one({"_id": chat_id}, {"$addToSet": {"members": username}})
 
     # Send create chat event
-    app.cl.broadcast({
-        "mode": "create_chat",
-        "payload": chat
-    }, direct_wrap=True, usernames=[username])
+    app.cl.send_event("create_chat", chat, usernames=[username])
 
     # Send update chat event
-    app.cl.broadcast({
-        "mode": "update_chat",
-        "payload": {
-            "_id": chat_id,
-            "members": chat["members"]
-        }
-    }, direct_wrap=True, usernames=chat["members"])
+    app.cl.send_event("update_chat", {
+        "_id": chat_id,
+        "members": chat["members"]
+    }, usernames=chat["members"])
 
     # Send inbox message to user
     app.supporter.create_post("inbox", username, f"You have been added to the group chat '{chat['nickname']}' by @{request.user}!")
@@ -419,19 +380,13 @@ async def remove_chat_member(chat_id, username):
     db.chats.update_one({"_id": chat_id}, {"$pull": {"members": username}})
 
     # Send delete chat event to user
-    app.cl.broadcast({
-        "mode": "delete",
-        "id": chat_id
-    }, direct_wrap=True, usernames=[username])
+    app.cl.send_event("delete_chat", {"chat_id": chat_id}, usernames=[username])
 
     # Send update chat event
-    app.cl.broadcast({
-        "mode": "update_chat",
-        "id": {
-            "_id": chat_id,
-            "members": chat["members"]
-        }
-    }, direct_wrap=True, usernames=chat["members"])
+    app.cl.send_event("update_chat", {
+        "_id": chat_id,
+        "members": chat["members"]
+    }, usernames=chat["members"])
 
     # Send inbox message to user
     app.supporter.create_post("inbox", username, f"You have been removed from the group chat '{chat['nickname']}' by @{request.user}!")
@@ -480,13 +435,10 @@ async def transfer_chat_ownership(chat_id, username):
     db.chats.update_one({"_id": chat_id}, {"$set": {"owner": username}})
 
     # Send update chat event
-    app.cl.broadcast({
-        "mode": "update_chat",
-        "payload": {
-            "_id": chat_id,
-            "owner": chat["owner"]
-        }
-    }, direct_wrap=True, usernames=chat["members"])
+    app.cl.send_event("update_chat", {
+        "_id": chat_id,
+        "owner": chat["owner"]
+    }, usernames=chat["members"])
 
     # Send in-chat notification
     app.supporter.create_post(chat_id, "Server", f"@{request.user} transferred ownership of the group chat to @{username}.", chat_members=chat["members"])

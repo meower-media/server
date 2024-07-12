@@ -1,6 +1,7 @@
 from quart import Blueprint, current_app as app, request, abort
-from pydantic import BaseModel
-from typing import Literal
+from quart_schema import validate_querystring, validate_request
+from pydantic import BaseModel, Field
+from typing import Literal, Optional
 import pymongo
 import uuid
 import time
@@ -11,6 +12,8 @@ from database import db, get_total_pages
 
 users_bp = Blueprint("users_bp", __name__, url_prefix="/users/<username>")
 
+class GetPostsQueryArgs(BaseModel):
+    page: Optional[int] = Field(default=1, ge=1)
 
 class UpdateRelationshipBody(BaseModel):
     state: Literal[
@@ -22,6 +25,13 @@ class UpdateRelationshipBody(BaseModel):
     class Config:
         validate_assignment = True
 
+class ReportBody(BaseModel):
+    reason: str = Field(default="No reason provided", min_length=1, max_length=2000)
+    comment: str = Field(default="", max_length=2000)
+
+    class Config:
+        validate_assignment = True
+        str_strip_whitespace = True
 
 @users_bp.before_request
 async def check_user_exists():
@@ -41,28 +51,19 @@ async def get_user(username):
 
 
 @users_bp.get("/posts")
-async def get_posts(username):
-    # Get page
-    try:
-        page = int(request.args["page"])
-    except:
-        page = 1
-
+@validate_querystring(GetPostsQueryArgs)
+async def get_posts(username, query_args: GetPostsQueryArgs):
     # Get posts
     query = {"post_origin": "home", "isDeleted": False, "u": username}
-    posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25))
+    posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page-1)*25, limit=25))
 
     # Return posts
-    payload = {
+    return {
         "error": False,
-        "page#": page,
+        "autoget": posts,
+        "page#": query_args.page,
         "pages": get_total_pages("posts", query)
-    }
-    if "autoget" in request.args:
-        payload["autoget"] = posts
-    else:
-        payload["index"] = [post["_id"] for post in posts]
-    return payload, 200
+    }, 200
 
 
 @users_bp.get("/relationship")
@@ -90,7 +91,8 @@ async def get_relationship(username):
 
 
 @users_bp.patch("/relationship")
-async def update_relationship(username):
+@validate_request(UpdateRelationshipBody)
+async def update_relationship(username, data: UpdateRelationshipBody):
     # Check authorization
     if not request.user:
         abort(401)
@@ -106,11 +108,6 @@ async def update_relationship(username):
     if request.user == username:
         abort(400)
 
-    # Get body
-    try:
-        body = UpdateRelationshipBody(**await request.json)
-    except: abort(400)
-
     # Get relationship
     relationship = db.relationships.find_one({"_id": {"from": request.user, "to": username}})
     if not relationship:
@@ -121,31 +118,69 @@ async def update_relationship(username):
         }
 
     # Make sure the state relationship state changed
-    if body.state == relationship["state"]:
+    if data.state == relationship["state"]:
         del relationship["_id"]
         return relationship, 200
 
     # Update relationship
-    relationship["state"] = body.state
+    relationship["state"] = data.state
     relationship["updated_at"] = int(time.time())
-    if body.state == 0:
+    if data.state == 0:
         db.relationships.delete_one({"_id": {"from": request.user, "to": username}})
     else:
         db.relationships.update_one({"_id": {"from": request.user, "to": username}}, {"$set": relationship}, upsert=True)
 
     # Sync relationship between sessions
-    app.cl.broadcast({
-        "mode": "update_relationship",
-        "payload": {
-            "username": username,
-            "state": relationship["state"],
-            "updated_at": relationship["updated_at"]
-        }
-    }, direct_wrap=True, usernames=[request.user])
+    app.cl.send_event("update_relationship", {
+        "username": username,
+        "state": relationship["state"],
+        "updated_at": relationship["updated_at"]
+    }, usernames=[request.user])
 
     # Return updated relationship
     del relationship["_id"]
     return relationship, 200
+
+@users_bp.post("/report")
+@validate_request(ReportBody)
+async def report_post(username, data: ReportBody):
+    if not request.user:
+        abort(401)
+
+    security.ratelimit(f"report:{request.user}", 3, 5)
+    
+    report = db.reports.find_one({
+        "content_id": username,
+        "status": "pending",
+        "type": "user"
+    })
+
+    if not report:
+        report = {
+            "_id": str(uuid.uuid4()),
+            "type": "user",
+            "content_id": username,
+            "status": "pending",
+            "escalated": False,
+            "reports": []
+        }
+
+    for _report in report["reports"]:
+        if _report["user"] == request.user:
+            report["reports"].remove(_report)
+            break
+    
+    report["reports"].append({
+        "user": request.user,
+        "ip": request.ip,
+        "reason": data.reason,
+        "comment": data.comment,
+        "time": int(time.time())
+    })
+
+    db.reports.update_one({"_id": report["_id"]}, {"$set": report}, upsert=True)
+
+    return {"error": False}, 200
 
 
 @users_bp.get("/dm")
