@@ -514,6 +514,9 @@ async def react_to_post(post_id, data: ReactBody):
     if not post:
         abort(404)
     
+    if post["isDeleted"]:
+        abort(404)
+
     # check ratelimit
     if security.ratelimited(f"react:{request.user}"):
         abort(429)
@@ -528,6 +531,15 @@ async def react_to_post(post_id, data: ReactBody):
     if {"user": request.user, "emoji": data.emoji} in post["reactions"]:
         abort(400)
 
+    if post["post_origin"] not in ["home", "inbox"]:
+        chat = db.chats.find_one({
+            "_id": post["post_origin"],
+            "members": request.user,
+            "deleted": False
+        })
+        if not chat:
+            abort(404)
+
     if (post["post_origin"] == "inbox") and (post["u"] != request.user):
         abort(404)
     
@@ -535,4 +547,61 @@ async def react_to_post(post_id, data: ReactBody):
         "user": request.user,
         "emoji": data.emoji,
     }}})
+
+    app.cl.send_event("add_reaction", {
+        "chat_id": post["post_origin"],
+        "post_id": post["_id"],
+        "emoji": data.emoji,
+        "user": request.user
+    }, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+    return {"error": False}, 200
+
+@posts_bp.delete("/<post_id>/react")
+@validate_request(ReactBody)
+async def delete_reaction(post_id, data: ReactBody):
+    # check if authenticated
+    if not request.user:
+        abort(401)
+
+    # get post
+    post = db.posts.find_one({"_id": post_id})
+    if not post:
+        abort(404)
+    
+    if post["isDeleted"]:
+        abort(404)
+
+    # check ratelimit
+    if security.ratelimited(f"react:{request.user}"):
+        abort(429)
+
+    security.ratelimit(f"react:{request.user}", 5, 1)
+
+    # check if user reacted with that emoji
+    if {"user": request.user, "emoji": data.emoji} not in post["reactions"]:
+        return {"error": True, "message": "notReacted"}
+
+    if post["post_origin"] not in ["home", "inbox"]:
+        chat = db.chats.find_one({
+            "_id": post["post_origin"],
+            "members": request.user,
+            "deleted": False
+        })
+        if not chat:
+            abort(404)
+
+    if (post["post_origin"] == "inbox") and (post["u"] != request.user):
+        abort(404)
+    
+    db.posts.update_one({"_id": post_id}, {"$pull": {"reactions": {
+        "user": request.user,
+        "emoji": data.emoji,
+    }}})
+
+    app.cl.send_event("remove_reaction", {
+        "chat_id": post["post_origin"],
+        "post_id": post["_id"],
+        "emoji": data.emoji,
+        "user": request.user
+    }, usernames=(None if post["post_origin"] == "home" else chat["members"]))
     return {"error": False}, 200
