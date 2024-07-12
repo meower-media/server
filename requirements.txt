@@ -14,3 +14,4 @@ msgpack
 grpcio
 protobuf
 pyotp
+emoji

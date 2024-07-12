@@ -81,7 +81,8 @@ class Supporter:
             "attachments": attachments,
             "post_id": post_id, 
             "isDeleted": False,
-            "pinned": False
+            "pinned": False,
+            "reactions": []
         }
 
         # Add database item

@@ -5,6 +5,7 @@ from typing import Optional
 from threading import Thread
 from copy import copy
 import pymongo, uuid, time
+import emoji
 
 import security
 from database import db, get_total_pages
@@ -33,6 +34,13 @@ class PostBody(BaseModel):
 class ReportBody(BaseModel):
     reason: str = Field(default="No reason provided", max_length=2000)
     comment: str = Field(default="", max_length=2000)
+
+    class Config:
+        validate_assignment = True
+        str_strip_whitespace = True
+
+class ReactBody(BaseModel):
+    emoji: str = Field(min_length=1)
 
     class Config:
         validate_assignment = True
@@ -493,3 +501,38 @@ async def create_chat_post(chat_id, data: PostBody):
     # Return new post
     post["error"] = False
     return post, 200
+
+@posts_bp.post("/<post_id>/react")
+@validate_request(ReactBody)
+async def react_to_post(post_id, data: ReactBody):
+    # check if authenticated
+    if not request.user:
+        abort(401)
+
+    # get post
+    post = db.posts.find_one({"_id": post_id})
+    if not post:
+        abort(404)
+    
+    # check ratelimit
+    if security.ratelimited(f"react:{request.user}"):
+        abort(429)
+
+    security.ratelimit(f"react:{request.user}", 5, 1)
+
+    # check if the emoji is only one emoji, with support for variants
+    if not (emoji.purely_emoji(data.emoji) and len(emoji.distinct_emoji_list(data.emoji)) == 1):
+        abort(400)
+
+    # check if user already reacted with that emoji
+    if {"user": request.user, "emoji": data.emoji} in post["reactions"]:
+        abort(400)
+
+    if (post["post_origin"] == "inbox") and (post["u"] != request.user):
+        abort(404)
+    
+    db.posts.update_one({"_id": post_id}, {"$addToSet": {"reactions": {
+        "user": request.user,
+        "emoji": data.emoji,
+    }}})
+    return {"error": False}, 200
