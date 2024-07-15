@@ -64,18 +64,11 @@ class Supporter:
         content: str,
         attachments: list[FileDetails] = [],
         nonce: Optional[str] = None,
-        chat_members: list[str] = [],
-        replies: list[str] = []
+        chat_members: list[str] = []
     ) -> tuple[bool, dict]:
         # Create post ID and get timestamp
         post_id = str(uuid.uuid4())
         ts = timestamp(1).copy()
-
-        for reply in replies:
-            if not db.posts.find_one({
-                "_id": reply
-            }):
-                replies.remove(reply)
 
         # Construct post object
         post = {
@@ -88,8 +81,7 @@ class Supporter:
             "attachments": attachments,
             "post_id": post_id, 
             "isDeleted": False,
-            "pinned": False,
-            "replies": replies
+            "pinned": False
         }
 
         # Add database item
