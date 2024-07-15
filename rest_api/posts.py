@@ -25,6 +25,7 @@ class PostBody(BaseModel):
     content: Optional[str] = Field(default="", max_length=4000)
     nonce: Optional[str] = Field(default=None, max_length=64)
     attachments: Optional[list[str]] = Field(default_factory=list)
+    replies: Optional[list[str]] = Field(default_factory=list)
 
     class Config:
         validate_assignment = True
@@ -487,7 +488,8 @@ async def create_chat_post(chat_id, data: PostBody):
         data.content,
         attachments=attachments,
         nonce=data.nonce,
-        chat_members=(None if chat_id == "livechat" else chat["members"])
+        chat_members=(None if chat_id == "livechat" else chat["members"]),
+        replies=data.replies
     )
 
     # Return new post
