@@ -508,7 +508,7 @@ async def create_chat_post(chat_id, data: PostBody):
     post["error"] = False
     return post, 200
 
-@posts_bp.put("/<post_id>/react/<emoji_reaction>")
+@posts_bp.put("/<post_id>/reactions/<emoji_reaction>")
 async def react_to_post(post_id: str, emoji_reaction: str):
     # check if authenticated
     if not request.user:
@@ -571,7 +571,7 @@ async def react_to_post(post_id: str, emoji_reaction: str):
     app.cl.send_event("update_post", updated_post, usernames=(None if post["post_origin"] == "home" else chat["members"]))
     return updated_post, 200
 
-@posts_bp.delete("/<post_id>/react/<emoji_reaction>")
+@posts_bp.delete("/<post_id>/reactions/<emoji_reaction>")
 async def delete_reaction(post_id, emoji_reaction):
     # check if authenticated
     if not request.user:
