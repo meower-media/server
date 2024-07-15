@@ -1,4 +1,4 @@
-from quart import Blueprint, request, abort
+from quart import Blueprint, request, abort, current_app as app
 from quart_schema import validate_querystring
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -26,6 +26,8 @@ async def get_inbox_posts(query_args: GetInboxQueryArgs):
     posts = list(db.posts.find(query, sort=[
         ("t.e", pymongo.DESCENDING)
     ], skip=(query_args.page-1)*25, limit=25))
+
+    posts = [app.supporter.inject_reacted_by_user(post, request.user) for post in posts]
 
     # Return posts
     return {

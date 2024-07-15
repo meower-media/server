@@ -154,3 +154,19 @@ class Supporter:
                             c.logout()
             except:
                 continue
+    
+    def inject_reacted_by_user(self, post, current_user):
+        if not current_user:
+            for reaction in post.get("reactions", []):
+                reaction["user_reacted"] = False
+            return post
+
+        user_reactions = set(db.reactions.find({
+            "_id.post_id": post["_id"],
+            "_id.user": current_user
+        }).distinct("_id.emoji"))
+
+        for reaction in post.get("reactions", []):
+            reaction["user_reacted"] = reaction["emoji"] in user_reactions
+
+        return post

@@ -10,7 +10,7 @@ import emoji
 import security
 from database import db, get_total_pages
 from uploads import claim_file, delete_file
-from utils import log
+from utils import log, timestamp
 
 
 posts_bp = Blueprint("posts_bp", __name__, url_prefix="/posts")
@@ -39,12 +39,9 @@ class ReportBody(BaseModel):
         validate_assignment = True
         str_strip_whitespace = True
 
-class ReactBody(BaseModel):
-    emoji: str = Field(min_length=1)
+class GetReactionsFromPostQueryArgs(BaseModel):
+    page: Optional[int] = Field(default=1, ge=1)
 
-    class Config:
-        validate_assignment = True
-        str_strip_whitespace = True
 
 @posts_bp.get("/")
 @validate_querystring(PostIdQueryArgs)
@@ -64,6 +61,8 @@ async def get_post(query_args: PostIdQueryArgs):
             "deleted": False
         }, limit=1) < 1:
             abort(404)
+
+    post = app.supporter.inject_reacted_by_user(post, request.user)
 
     # Return post
     post["error"] = False
@@ -141,6 +140,8 @@ async def update_post(query_args: PostIdQueryArgs, data: PostBody):
 
     # Send update post event
     app.cl.send_event("update_post", post, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+
+    post = app.supporter.inject_reacted_by_user(post, request.user)
 
     # Return post
     post["error"] = False
@@ -232,6 +233,8 @@ async def pin_post(post_id):
 
     app.cl.send_event("update_post", post, usernames=(None if post["post_origin"] == "home" else chat["members"]))
 
+    post = app.supporter.inject_reacted_by_user(post, request.user)
+
     post["error"] = False
     return post, 200
 
@@ -266,6 +269,8 @@ async def unpin_post(post_id):
     post["pinned"] = False
 
     app.cl.send_event("update_post", post, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+
+    post = app.supporter.inject_reacted_by_user(post, request.user)
 
     post["error"] = False
     return post, 200
@@ -327,6 +332,8 @@ async def delete_attachment(post_id: str, attachment_id: str):
             "chat_id": post["post_origin"],
             "post_id": post_id
         }, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+
+    post = app.supporter.inject_reacted_by_user(post, request.user)
 
     # Return post
     post["error"] = False
@@ -406,6 +413,8 @@ async def get_chat_posts(chat_id, query_args: GetChatPostsQueryArgs):
     # Get posts
     query = {"post_origin": chat_id, "isDeleted": False}
     posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page-1)*25, limit=25))
+
+    posts = [app.supporter.inject_reacted_by_user(post, request.user) for post in posts]
 
     # Return posts
     return {
@@ -502,19 +511,15 @@ async def create_chat_post(chat_id, data: PostBody):
     post["error"] = False
     return post, 200
 
-@posts_bp.post("/<post_id>/react")
-@validate_request(ReactBody)
-async def react_to_post(post_id, data: ReactBody):
+@posts_bp.put("/<post_id>/react/<emoji_reaction>")
+async def react_to_post(post_id: str, emoji_reaction: str):
     # check if authenticated
     if not request.user:
         abort(401)
 
     # get post
     post = db.posts.find_one({"_id": post_id})
-    if not post:
-        abort(404)
-    
-    if post["isDeleted"]:
+    if not post or post["isDeleted"]:
         abort(404)
 
     # check ratelimit
@@ -524,11 +529,18 @@ async def react_to_post(post_id, data: ReactBody):
     security.ratelimit(f"react:{request.user}", 5, 1)
 
     # check if the emoji is only one emoji, with support for variants
-    if not (emoji.purely_emoji(data.emoji) and len(emoji.distinct_emoji_list(data.emoji)) == 1):
+    if not (emoji.purely_emoji(emoji_reaction) and len(emoji.distinct_emoji_list(emoji_reaction)) == 1):
         abort(400)
 
     # check if user already reacted with that emoji
-    if {"user": request.user, "emoji": data.emoji} in post["reactions"]:
+    existing_reaction = db.reactions.find_one({
+        "_id": {
+            "post_id": post_id,
+            "user": request.user,
+            "emoji": emoji_reaction
+        }
+    })
+    if existing_reaction:
         abort(400)
 
     if post["post_origin"] not in ["home", "inbox"]:
@@ -543,32 +555,34 @@ async def react_to_post(post_id, data: ReactBody):
     if (post["post_origin"] == "inbox") and (post["u"] != request.user):
         abort(404)
     
-    post["reactions"].append({
-        "user": request.user,
-        "emoji": data.emoji,
-    })
+    # create new reaction document
+    new_reaction = {
+        "_id": {
+            "post_id": post_id,
+            "user": request.user,
+            "emoji": emoji_reaction
+        }
+    }
+    db.reactions.insert_one(new_reaction)
 
-    db.posts.update_one({"_id": post_id}, {"$addToSet": {"reactions": {
-        "user": request.user,
-        "emoji": data.emoji,
-    }}})
+    # update post's emoji list
+    update_post_reactions(post_id)
 
-    app.cl.send_event("update_post", post, usernames=(None if post["post_origin"] == "home" else chat["members"]))
-    return {"error": False}, 200
+    # fetch updated post
+    updated_post = db.posts.find_one({"_id": post_id})
+    updated_post = app.supporter.inject_reacted_by_user(updated_post, request.user)
+    app.cl.send_event("update_post", updated_post, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+    return updated_post, 200
 
-@posts_bp.delete("/<post_id>/react")
-@validate_request(ReactBody)
-async def delete_reaction(post_id, data: ReactBody):
+@posts_bp.delete("/<post_id>/react/<emoji_reaction>")
+async def delete_reaction(post_id, emoji_reaction):
     # check if authenticated
     if not request.user:
         abort(401)
 
     # get post
     post = db.posts.find_one({"_id": post_id})
-    if not post:
-        abort(404)
-    
-    if post["isDeleted"]:
+    if not post or post["isDeleted"]:
         abort(404)
 
     # check ratelimit
@@ -578,7 +592,14 @@ async def delete_reaction(post_id, data: ReactBody):
     security.ratelimit(f"react:{request.user}", 5, 1)
 
     # check if user reacted with that emoji
-    if {"user": request.user, "emoji": data.emoji} not in post["reactions"]:
+    existing_reaction = db.reactions.find_one({
+        "_id": {
+            "post_id": post_id,
+            "user": request.user,
+            "emoji": emoji_reaction
+        }
+    })
+    if not existing_reaction:
         return {"error": True, "message": "notReacted"}
 
     if post["post_origin"] not in ["home", "inbox"]:
@@ -594,15 +615,43 @@ async def delete_reaction(post_id, data: ReactBody):
         abort(404)
     
     # remove the reaction
-    post["reactions"] = [
-        reaction for reaction in post["reactions"]
-        if not (reaction["user"] == request.user and reaction["emoji"] == data.emoji)
+    db.reactions.delete_one({
+        "_id": {
+            "post_id": post_id,
+            "user": request.user,
+            "emoji": emoji_reaction
+        }
+    })
+
+    # update post's reaction count and emoji list
+    update_post_reactions(post_id)
+
+    # fetch updated post
+    updated_post = db.posts.find_one({"_id": post_id})
+    updated_post = app.supporter.inject_reacted_by_user(updated_post, request.user)
+    app.cl.send_event("update_post", updated_post, usernames=(None if post["post_origin"] == "home" else chat["members"]))
+    return updated_post, 200
+
+
+def update_post_reactions(post_id):
+    pipeline = [
+        {"$match": {"_id.post_id": post_id}},
+        {"$group": {
+            "_id": "$_id.emoji",
+            "count": {"$sum": 1}
+        }}
     ]
+    reaction_counts = list(db.reactions.aggregate(pipeline))
+    
+    # create emoji_list with counts
+    emoji_list = [{"emoji": r["_id"], "count": r["count"]} for r in reaction_counts]
 
-    db.posts.update_one({"_id": post_id}, {"$pull": {"reactions": {
-        "user": request.user,
-        "emoji": data.emoji,
-    }}})
-
-    app.cl.send_event("remove_reaction", post, usernames=(None if post["post_origin"] == "home" else chat["members"]))
-    return {"error": False}, 200
+    # update post with new reaction information
+    db.posts.update_one(
+        {"_id": post_id},
+        {
+            "$set": {
+                "reactions": emoji_list
+            }
+        }
+    )

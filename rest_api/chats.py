@@ -473,6 +473,8 @@ def get_chat_pins(chat_id):
         posts = []
 
 
+    posts = [app.supporter.inject_reacted_by_user(post, request.user) for post in posts]
+
     return {
         "error": False,
         "page#": page,

@@ -33,6 +33,8 @@ async def get_home_posts(query_args: GetHomeQueryArgs):
     query = {"post_origin": "home", "isDeleted": False}
     posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page-1)*25, limit=25))
 
+    posts = [app.supporter.inject_reacted_by_user(post, request.user) for post in posts]
+
     # Return posts
     return {
         "error": False,

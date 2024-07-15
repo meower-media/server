@@ -357,6 +357,8 @@ async def get_post(post_id):
         )
     )
 
+    post = app.supporter.inject_reacted_by_user(post, request.user)
+
     # Return post
     post["error"] = False
     return post, 200
@@ -411,6 +413,8 @@ async def delete_post(post_id):
                 "post_id": post_id
             }, usernames=chat["members"])
 
+    post = app.supporter.inject_reacted_by_user(post, request.user)
+
     # Return updated post
     post["error"] = False
     return post, 200
@@ -437,6 +441,8 @@ async def restore_post(post_id):
         {"_id": post_id},
         {"$set": {"isDeleted": False}, "$unset": {"deleted_at": "", "mod_deleted": ""}},
     )
+
+    post = app.supporter.inject_reacted_by_user(post, request.user)
 
     # Return updated post
     post["error"] = False
@@ -730,6 +736,8 @@ async def get_user_posts(username, query_args: GetUserPostsQueryArgs):
         request.ip,
         {"username": username, "post_origin": query_args.origin, "page": query_args.page},
     )
+
+    posts = [app.supporter.inject_reacted_by_user(post, request.user) for post in posts]
 
     # Return posts
     return {
@@ -1060,6 +1068,8 @@ async def get_chat_posts(chat_id, query_args: GetChatPostsQueryArgs):
     query = {"post_origin": chat_id, "$or": [{"isDeleted": False}, {"isDeleted": True}]}
     posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page-1)*25, limit=25))
 
+    posts = [app.supporter.inject_reacted_by_user(post, request.user) for post in posts]
+
     # Return posts
     return {
         "error": False,
@@ -1260,6 +1270,8 @@ async def get_announcements(query_args: GetAnnouncementsQueryArgs):
     security.add_audit_log(
         "got_announcements", request.user, request.ip, {"page": query_args.page}
     )
+
+    posts = [app.supporter.inject_reacted_by_user(post, request.user) for post in posts]
 
     # Return posts
     return {

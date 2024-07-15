@@ -6,7 +6,7 @@ from radix import Radix
 
 from utils import log
 
-CURRENT_DB_VERSION = 6.1
+CURRENT_DB_VERSION = 7
 
 # Create Redis connection
 log("Connecting to Redis...")
@@ -156,6 +156,11 @@ try:
         ("time", pymongo.ASCENDING),
         ("type", pymongo.ASCENDING)
     ], name="scheduled_purges")
+except: pass
+
+# Create post reactions index
+try:
+    db.reactions.create_index([("_id.post_id", 1), ("_id.emoji", 1)])
 except: pass
 
 
