@@ -89,7 +89,7 @@ class Supporter:
             "post_id": post_id, 
             "isDeleted": False,
             "pinned": False,
-            "replies": replies
+            "reply_ids": replies
         }
 
         # Add database item
