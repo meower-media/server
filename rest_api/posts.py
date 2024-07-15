@@ -39,9 +39,6 @@ class ReportBody(BaseModel):
         validate_assignment = True
         str_strip_whitespace = True
 
-class GetReactionsFromPostQueryArgs(BaseModel):
-    page: Optional[int] = Field(default=1, ge=1)
-
 
 @posts_bp.get("/")
 @validate_querystring(PostIdQueryArgs)
