@@ -10,7 +10,7 @@ import emoji
 import security
 from database import db, get_total_pages
 from uploads import claim_file, delete_file
-from utils import log, timestamp
+from utils import log
 
 
 posts_bp = Blueprint("posts_bp", __name__, url_prefix="/posts")
