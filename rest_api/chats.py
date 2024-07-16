@@ -479,6 +479,7 @@ def get_chat_pins(chat_id, query_args: GetPostsQueryArgs):
                 limit=25
             ),
             include_replies=True,
+            requester=request.user
         ),
         "page#": query_args.page,
         "pages": (get_total_pages("posts", query) if request.user else 1)

@@ -198,7 +198,7 @@ class Supporter:
                         "_id": post_id,
                         "post_origin": post["post_origin"],
                         "isDeleted": {"$ne": True}
-                    })], include_replies=False)[0] for post_id in post.pop("reply_to", [])
+                    })], include_replies=False, requester=requester)[0] for post_id in post.pop("reply_to", [])
                 ]})
             else:
                 post.update({"reply_to": [None for _ in post.pop("reply_to", [])]})
