@@ -30,7 +30,7 @@ async def get_inbox_posts(query_args: GetInboxQueryArgs):
             sort=[("t.e", pymongo.DESCENDING)],
             skip=(query_args.page-1)*25,
             limit=25
-        )),
+        ), requester=request.user),
         "page#": query_args.page,
         "pages": (get_total_pages("posts", query) if request.user else 1)
     }, 200

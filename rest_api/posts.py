@@ -61,7 +61,7 @@ async def get_post(query_args: PostIdQueryArgs):
     
     # Return post
     post["error"] = False
-    return app.supporter.parse_posts_v0([post])[0], 200
+    return app.supporter.parse_posts_v0([post], requester=request.user)[0], 200
 
 
 @posts_bp.patch("/")
@@ -110,7 +110,7 @@ async def update_post(query_args: PostIdQueryArgs, data: PostBody):
     # Make sure new content isn't the same as the old content
     if post["p"] == data.content:
         post["error"] = False
-        return app.supporter.parse_posts_v0([post])[0], 200
+        return app.supporter.parse_posts_v0([post], requester=request.user)[0], 200
 
     # Make sure the post has text content
     if not data.content:
@@ -138,7 +138,7 @@ async def update_post(query_args: PostIdQueryArgs, data: PostBody):
 
     # Return post
     post["error"] = False
-    return app.supporter.parse_posts_v0([post])[0], 200
+    return app.supporter.parse_posts_v0([post], requester=request.user)[0], 200
 
 @posts_bp.post("/<post_id>/report")
 @validate_request(ReportBody)
@@ -227,7 +227,7 @@ async def pin_post(post_id):
     app.cl.send_event("update_post", post, usernames=(None if post["post_origin"] == "home" else chat["members"]))
 
     post["error"] = False
-    return app.supporter.parse_posts_v0([post])[0], 200
+    return app.supporter.parse_posts_v0([post], requester=request.user)[0], 200
 
 
 @posts_bp.delete("/<post_id>/pin")
@@ -262,7 +262,7 @@ async def unpin_post(post_id):
     app.cl.send_event("update_post", post, usernames=(None if post["post_origin"] == "home" else chat["members"]))
 
     post["error"] = False
-    return app.supporter.parse_posts_v0([post])[0], 200
+    return app.supporter.parse_posts_v0([post], requester=request.user)[0], 200
 
 
 @posts_bp.delete("/<post_id>/attachments/<attachment_id>")
@@ -324,7 +324,7 @@ async def delete_attachment(post_id: str, attachment_id: str):
 
     # Return post
     post["error"] = False
-    return app.supporter.parse_posts_v0([post])[0], 200
+    return app.supporter.parse_posts_v0([post], requester=request.user)[0], 200
 
 
 @posts_bp.delete("/")
@@ -406,7 +406,7 @@ async def get_chat_posts(chat_id, query_args: PagedQueryArgs):
             sort=[("t.e", pymongo.DESCENDING)],
             skip=(query_args.page-1)*25,
             limit=25
-        )),
+        ), requester=request.user),
         "page#": query_args.page,
         "pages": (get_total_pages("posts", query) if request.user else 1)
     }, 200
@@ -497,7 +497,7 @@ async def create_chat_post(chat_id, data: PostBody):
 
     # Return new post
     post["error"] = False
-    return app.supporter.parse_posts_v0([post])[0], 200
+    return app.supporter.parse_posts_v0([post], requester=request.user)[0], 200
 
 @posts_bp.get("/<post_id>/reactions/<emoji_reaction>")
 @validate_querystring(PagedQueryArgs)

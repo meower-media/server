@@ -25,7 +25,7 @@ async def search_home(query_args: SearchQueryArgs):
             query,
             skip=(query_args.page-1)*25,
             limit=25
-        )),
+        ), requester=request.user),
         "page#": query_args.page,
         "pages": get_total_pages("posts", query)
     }, 200
