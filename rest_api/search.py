@@ -1,4 +1,4 @@
-from quart import Blueprint, request
+from quart import Blueprint, current_app as app
 from quart_schema import validate_querystring
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -18,14 +18,14 @@ class SearchQueryArgs(BaseModel):
 @search_bp.get("/home")
 @validate_querystring(SearchQueryArgs)
 async def search_home(query_args: SearchQueryArgs):
-    # Get posts
     query = {"post_origin": "home", "isDeleted": False, "$text": {"$search": query_args.q}}
-    posts = list(db.posts.find(query, skip=(query_args.page-1)*25, limit=25))
-
-    # Return posts
     return {
         "error": False,
-        "autoget": posts,
+        "autoget": app.supporter.parse_posts_v0(db.posts.find(
+            query,
+            skip=(query_args.page-1)*25,
+            limit=25
+        )),
         "page#": query_args.page,
         "pages": get_total_pages("posts", query)
     }, 200

@@ -20,6 +20,7 @@ class PostBody(BaseModel):
     content: Optional[str] = Field(default="", max_length=4000)
     nonce: Optional[str] = Field(default=None, max_length=64)
     attachments: Optional[list[str]] = Field(default_factory=list)
+    reply_to: Optional[list[str]] = Field(default_factory=list)
 
     class Config:
         validate_assignment = True
@@ -29,14 +30,15 @@ class PostBody(BaseModel):
 @home_bp.get("/")
 @validate_querystring(GetHomeQueryArgs)
 async def get_home_posts(query_args: GetHomeQueryArgs):
-    # Get posts
     query = {"post_origin": "home", "isDeleted": False}
-    posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page-1)*25, limit=25))
-
-    # Return posts
     return {
         "error": False,
-        "autoget": posts,
+        "autoget": app.supporter.parse_posts_v0(db.posts.find(
+            query,
+            sort=[("t.e", pymongo.DESCENDING)],
+            skip=(query_args.page-1)*25,
+            limit=25
+        )),
         "page#": query_args.page,
         "pages": (get_total_pages("posts", query) if request.user else 1)
     }, 200
@@ -84,12 +86,13 @@ async def create_home_post(data: PostBody):
         request.user,
         data.content,
         attachments=attachments,
-        nonce=data.nonce
+        nonce=data.nonce,
+        reply_to=data.reply_to
     )
 
     # Return new post
     post["error"] = False
-    return post, 200
+    return app.supporter.parse_posts_v0([post])[0], 200
 
 
 @home_bp.post("/typing")

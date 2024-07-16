@@ -6,7 +6,7 @@ from radix import Radix
 
 from utils import log
 
-CURRENT_DB_VERSION = 6
+CURRENT_DB_VERSION = 8
 
 # Create Redis connection
 log("Connecting to Redis...")
@@ -158,6 +158,11 @@ try:
     ], name="scheduled_purges")
 except: pass
 
+# Create post reactions index
+try:
+    db.post_reactions.create_index([("_id.post_id", 1), ("_id.emoji", 1)])
+except: pass
+
 
 # Create default database items
 for username in ["Server", "Deleted", "Meower", "Admin", "username"]:
@@ -258,6 +263,18 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
         db.usersv0.update_one({"_id": user["_id"]}, {"$set": {
             "mfa_recovery_code": secrets.token_hex(5)
         }})
+    
+    # Post reactions
+    log("[Migrator] Adding post reactions to database")
+    db.posts.update_many({"reactions": {"$exists": False}}, {"$set": {"reactions": []}})
+
+    # Remove type and post_id fields in posts database
+    log("[Migrator] Removing type and post_id fields from posts database")
+    db.posts.update_many({}, {"$unset": {"type": "", "post_id": ""}})
+
+    # Post replies
+    log("[Migrator] Adding post replies to database")
+    db.posts.update_many({"reply_to": {"$exists": False}}, {"$set": {"reply_to": []}})
 
     db.config.update_one({"_id": "migration"}, {"$set": {"database": CURRENT_DB_VERSION}})
     log(f"[Migrator] Finished Migrating DB to version {CURRENT_DB_VERSION}")
