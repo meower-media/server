@@ -64,11 +64,20 @@ class Supporter:
         content: str,
         attachments: list[FileDetails] = [],
         nonce: Optional[str] = None,
-        chat_members: list[str] = []
+        chat_members: list[str] = [],
+        reply_to: list[str] = []
     ) -> tuple[bool, dict]:
         # Create post ID and get timestamp
         post_id = str(uuid.uuid4())
         ts = timestamp(1).copy()
+
+        # Make sure replied to posts exist
+        for reply in reply_to:
+            if not db.posts.count_documents({
+                "_id": reply,
+                "post_origin": origin
+            }, limit=1):
+                reply_to.remove(reply)
 
         # Construct post object
         post = {
@@ -80,6 +89,7 @@ class Supporter:
             "attachments": attachments,
             "isDeleted": False,
             "pinned": False,
+            "reply_to": reply_to
             "reactions": []
         }
 
