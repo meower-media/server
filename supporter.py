@@ -89,7 +89,7 @@ class Supporter:
             "attachments": attachments,
             "isDeleted": False,
             "pinned": False,
-            "reply_to": reply_to
+            "reply_to": reply_to,
             "reactions": []
         }
 
