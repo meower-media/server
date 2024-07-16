@@ -158,6 +158,11 @@ try:
     ], name="scheduled_purges")
 except: pass
 
+# Create post reactions index
+try:
+    db.post_reactions.create_index([("_id.post_id", 1), ("_id.emoji", 1)])
+except: pass
+
 
 # Create default database items
 for username in ["Server", "Deleted", "Meower", "Admin", "username"]:
@@ -258,6 +263,14 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
         db.usersv0.update_one({"_id": user["_id"]}, {"$set": {
             "mfa_recovery_code": secrets.token_hex(5)
         }})
+    
+    # Post reactions
+    log("[Migrator] Adding post reactions to database")
+    db.posts.update_many({"reactions": {"$exists": False}}, {"$set": {"reactions": []}})
+
+    # Remove type and post_id fields in posts database
+    log("[Migrator] Removing type and post_id fields from posts database")
+    db.posts.update_many({}, {"$unset": {"type": "", "post_id": ""}})
 
     # Post replies
     log("[Migrator] Adding post replies to database")

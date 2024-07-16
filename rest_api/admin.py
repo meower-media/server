@@ -139,9 +139,11 @@ async def get_reports(query_args: GetReportsQueryArgs):
     # Get content
     for report in reports:
         if report["type"] == "post":
-            report["content"] = db.posts.find_one(
-                {"_id": report.get("content_id")}
-            )
+            post = db.posts.find_one({"_id": report.get("content_id")})
+            if post:
+                report["content"] = app.supporter.parse_posts_v0([post])[0]
+            else:
+                report["content"] = None
         elif report["type"] == "user":
             report["content"] = security.get_account(report.get("content_id"))
 
@@ -181,9 +183,11 @@ async def get_report(report_id):
 
     # Get content
     if report["type"] == "post":
-        report["content"] = db.posts.find_one(
-            {"_id": report.pop("content_id")}
-        )
+        post = db.posts.find_one({"_id": report.get("content_id")})
+        if post:
+            report["content"] = app.supporter.parse_posts_v0([post])[0]
+        else:
+            report["content"] = None
     elif report["type"] == "user":
         report["content"] = security.get_account(report.get("content_id"))
 
@@ -220,9 +224,11 @@ async def update_report(report_id, data: UpdateReportBody):
 
     # Get content
     if report["type"] == "post":
-        report["content"] = db.posts.find_one(
-            {"_id": report.pop("content_id")}
-        )
+        post = db.posts.find_one({"_id": report.get("content_id")})
+        if post:
+            report["content"] = app.supporter.parse_posts_v0([post])[0]
+        else:
+            report["content"] = None
     elif report["type"] == "user":
         report["content"] = security.get_account(report.get("content_id"))
 
@@ -261,9 +267,11 @@ async def escalate_report(report_id):
 
     # Get content
     if report["type"] == "post":
-        report["content"] = db.posts.find_one(
-            {"_id": report.pop("content_id")}
-        )
+        post = db.posts.find_one({"_id": report.get("content_id")})
+        if post:
+            report["content"] = app.supporter.parse_posts_v0([post])[0]
+        else:
+            report["content"] = None
     elif report["type"] == "user":
         report["content"] = security.get_account(report.get("content_id"))
 
@@ -350,16 +358,12 @@ async def get_post(post_id):
     if not post:
         abort(404)
 
-    # Get post revisions
-    post["revisions"] = list(
-        db.post_revisions.find(
-            {"post_id": post_id}, sort=[("time", pymongo.DESCENDING)]
-        )
-    )
-
     # Return post
     post["error"] = False
-    return post, 200
+    return app.supporter.parse_posts_v0(
+        [post],
+        include_revisions=True
+    )[0], 200
 
 
 @admin_bp.delete("/posts/<post_id>")
@@ -413,7 +417,11 @@ async def delete_post(post_id):
 
     # Return updated post
     post["error"] = False
-    return post, 200
+    return app.supporter.parse_posts_v0(
+        [post],
+        include_replies=True,
+        include_revisions=True
+    )[0], 200
 
 
 @admin_bp.post("/posts/<post_id>/restore")
@@ -440,7 +448,11 @@ async def restore_post(post_id):
 
     # Return updated post
     post["error"] = False
-    return post, 200
+    return app.supporter.parse_posts_v0(
+        [post],
+        include_replies=True,
+        include_revisions=True
+    )[0], 200
 
 
 @admin_bp.get("/users")
@@ -717,10 +729,8 @@ async def get_user_posts(username, query_args: GetUserPostsQueryArgs):
         }
     else:
         query = {"u": username}
-    posts = list(
-        db.posts.find(
-            query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page - 1) * 25, limit=25
-        )
+    posts = db.posts.find(
+        query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page - 1) * 25, limit=25
     )
 
     # Add log
@@ -734,7 +744,7 @@ async def get_user_posts(username, query_args: GetUserPostsQueryArgs):
     # Return posts
     return {
         "error": False,
-        "autoget": posts,
+        "autoget": app.supporter.parse_posts_v0(posts),
         "page#": query_args.page,
         "pages": get_total_pages("posts", query),
     }, 200
@@ -806,7 +816,7 @@ async def send_alert(username, data: InboxMessageBody):
 
     # Return new post
     post["error"] = False
-    return post, 200
+    return app.supporter.parse_posts_v0([post])[0], 200
 
 
 @admin_bp.post("/users/<username>/kick")
@@ -1058,12 +1068,14 @@ async def get_chat_posts(chat_id, query_args: GetChatPostsQueryArgs):
 
     # Get posts
     query = {"post_origin": chat_id, "$or": [{"isDeleted": False}, {"isDeleted": True}]}
-    posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page-1)*25, limit=25))
+    posts = db.posts.find(
+        query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page - 1) * 25, limit=25
+    )
 
     # Return posts
     return {
         "error": False,
-        "autoget": posts,
+        "autoget": app.supporter.parse_posts_v0(posts),
         "page#": query_args.page,
         "pages": get_total_pages("posts", query)
     }, 200
@@ -1250,10 +1262,8 @@ async def get_announcements(query_args: GetAnnouncementsQueryArgs):
         "$or": [{"isDeleted": False}, {"isDeleted": True}],
         "u": "Server",
     }
-    posts = list(
-        db.posts.find(
-            query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page - 1) * 25, limit=25
-        )
+    posts = db.posts.find(
+        query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page - 1) * 25, limit=25
     )
 
     # Add log
@@ -1264,7 +1274,7 @@ async def get_announcements(query_args: GetAnnouncementsQueryArgs):
     # Return posts
     return {
         "error": False,
-        "autoget": posts,
+        "autoget": app.supporter.parse_posts_v0(posts),
         "page#": query_args.page,
         "pages": get_total_pages("posts", query),
     }, 200
@@ -1289,7 +1299,7 @@ async def send_announcement(data: InboxMessageBody):
 
     # Return new post
     post["error"] = False
-    return post, 200
+    return app.supporter.parse_posts_v0([post])[0], 200
 
 
 @admin_bp.post("/server/kick-all")
