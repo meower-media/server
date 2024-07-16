@@ -274,7 +274,7 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
 
     # Post replies
     log("[Migrator] Adding post replies to database")
-    db.posts.update_many({"reply_ids": {"$exists": False}}, {"$set": {"reply_ids": []}})
+    db.posts.update_many({"reply_ids": {"$exists": False}}, {"$set": {"reply_to": []}})
 
     db.config.update_one({"_id": "migration"}, {"$set": {"database": CURRENT_DB_VERSION}})
     log(f"[Migrator] Finished Migrating DB to version {CURRENT_DB_VERSION}")
