@@ -185,6 +185,10 @@ class CloudlinkServer:
                 for username in usernames:
                     clients += self.usernames.get(username, [])
 
+        # Parse post
+        if cmd == "post" or cmd == "update_post":
+            val = self.supporter.parse_posts_v0([val])[0]
+
         # Send v1 packet
         websockets.broadcast({
             client.websocket for client in clients

@@ -21,18 +21,16 @@ async def get_inbox_posts(query_args: GetInboxQueryArgs):
     if not request.user:
         abort(401)
 
-    # Get posts
+    # Get and return posts
     query = {"post_origin": "inbox", "isDeleted": False, "$or": [{"u": request.user}, {"u": "Server"}]}
-    posts = list(db.posts.find(query, sort=[
-        ("t.e", pymongo.DESCENDING)
-    ], skip=(query_args.page-1)*25, limit=25))
-
-    posts = [app.supporter.inject_reacted_by_user(post, request.user) for post in posts]
-
-    # Return posts
     return {
         "error": False,
-        "autoget": posts,
+        "autoget": app.supporter.parse_posts_v0(db.posts.find(
+            query,
+            sort=[("t.e", pymongo.DESCENDING)],
+            skip=(query_args.page-1)*25,
+            limit=25
+        )),
         "page#": query_args.page,
-        "pages": get_total_pages("posts", query)
+        "pages": (get_total_pages("posts", query) if request.user else 1)
     }, 200

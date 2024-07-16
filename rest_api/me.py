@@ -437,9 +437,14 @@ async def get_report_history(query_args: GetReportsQueryArgs):
     # Get content
     for report in reports:
         if report["type"] == "post":
-            report["content"] = db.posts.find_one(
-                {"_id": report.get("content_id")}, projection={"_id": 1, "u": 1, "isDeleted": 1}
+            post = db.posts.find_one(
+                {"_id": report.get("content_id")},
+                projection={"_id": 1, "u": 1, "isDeleted": 1}
             )
+            if post:
+                report["content"] = app.supporter.parse_posts_v0([post])[0]
+            else:
+                report["content"] = None
         elif report["type"] == "user":
             report["content"] = security.get_account(report.get("content_id"))
 
