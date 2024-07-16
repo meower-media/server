@@ -20,7 +20,7 @@ class PostBody(BaseModel):
     content: Optional[str] = Field(default="", max_length=4000)
     nonce: Optional[str] = Field(default=None, max_length=64)
     attachments: Optional[list[str]] = Field(default_factory=list)
-    replies: Optional[list[str]] = Field(default_factory=list)
+    reply_to: Optional[list[str]] = Field(default_factory=list)
 
     class Config:
         validate_assignment = True
@@ -87,7 +87,7 @@ async def create_home_post(data: PostBody):
         data.content,
         attachments=attachments,
         nonce=data.nonce,
-        replies=data.replies
+        reply_to=data.reply_to
     )
 
     # Return new post
