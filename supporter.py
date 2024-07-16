@@ -170,8 +170,8 @@ class Supporter:
         include_replies: bool = True,
         include_revisions: bool = False
     ) -> Iterable[dict[str, Any]]:
-        for post in posts:
-            if not post:
+        for post in list(posts):
+            if post is None:
                 continue
 
             # Stupid legacy stuff
