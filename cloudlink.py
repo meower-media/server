@@ -347,7 +347,7 @@ class CloudlinkClient:
         else:
             match resp["type"]:
                 case "repairModeEnabled":
-                    await self.kick()
+                    self.kick()
                 case "ipBlocked"|"registrationBlocked":
                     self.send_statuscode("Blocked", listener)
                 case "badRequest":
@@ -378,8 +378,10 @@ class CloudlinkClient:
     def send_statuscode(self, statuscode: str, listener: Optional[str] = None):
         return self.send("statuscode", self.server.statuscodes[statuscode], listener=listener)
 
-    async def kick(self):
-        await self.websocket.close()
+    def kick(self):
+        async def _kick():
+            await self.websocket.close()
+        asyncio.create_task(_kick())
 
 class CloudlinkCommands:
     def __init__(self, cl: CloudlinkServer):

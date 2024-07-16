@@ -104,7 +104,7 @@ async def delete_account(data: DeleteAccountBody):
 
     # Disconnect clients
     for client in app.cl.usernames.get(request.user, []):
-        await client.kick()
+        client.kick()
 
     return {"error": False}, 200
 
@@ -400,7 +400,7 @@ async def delete_tokens():
 
     # Disconnect clients
     for client in app.cl.usernames.get(request.user, []):
-        await client.kick()
+        client.kick()
 
     return {"error": False}, 200
 
