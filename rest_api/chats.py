@@ -1,6 +1,7 @@
 from quart import Blueprint, current_app as app, request, abort
-from quart_schema import validate_request
+from quart_schema import validate_querystring, validate_request
 from pydantic import BaseModel, Field
+from typing import Optional
 import pymongo, uuid, time
 
 import security
@@ -10,6 +11,9 @@ from utils import log
 
 chats_bp = Blueprint("chats_bp", __name__, url_prefix="/chats")
 
+
+class GetPostsQueryArgs(BaseModel):
+    page: Optional[int] = Field(default=1, ge=1)
 
 class ChatBody(BaseModel):
     nickname: str = Field(default=None, min_length=1, max_length=32)
@@ -449,33 +453,33 @@ async def transfer_chat_ownership(chat_id, username):
 
 
 @chats_bp.get("/<chat_id>/pins")
-def get_chat_pins(chat_id):
+@validate_querystring(GetPostsQueryArgs)
+def get_chat_pins(chat_id, query_args: GetPostsQueryArgs):
+    # Check authorization
     if not request.user:
         abort(401)
 
-    query = {"_id": chat_id}
-    if not security.has_permission(request.permissions, security.AdminPermissions.VIEW_CHATS):
-        query["members"] = request.user
-        query["deleted"] = False
-
-    try:
-        page = int(request.args.get("page"))
-    except: page = 1
-
-    chat = db.chats.find_one(query)
-    if not chat:
+    # Make sure chat exists and requester has access
+    if not db.chats.count_documents({
+        "_id": chat_id,
+        "members": request.user,
+        "deleted": False
+    }, limit=1):
         abort(404)
 
+    # Get and return pinned posts
     query = {"post_origin": chat_id, "pinned": True}
-    posts = db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25)
-
-    if not posts:
-        posts = []
-
-
     return {
         "error": False,
-        "page#": page,
-        "pages": get_total_pages("posts", query),
-        "posts": list(posts)
+        "autoget": app.supporter.parse_posts_v0(
+            db.posts.find(
+                query,
+                sort=[("t.e", pymongo.DESCENDING)],
+                skip=(query_args.page-1)*25,
+                limit=25
+            ),
+            include_replies=True,
+        ),
+        "page#": query_args.page,
+        "pages": (get_total_pages("posts", query) if request.user else 1)
     }, 200
