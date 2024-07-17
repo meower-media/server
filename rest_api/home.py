@@ -38,7 +38,7 @@ async def get_home_posts(query_args: GetHomeQueryArgs):
             sort=[("t.e", pymongo.DESCENDING)],
             skip=(query_args.page-1)*25,
             limit=25
-        )),
+        ), requester=request.user),
         "page#": query_args.page,
         "pages": (get_total_pages("posts", query) if request.user else 1)
     }, 200
@@ -92,7 +92,7 @@ async def create_home_post(data: PostBody):
 
     # Return new post
     post["error"] = False
-    return app.supporter.parse_posts_v0([post])[0], 200
+    return app.supporter.parse_posts_v0([post], requester=request.user)[0], 200
 
 
 @home_bp.post("/typing")

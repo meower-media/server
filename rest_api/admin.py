@@ -362,7 +362,8 @@ async def get_post(post_id):
     post["error"] = False
     return app.supporter.parse_posts_v0(
         [post],
-        include_revisions=True
+        include_revisions=True,
+        requester=request.user
     )[0], 200
 
 
@@ -420,7 +421,8 @@ async def delete_post(post_id):
     return app.supporter.parse_posts_v0(
         [post],
         include_replies=True,
-        include_revisions=True
+        include_revisions=True,
+        requester=request.user
     )[0], 200
 
 
@@ -451,7 +453,8 @@ async def restore_post(post_id):
     return app.supporter.parse_posts_v0(
         [post],
         include_replies=True,
-        include_revisions=True
+        include_revisions=True,
+        requester=request.user
     )[0], 200
 
 
@@ -744,7 +747,7 @@ async def get_user_posts(username, query_args: GetUserPostsQueryArgs):
     # Return posts
     return {
         "error": False,
-        "autoget": app.supporter.parse_posts_v0(posts),
+        "autoget": app.supporter.parse_posts_v0(posts, requester=request.user),
         "page#": query_args.page,
         "pages": get_total_pages("posts", query),
     }, 200
@@ -816,7 +819,7 @@ async def send_alert(username, data: InboxMessageBody):
 
     # Return new post
     post["error"] = False
-    return app.supporter.parse_posts_v0([post])[0], 200
+    return app.supporter.parse_posts_v0([post], requester=request.user)[0], 200
 
 
 @admin_bp.post("/users/<username>/kick")
@@ -1075,7 +1078,7 @@ async def get_chat_posts(chat_id, query_args: GetChatPostsQueryArgs):
     # Return posts
     return {
         "error": False,
-        "autoget": app.supporter.parse_posts_v0(posts),
+        "autoget": app.supporter.parse_posts_v0(post, requester=request.user),
         "page#": query_args.page,
         "pages": get_total_pages("posts", query)
     }, 200
@@ -1274,7 +1277,7 @@ async def get_announcements(query_args: GetAnnouncementsQueryArgs):
     # Return posts
     return {
         "error": False,
-        "autoget": app.supporter.parse_posts_v0(posts),
+        "autoget": app.supporter.parse_posts_v0(posts, requester=request.user),
         "page#": query_args.page,
         "pages": get_total_pages("posts", query),
     }, 200
@@ -1299,7 +1302,7 @@ async def send_announcement(data: InboxMessageBody):
 
     # Return new post
     post["error"] = False
-    return app.supporter.parse_posts_v0([post])[0], 200
+    return app.supporter.parse_posts_v0([post], requester=request.user)[0], 200
 
 
 @admin_bp.post("/server/kick-all")

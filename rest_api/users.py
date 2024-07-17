@@ -52,15 +52,16 @@ async def get_user(username):
 
 @users_bp.get("/posts")
 @validate_querystring(GetPostsQueryArgs)
-async def get_posts(username, query_args: GetPostsQueryArgs):
+async def get_user_posts(username, query_args: GetPostsQueryArgs):
     query = {"post_origin": "home", "isDeleted": False, "u": username}
     return {
         "error": False,
         "autoget": app.supporter.parse_posts_v0(db.posts.find(
             query,
+            sort=[("t.e", pymongo.DESCENDING)],
             skip=(query_args.page-1)*25,
             limit=25
-        )),
+        ), requester=request.user),
         "page#": query_args.page,
         "pages": get_total_pages("posts", query)
     }, 200
