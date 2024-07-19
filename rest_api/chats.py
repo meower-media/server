@@ -586,7 +586,7 @@ async def get_chat_emotes(chat_id: str, emote_type: Literal["emojis", "stickers"
     }, 200
 
 
-@chats_bp.patch("/<chat_id>/<emote_type>/<emote_id>")
+@chats_bp.get("/<chat_id>/<emote_type>/<emote_id>")
 async def get_chat_emote(chat_id: str, emote_type: Literal["emojis", "stickers"], emote_id: str):
     # Make sure emote type is valid
     if emote_type not in ["emojis", "stickers"]:
@@ -674,12 +674,12 @@ async def create_chat_emote(chat_id: str, emote_type: Literal["emojis", "sticker
         "created_by": request.user
     }
     db[f"chat_{emote_type}"].insert_one(emote)
-    del emote["chat_id"]
     del emote["created_at"]
     del emote["created_by"]
     app.cl.send_event(f"create_{emote_type[:-1]}", emote, usernames=chat["members"])
 
     # Return new emote
+    del emote["chat_id"]
     emote["error"] = False
     return emote, 200
 
@@ -778,5 +778,6 @@ async def delete_chat_emote(chat_id: str, emote_type: Literal["emojis", "sticker
         "_id": emote_id,
         "chat_id": chat_id
     }, usernames=chat["members"])
+    delete_file(emote_id)
 
     return {"error": False}, 200
