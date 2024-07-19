@@ -657,7 +657,11 @@ async def create_chat_emote(chat_id: str, emote_type: Literal["emojis", "sticker
             return {"error": True, "type": "tooManyStickers"}, 403
 
     # Claim file
-    file = claim_file(emote_id, emote_type)
+    try:
+        file = claim_file(emote_id, emote_type)
+    except Exception as e:
+        log(f"Unable to claim emote: {e}")
+        return {"error": True, "type": "unableToClaimEmote"}, 500
 
     # Fall back to filename if no name is specified
     if not data.name:
@@ -728,6 +732,7 @@ async def update_chat_emote(chat_id: str, emote_type: Literal["emojis", "sticker
         abort(404)
 
     # Update emote name
+    emote["name"] = data.name
     db[f"chat_{emote_type}"].update_one({"_id": emote_id}, {"$set": {"name": data.name}})
     app.cl.send_event(f"update_{emote_type[:-1]}", {
         "_id": emote_id,
