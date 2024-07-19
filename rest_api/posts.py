@@ -435,6 +435,18 @@ async def create_chat_post(chat_id, data: PostBody):
     if len(data.attachments) > 10:
         return {"error": True, "type": "tooManyAttachments"}, 400
 
+    # Make sure the post isn't replying to too many posts
+    if len(data.reply_to) > 10:
+        return {"error": True, "type": "tooManyReplies"}, 400
+    
+    # Make sure replied to post IDs exist and are unique
+    unique_reply_to_post_ids = []
+    if chat_id != "livechat":
+        for post_id in data.reply_to:
+            if db.posts.count_documents({"_id": post_id, "post_origin": chat_id}, limit=1) and \
+                post_id not in unique_reply_to_post_ids:
+                unique_reply_to_post_ids.append(post_id)
+
     # Claim attachments
     attachments = []
     if chat_id != "livechat":
@@ -492,7 +504,7 @@ async def create_chat_post(chat_id, data: PostBody):
         attachments=attachments,
         nonce=data.nonce,
         chat_members=(None if chat_id == "livechat" else chat["members"]),
-        reply_to=data.reply_to
+        reply_to=unique_reply_to_post_ids
     )
 
     # Return new post
