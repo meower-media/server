@@ -445,7 +445,7 @@ async def create_chat_post(chat_id, data: PostBody):
         return {"error": True, "type": "tooManyStickers"}, 400
 
     # Make sure stickers exist
-    for sticker_id in copy.copy(data.stickers):
+    for sticker_id in copy(data.stickers):
         if not db.chat_stickers.count_documents({"_id": sticker_id}, limit=1):
             data.stickers.remove(sticker_id)
 
