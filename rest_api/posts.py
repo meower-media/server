@@ -584,6 +584,10 @@ async def add_post_reaction(post_id: str, emoji_reaction: str):
         }, limit=1):
             abort(404)
 
+    # Make sure there's not too many reactions (50)
+    if len(post["reactions"]) >= 50:
+        return {"error": True, "type": "tooManyReactions"}, 403
+
     # Add reaction
     db.post_reactions.update_one({"_id": {
         "post_id": post["_id"],
