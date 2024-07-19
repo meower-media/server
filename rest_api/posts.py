@@ -571,7 +571,9 @@ async def add_post_reaction(post_id: str, emoji_reaction: str):
 
     # Check if the emoji is only one emoji, with support for variants
     if not (emoji.purely_emoji(emoji_reaction) and len(emoji.distinct_emoji_list(emoji_reaction)) == 1):
-        abort(400)
+        # Check if the emoji is a custom emoji
+        if not db.chat_emojis.count_documents({"_id": emoji_reaction}, limit=1):
+            abort(400)
 
     # Get necessary post details and check access
     post = db.posts.find_one({
