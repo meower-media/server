@@ -467,8 +467,8 @@ async def create_chat_post(chat_id, data: PostBody):
                 log(f"Unable to claim attachment: {e}")
                 return {"error": True, "type": "unableToClaimAttachment"}, 500
 
-    # Make sure the post has text content or at least 1 attachment
-    if not data.content and not attachments:
+    # Make sure the post has text content or at least 1 attachment or at least 1 sticker
+    if not data.content and not attachments and not data.stickers:
         abort(400)
 
     if chat_id != "livechat":
