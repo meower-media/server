@@ -66,6 +66,7 @@ class Supporter:
         author: str,
         content: str,
         attachments: list[FileDetails] = [],
+        stickers: list[str] = [],
         nonce: Optional[str] = None,
         chat_members: list[str] = [],
         reply_to: list[str] = []
@@ -94,7 +95,8 @@ class Supporter:
             "pinned": False,
             "reply_to": reply_to,
             "reactions": [],
-            "emojis": list(set(re.findall(CUSTOM_EMOJI_REGEX, content)))
+            "emojis": list(set(re.findall(CUSTOM_EMOJI_REGEX, content))),
+            "stickers": stickers
         }
 
         # Add database item
@@ -208,9 +210,16 @@ class Supporter:
                 post.update({"reply_to": [None for _ in post.pop("reply_to", [])]})
 
             # Custom emojis
-            post["emojis"] = list(db.chat_emojis.find({
-                "_id": {"$in": post.get("emojis", [])}
-            }, projection={"created_by": 0}))
+            if post.get("emojis"):
+                post["emojis"] = list(db.chat_emojis.find({
+                    "_id": {"$in": post.get("emojis", [])}
+                }, projection={"created_by": 0}))
+
+            # Stickers
+            if post.get("stickers"):
+                post["stickers"] = list(db.chat_stickers.find({
+                    "_id": {"$in": post.get("stickers", [])}
+                }, projection={"created_by": 0}))
 
             # Reactions
             [reaction.update({
