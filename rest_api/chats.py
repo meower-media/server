@@ -42,10 +42,10 @@ async def get_chats():
     [chat.update({
         "emojis": list(db.chat_emojis.find({
             "chat_id": chat["_id"]
-        }, projection={"chat_id": 0, "created_by": 0})),
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
         "stickers": list(db.chat_stickers.find({
             "chat_id": chat["_id"]
-        }, projection={"chat_id": 0, "created_by": 0}))
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
     }) for chat in chats]
 
     # Get and return chats
@@ -113,10 +113,10 @@ async def create_chat(data: ChatBody):
     chat.update({
         "emojis": list(db.chat_emojis.find({
             "chat_id": chat["_id"]
-        }, projection={"chat_id": 0, "created_by": 0})),
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
         "stickers": list(db.chat_stickers.find({
             "chat_id": chat["_id"]
-        }, projection={"chat_id": 0, "created_by": 0}))
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
     })
 
 
@@ -144,10 +144,10 @@ async def get_chat(chat_id):
         "error": False,
         "emojis": list(db.chat_emojis.find({
             "chat_id": chat["_id"]
-        }, projection={"chat_id": 0, "created_by": 0})),
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
         "stickers": list(db.chat_stickers.find({
             "chat_id": chat["_id"]
-        }, projection={"chat_id": 0, "created_by": 0}))
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
     })
     return chat, 200
 
@@ -216,10 +216,10 @@ async def update_chat(chat_id, data: ChatBody):
         "error": False,
         "emojis": list(db.chat_emojis.find({
             "chat_id": chat["_id"]
-        }, projection={"chat_id": 0, "created_by": 0})),
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
         "stickers": list(db.chat_stickers.find({
             "chat_id": chat["_id"]
-        }, projection={"chat_id": 0, "created_by": 0}))
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
     })
     return chat, 200
 
@@ -396,10 +396,10 @@ async def add_chat_member(chat_id, username):
         "error": False,
         "emojis": list(db.chat_emojis.find({
             "chat_id": chat["_id"]
-        }, projection={"chat_id": 0, "created_by": 0})),
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
         "stickers": list(db.chat_stickers.find({
             "chat_id": chat["_id"]
-        }, projection={"chat_id": 0, "created_by": 0}))
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
     })
     return chat, 200
 
@@ -454,10 +454,10 @@ async def remove_chat_member(chat_id, username):
         "error": False,
         "emojis": list(db.chat_emojis.find({
             "chat_id": chat["_id"]
-        }, projection={"chat_id": 0, "created_by": 0})),
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
         "stickers": list(db.chat_stickers.find({
             "chat_id": chat["_id"]
-        }, projection={"chat_id": 0, "created_by": 0}))
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
     })
     return chat, 200
 
@@ -511,10 +511,10 @@ async def transfer_chat_ownership(chat_id, username):
         "error": False,
         "emojis": list(db.chat_emojis.find({
             "chat_id": chat["_id"]
-        }, projection={"chat_id": 0, "created_by": 0})),
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
         "stickers": list(db.chat_stickers.find({
             "chat_id": chat["_id"]
-        }, projection={"chat_id": 0, "created_by": 0}))
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
     })
     return chat, 200
 
@@ -576,7 +576,7 @@ async def get_chat_emotes(chat_id: str, emote_type: Literal["emojis", "stickers"
         "error": False,
         "autoget": list(db[f"chat_{emote_type}"].find({
             "chat_id": chat_id
-        }, projection={"chat_id": 0, "created_by": 0})),
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
         "page#": 1,
         "pages": 1
     }, 200
@@ -604,7 +604,7 @@ async def get_chat_emote(chat_id: str, emote_type: Literal["emojis", "stickers"]
     emote = db[f"chat_{emote_type}"].find_one({
         "_id": emote_id,
         "chat_id": chat_id
-    }, projection={"chat_id": 0, "created_by": 0})
+    }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})
     if not emote:
         abort(404)
 
@@ -671,6 +671,7 @@ async def create_chat_emote(chat_id: str, emote_type: Literal["emojis", "sticker
     }
     db[f"chat_{emote_type}"].insert_one(emote)
     del emote["chat_id"]
+    del emote["created_at"]
     del emote["created_by"]
     app.cl.send_event(f"create_{emote_type[:-1]}", emote, usernames=chat["members"])
 
@@ -718,7 +719,7 @@ async def update_chat_emote(chat_id: str, emote_type: Literal["emojis", "sticker
     emote = db[f"chat_{emote_type}"].find_one({
         "_id": emote_id,
         "chat_id": chat_id
-    }, projection={"chat_id": 0, "created_by": 0})
+    }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})
     if not emote:
         abort(404)
 

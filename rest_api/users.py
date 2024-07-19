@@ -232,9 +232,9 @@ async def get_dm_chat(username):
         "error": False,
         "emojis": list(db.chat_emojis.find({
             "chat_id": chat["_id"]
-        }, projection={"chat_id": 0, "created_by": 0})),
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
         "stickers": list(db.chat_stickers.find({
             "chat_id": chat["_id"]
-        }, projection={"chat_id": 0, "created_by": 0}))
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
     })
     return chat, 200

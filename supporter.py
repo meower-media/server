@@ -213,13 +213,13 @@ class Supporter:
             if post.get("emojis"):
                 post["emojis"] = list(db.chat_emojis.find({
                     "_id": {"$in": post.get("emojis", [])}
-                }, projection={"created_by": 0}))
+                }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
 
             # Stickers
             if post.get("stickers"):
                 post["stickers"] = list(db.chat_stickers.find({
                     "_id": {"$in": post.get("stickers", [])}
-                }, projection={"created_by": 0}))
+                }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
 
             # Reactions
             [reaction.update({
