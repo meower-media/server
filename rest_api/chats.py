@@ -576,7 +576,11 @@ async def get_chat_emotes(chat_id: str, emote_type: Literal["emojis", "stickers"
         "error": False,
         "autoget": list(db[f"chat_{emote_type}"].find({
             "chat_id": chat_id
-        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
+        }, sort=[("created_at", pymongo.DESCENDING)], projection={
+            "chat_id": 0,
+            "created_at": 0,
+            "created_by": 0
+        })),
         "page#": 1,
         "pages": 1
     }, 200
