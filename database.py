@@ -135,6 +135,20 @@ try:
     ], name="user_chats")
 except: pass
 
+# Create chat_emojis indexes
+try:
+    db.chat_emojis.create_index([
+        ("chat_id", pymongo.ASCENDING),
+    ], name="chat_id")
+except: pass
+
+# Create chat_stickers indexes
+try:
+    db.chat_stickers.create_index([
+        ("chat_id", pymongo.ASCENDING),
+    ], name="chat_id")
+except: pass
+
 # Create reports indexes
 try:
     db.reports.create_index([

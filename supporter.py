@@ -1,6 +1,6 @@
 from threading import Thread
 from typing import Optional, Iterable, Any
-import uuid, time, msgpack, pymongo
+import uuid, time, msgpack, pymongo, re
 
 from cloudlink import CloudlinkServer
 from database import db, rdb
@@ -11,6 +11,9 @@ from uploads import FileDetails
 Meower Supporter Module
 This module provides constant variables, and other miscellaneous supporter utilities.
 """
+
+FILE_ID_REGEX = "[a-zA-Z0-9]{24}"
+CUSTOM_EMOJI_REGEX = f"<:({FILE_ID_REGEX})>"
 
 class Supporter:
     def __init__(self, cl: CloudlinkServer):
@@ -63,6 +66,7 @@ class Supporter:
         author: str,
         content: str,
         attachments: list[FileDetails] = [],
+        stickers: list[str] = [],
         nonce: Optional[str] = None,
         chat_members: list[str] = [],
         reply_to: list[str] = []
@@ -90,7 +94,9 @@ class Supporter:
             "isDeleted": False,
             "pinned": False,
             "reply_to": reply_to,
-            "reactions": []
+            "reactions": [],
+            "emojis": list(set(re.findall(CUSTOM_EMOJI_REGEX, content))),
+            "stickers": stickers
         }
 
         # Add database item
@@ -202,6 +208,18 @@ class Supporter:
                 ]})
             else:
                 post.update({"reply_to": [None for _ in post.pop("reply_to", [])]})
+
+            # Custom emojis
+            if post.get("emojis"):
+                post["emojis"] = list(db.chat_emojis.find({
+                    "_id": {"$in": post.get("emojis", [])}
+                }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
+
+            # Stickers
+            if post.get("stickers"):
+                post["stickers"] = list(db.chat_stickers.find({
+                    "_id": {"$in": post.get("stickers", [])}
+                }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
 
             # Reactions
             [reaction.update({

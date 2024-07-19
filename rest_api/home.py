@@ -2,7 +2,7 @@ from quart import Blueprint, current_app as app, request, abort
 from quart_schema import validate_querystring, validate_request
 from pydantic import BaseModel, Field
 from typing import Optional
-import pymongo
+import pymongo, copy
 
 import security
 from database import db, get_total_pages
@@ -21,6 +21,7 @@ class PostBody(BaseModel):
     nonce: Optional[str] = Field(default=None, max_length=64)
     attachments: Optional[list[str]] = Field(default_factory=list)
     reply_to: Optional[list[str]] = Field(default_factory=list)
+    stickers: Optional[list[str]] = Field(default_factory=list)
 
     class Config:
         validate_assignment = True
@@ -67,6 +68,26 @@ async def create_home_post(data: PostBody):
     if len(data.attachments) > 10:
         return {"error": True, "type": "tooManyAttachments"}, 400
 
+    # Make sure the post isn't replying to too many posts
+    if len(data.reply_to) > 10:
+        return {"error": True, "type": "tooManyReplies"}, 400
+    
+    # Make sure there's not too many stickers
+    if len(data.stickers) > 10:
+        return {"error": True, "type": "tooManyStickers"}, 400
+    
+    # Make sure stickers exist
+    for sticker_id in copy.copy(data.stickers):
+        if not db.chat_stickers.count_documents({"_id": sticker_id}, limit=1):
+            data.stickers.remove(sticker_id)
+
+    # Make sure replied to post IDs exist and are unique
+    unique_reply_to_post_ids = []
+    for post_id in data.reply_to:
+        if db.posts.count_documents({"_id": post_id, "post_origin": "home"}, limit=1) and \
+            post_id not in unique_reply_to_post_ids:
+            unique_reply_to_post_ids.append(post_id)
+
     # Claim attachments
     attachments = []
     for attachment_id in set(data.attachments):
@@ -86,8 +107,9 @@ async def create_home_post(data: PostBody):
         request.user,
         data.content,
         attachments=attachments,
+        stickers=data.stickers,
         nonce=data.nonce,
-        reply_to=data.reply_to
+        reply_to=unique_reply_to_post_ids
     )
 
     # Return new post
