@@ -467,8 +467,8 @@ async def create_chat_post(chat_id, data: PostBody):
                 log(f"Unable to claim attachment: {e}")
                 return {"error": True, "type": "unableToClaimAttachment"}, 500
 
-    # Make sure the post has text content or at least 1 attachment
-    if not data.content and not attachments:
+    # Make sure the post has text content or at least 1 attachment or at least 1 sticker
+    if not data.content and not attachments and not data.stickers:
         abort(400)
 
     if chat_id != "livechat":
@@ -571,7 +571,9 @@ async def add_post_reaction(post_id: str, emoji_reaction: str):
 
     # Check if the emoji is only one emoji, with support for variants
     if not (emoji.purely_emoji(emoji_reaction) and len(emoji.distinct_emoji_list(emoji_reaction)) == 1):
-        abort(400)
+        # Check if the emoji is a custom emoji
+        if not db.chat_emojis.count_documents({"_id": emoji_reaction}, limit=1):
+            abort(400)
 
     # Get necessary post details and check access
     post = db.posts.find_one({
