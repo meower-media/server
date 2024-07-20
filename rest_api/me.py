@@ -75,6 +75,9 @@ async def get_me():
     if not request.user:
         abort(401)
 
+    # Update last_seen (this is only to remove CL3's dependency on the DB)
+    db.usersv0.update_one({"_id": request.user}, {"$set": {"last_seen": int(time.time())}})
+
     # Get and return account
     return security.get_account(request.user, include_config=True), 200
 
@@ -104,7 +107,7 @@ async def delete_account(data: DeleteAccountBody):
 
     # Disconnect clients
     for client in app.cl.usernames.get(request.user, []):
-        await client.kick()
+        client.kick()
 
     return {"error": False}, 200
 
@@ -177,6 +180,24 @@ async def update_config(data: UpdateConfigBody):
         app.cl.send_event("update_profile", updated_profile_data)
 
     return {"error": False}, 200
+
+
+@me_bp.get("/relationships")
+async def get_relationships():
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    return {
+        "error": False,
+        "autoget": [{
+            "username": r["_id"]["to"],
+            "state": r["state"],
+            "updated_at": r["updated_at"]
+        } for r in db.relationships.find({"_id.from": request.user})],
+        "page#": 1,
+        "pages": 1
+    }, 200
 
 
 @me_bp.patch("/password")
@@ -400,7 +421,7 @@ async def delete_tokens():
 
     # Disconnect clients
     for client in app.cl.usernames.get(request.user, []):
-        await client.kick()
+        client.kick()
 
     return {"error": False}, 200
 
@@ -438,7 +459,8 @@ async def get_report_history(query_args: GetReportsQueryArgs):
     for report in reports:
         if report["type"] == "post":
             report["content"] = db.posts.find_one(
-                {"_id": report.get("content_id")}, projection={"_id": 1, "u": 1, "isDeleted": 1}
+                {"_id": report.get("content_id")},
+                projection={"_id": 1, "u": 1, "isDeleted": 1}
             )
         elif report["type"] == "user":
             report["content"] = security.get_account(report.get("content_id"))

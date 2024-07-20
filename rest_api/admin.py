@@ -139,9 +139,11 @@ async def get_reports(query_args: GetReportsQueryArgs):
     # Get content
     for report in reports:
         if report["type"] == "post":
-            report["content"] = db.posts.find_one(
-                {"_id": report.get("content_id")}
-            )
+            post = db.posts.find_one({"_id": report.get("content_id")})
+            if post:
+                report["content"] = app.supporter.parse_posts_v0([post])[0]
+            else:
+                report["content"] = None
         elif report["type"] == "user":
             report["content"] = security.get_account(report.get("content_id"))
 
@@ -182,9 +184,11 @@ async def get_report(report_id):
 
     # Get content
     if report["type"] == "post":
-        report["content"] = db.posts.find_one(
-            {"_id": report.pop("content_id")}
-        )
+        post = db.posts.find_one({"_id": report.get("content_id")})
+        if post:
+            report["content"] = app.supporter.parse_posts_v0([post])[0]
+        else:
+            report["content"] = None
     elif report["type"] == "user":
         report["content"] = security.get_account(report.get("content_id"))
 
@@ -221,9 +225,11 @@ async def update_report(report_id, data: UpdateReportBody):
 
     # Get content
     if report["type"] == "post":
-        report["content"] = db.posts.find_one(
-            {"_id": report.pop("content_id")}
-        )
+        post = db.posts.find_one({"_id": report.get("content_id")})
+        if post:
+            report["content"] = app.supporter.parse_posts_v0([post])[0]
+        else:
+            report["content"] = None
     elif report["type"] == "user":
         report["content"] = security.get_account(report.get("content_id"))
 
@@ -262,9 +268,11 @@ async def escalate_report(report_id):
 
     # Get content
     if report["type"] == "post":
-        report["content"] = db.posts.find_one(
-            {"_id": report.pop("content_id")}
-        )
+        post = db.posts.find_one({"_id": report.get("content_id")})
+        if post:
+            report["content"] = app.supporter.parse_posts_v0([post])[0]
+        else:
+            report["content"] = None
     elif report["type"] == "user":
         report["content"] = security.get_account(report.get("content_id"))
 
@@ -351,16 +359,13 @@ async def get_post(post_id):
     if not post:
         abort(404)
 
-    # Get post revisions
-    post["revisions"] = list(
-        db.post_revisions.find(
-            {"post_id": post_id}, sort=[("time", pymongo.DESCENDING)]
-        )
-    )
-
     # Return post
     post["error"] = False
-    return post, 200
+    return app.supporter.parse_posts_v0(
+        [post],
+        include_revisions=True,
+        requester=request.user
+    )[0], 200
 
 
 @admin_bp.delete("/posts/<post_id>")
@@ -414,7 +419,12 @@ async def delete_post(post_id):
 
     # Return updated post
     post["error"] = False
-    return post, 200
+    return app.supporter.parse_posts_v0(
+        [post],
+        include_replies=True,
+        include_revisions=True,
+        requester=request.user
+    )[0], 200
 
 
 @admin_bp.post("/posts/<post_id>/restore")
@@ -441,7 +451,12 @@ async def restore_post(post_id):
 
     # Return updated post
     post["error"] = False
-    return post, 200
+    return app.supporter.parse_posts_v0(
+        [post],
+        include_replies=True,
+        include_revisions=True,
+        requester=request.user
+    )[0], 200
 
 
 @admin_bp.get("/users")
@@ -648,7 +663,7 @@ async def delete_user(username, query_args: DeleteUserQueryArgs):
             },
         )
         for client in app.cl.usernames.get(username, []):
-            await client.kick()
+            client.kick()
         if deletion_mode in ["immediate", "purge"]:
             security.delete_account(username, purge=(deletion_mode == "purge"))
     else:
@@ -696,7 +711,7 @@ async def ban_user(username, data: UpdateUserBanBody):
         data.state == "temp_ban" and data.expires > time.time()
     ):
         for client in app.cl.usernames.get(username, []):
-            await client.kick()
+            client.kick()
     else:
         app.cl.send_event("update_config", {"ban": data.model_dump()}, usernames=[username])
 
@@ -719,10 +734,8 @@ async def get_user_posts(username, query_args: GetUserPostsQueryArgs):
         }
     else:
         query = {"u": username}
-    posts = list(
-        db.posts.find(
-            query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page - 1) * 25, limit=25
-        )
+    posts = db.posts.find(
+        query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page - 1) * 25, limit=25
     )
 
     # Add log
@@ -736,7 +749,7 @@ async def get_user_posts(username, query_args: GetUserPostsQueryArgs):
     # Return posts
     return {
         "error": False,
-        "autoget": posts,
+        "autoget": app.supporter.parse_posts_v0(posts, requester=request.user),
         "page": query_args.page,
         "page#": query_args.page,
         "pages": get_total_pages("posts", query),
@@ -809,7 +822,7 @@ async def send_alert(username, data: InboxMessageBody):
 
     # Return new post
     post["error"] = False
-    return post, 200
+    return app.supporter.parse_posts_v0([post], requester=request.user)[0], 200
 
 
 @admin_bp.post("/users/<username>/kick")
@@ -823,7 +836,7 @@ async def kick_user(username):
 
     # Kick clients
     for client in app.cl.usernames.get(username, []):
-        await client.kick()
+        client.kick()
 
     # Add log
     security.add_audit_log(
@@ -918,7 +931,15 @@ async def get_chat(chat_id):
     security.add_audit_log("got_chat", request.user, request.ip, {"chat_id": chat_id})
 
     # Return chat
-    chat["error"] = False
+    chat.update({
+        "error": False,
+        "emojis": list(db.chat_emojis.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
+        "stickers": list(db.chat_stickers.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
+    })
     return chat, 200
 
 
@@ -1061,12 +1082,14 @@ async def get_chat_posts(chat_id, query_args: GetChatPostsQueryArgs):
 
     # Get posts
     query = {"post_origin": chat_id, "$or": [{"isDeleted": False}, {"isDeleted": True}]}
-    posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page-1)*25, limit=25))
+    posts = db.posts.find(
+        query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page - 1) * 25, limit=25
+    )
 
     # Return posts
     return {
         "error": False,
-        "autoget": posts,
+        "autoget": app.supporter.parse_posts_v0(post, requester=request.user),
         "page": query_args.page,
         "page#": query_args.page,
         "pages": get_total_pages("posts", query)
@@ -1201,7 +1224,7 @@ async def create_netblock(cidr, data: NetblockBody):
     if data.type == 0:
         for client in copy(app.cl.clients):
             if blocked_ips.search_best(client.ip):
-                await client.kick()
+                client.kick()
 
     # Add log
     security.add_audit_log(
@@ -1255,10 +1278,8 @@ async def get_announcements(query_args: GetAnnouncementsQueryArgs):
         "$or": [{"isDeleted": False}, {"isDeleted": True}],
         "u": "Server",
     }
-    posts = list(
-        db.posts.find(
-            query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page - 1) * 25, limit=25
-        )
+    posts = db.posts.find(
+        query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page - 1) * 25, limit=25
     )
 
     # Add log
@@ -1269,7 +1290,7 @@ async def get_announcements(query_args: GetAnnouncementsQueryArgs):
     # Return posts
     return {
         "error": False,
-        "autoget": posts,
+        "autoget": app.supporter.parse_posts_v0(posts, requester=request.user),
         "page": query_args.page,
         "page#": query_args.page,
         "pages": get_total_pages("posts", query),
@@ -1295,7 +1316,7 @@ async def send_announcement(data: InboxMessageBody):
 
     # Return new post
     post["error"] = False
-    return post, 200
+    return app.supporter.parse_posts_v0([post], requester=request.user)[0], 200
 
 
 @admin_bp.post("/server/kick-all")
@@ -1306,7 +1327,7 @@ async def kick_all_clients():
 
     # Kick all clients
     for client in copy(app.cl.clients):
-        await client.kick()
+        client.kick()
 
     # Add log
     security.add_audit_log("kicked_all", request.user, request.ip, {})
@@ -1328,7 +1349,7 @@ async def enable_repair_mode():
 
     # Kick all clients
     for client in copy(app.cl.clients):
-        await client.kick()
+        client.kick()
 
     # Add log
     security.add_audit_log("enabled_repair_mode", request.user, request.ip, {})

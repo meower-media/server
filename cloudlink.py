@@ -123,6 +123,10 @@ class CloudlinkServer:
                 for username in usernames:
                     clients += self.usernames.get(username, [])
 
+        # Parse post
+        if cmd == "post" or cmd == "update_post":
+            val = self.supporter.parse_posts_v0([val])[0]
+
         # Send v1 packet
         websockets.broadcast({
             client.websocket for client in clients
@@ -183,11 +187,10 @@ class CloudlinkClient:
         # Automatic login
         if "token" in self.req_params:
             token = self.req_params.get("token")[0]
-            account = db.usersv0.find_one({"tokens": token}, projection={"_id": 1})
+            account = self.proxy_api_request("/me", "get", headers={"token": token})
             if account:
-                self.authenticate(security.get_account(account["_id"], include_config=True), used_token=token)
-            else:
-                self.send_statuscode("PasswordInvalid")
+                del account["error"]
+                self.authenticate(account, token)
 
     @property
     def req_params(self):
@@ -224,23 +227,18 @@ class CloudlinkClient:
             "username": self.username,
             "token": used_token,
             "account": account,
-            "relationships": [{
-                "username": r["_id"]["to"],
-                "state": r["state"],
-                "updated_at": r["updated_at"]
-            } for r in db.relationships.find({"_id.from": self.username})],
+            "relationships": self.proxy_api_request("/me/relationships", "get")["autoget"],
             **({
-                "chats": self.server.supporter.get_chats(self.username)
+                "chats": self.proxy_api_request("/chats", "get")["autoget"]
             } if self.proto_version != 0 else {})
         }, listener=listener)
 
     def logout(self):
         if not self.username:
             return
-        
-        db.usersv0.update_one({"_id": self.username, "last_seen": {"$ne": None}}, {"$set": {
-            "last_seen": int(time.time())
-        }})
+
+        # Trigger last_seen update
+        self.proxy_api_request("/me", "get")
 
         self.server.usernames[self.username].remove(self)
         if len(self.server.usernames[self.username]) == 0:
@@ -248,7 +246,7 @@ class CloudlinkClient:
             self.server.send_event('ulist', self.server.get_ulist())
         self.username = None
 
-    def send(self, cmd: str, val: Any, extra: Optional[dict] = None, listener: Optional[str] = None):
+   def send(self, cmd: str, val: Any, extra: Optional[dict] = None, listener: Optional[str] = None):
         if extra is None:
             extra = {}
         if listener:

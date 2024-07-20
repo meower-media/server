@@ -1,7 +1,8 @@
 from quart import Blueprint, current_app as app, request, abort
-from quart_schema import validate_request
+from quart_schema import validate_querystring, validate_request
 from pydantic import BaseModel, Field
-import pymongo, uuid, time
+from typing import Optional, Literal
+import pymongo, uuid, time, re
 
 import security
 from database import db, get_total_pages
@@ -10,6 +11,9 @@ from utils import log
 
 chats_bp = Blueprint("chats_bp", __name__, url_prefix="/chats")
 
+
+class GetPostsQueryArgs(BaseModel):
+    page: Optional[int] = Field(default=1, ge=1)
 
 class ChatBody(BaseModel):
     nickname: str = Field(default=None, min_length=1, max_length=32)
@@ -21,6 +25,9 @@ class ChatBody(BaseModel):
         validate_assignment = True
         str_strip_whitespace = True
 
+class EmoteBody(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=32)
+
 
 @chats_bp.get("/")
 async def get_chats():
@@ -28,10 +35,23 @@ async def get_chats():
     if not request.user:
         abort(401)
 
+    # Get chats
+    chats = app.supporter.get_chats(request.user)
+
+    # Add emotes
+    [chat.update({
+        "emojis": list(db.chat_emojis.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
+        "stickers": list(db.chat_stickers.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
+    }) for chat in chats]
+
     # Get and return chats
     return {
         "error": False,
-        "autoget": app.supporter.get_chats(request.user),
+        "autoget": chats,
         "page": 1,
         "page#": 1,
         "pages": 1
@@ -90,6 +110,17 @@ async def create_chat(data: ChatBody):
     }
     db.chats.insert_one(chat)
 
+    # Add emotes
+    chat.update({
+        "emojis": list(db.chat_emojis.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
+        "stickers": list(db.chat_stickers.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
+    })
+
+
     # Tell the requester the chat was created
     app.cl.send_event("create_chat", chat, usernames=[request.user])
 
@@ -110,7 +141,15 @@ async def get_chat(chat_id):
         abort(404)
 
     # Return chat
-    chat["error"] = False
+    chat.update({
+        "error": False,
+        "emojis": list(db.chat_emojis.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
+        "stickers": list(db.chat_stickers.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
+    })
     return chat, 200
 
 
@@ -174,7 +213,15 @@ async def update_chat(chat_id, data: ChatBody):
     app.cl.send_event("update_chat", updated_vals, usernames=chat["members"])
 
     # Return chat
-    chat["error"] = False
+    chat.update({
+        "error": False,
+        "emojis": list(db.chat_emojis.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
+        "stickers": list(db.chat_stickers.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
+    })
     return chat, 200
 
 
@@ -346,7 +393,15 @@ async def add_chat_member(chat_id, username):
     app.supporter.create_post(chat_id, "Server", f"@{request.user} added @{username} to the group chat.", chat_members=chat["members"])
 
     # Return chat
-    chat["error"] = False
+    chat.update({
+        "error": False,
+        "emojis": list(db.chat_emojis.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
+        "stickers": list(db.chat_stickers.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
+    })
     return chat, 200
 
 
@@ -396,7 +451,15 @@ async def remove_chat_member(chat_id, username):
     app.supporter.create_post(chat_id, "Server", f"@{request.user} removed @{username} from the group chat.", chat_members=chat["members"])
 
     # Return chat
-    chat["error"] = False
+    chat.update({
+        "error": False,
+        "emojis": list(db.chat_emojis.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
+        "stickers": list(db.chat_stickers.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
+    })
     return chat, 200
 
 
@@ -445,39 +508,282 @@ async def transfer_chat_ownership(chat_id, username):
     app.supporter.create_post(chat_id, "Server", f"@{request.user} transferred ownership of the group chat to @{username}.", chat_members=chat["members"])
 
     # Return chat
-    chat["error"] = False
+    chat.update({
+        "error": False,
+        "emojis": list(db.chat_emojis.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
+        "stickers": list(db.chat_stickers.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
+    })
     return chat, 200
 
 
 @chats_bp.get("/<chat_id>/pins")
-def get_chat_pins(chat_id):
+@validate_querystring(GetPostsQueryArgs)
+def get_chat_pins(chat_id, query_args: GetPostsQueryArgs):
+    # Check authorization
     if not request.user:
         abort(401)
 
-    query = {"_id": chat_id}
-    if not security.has_permission(request.permissions, security.AdminPermissions.VIEW_CHATS):
-        query["members"] = request.user
-        query["deleted"] = False
+    # Make sure chat exists and requester has access
+    if not db.chats.count_documents({
+        "_id": chat_id,
+        "members": request.user,
+        "deleted": False
+    }, limit=1):
+        abort(404)
 
-    try:
-        page = int(request.args.get("page"))
-    except: page = 1
+    # Get and return pinned posts
+    query = {"post_origin": chat_id, "pinned": True}
+    return {
+        "error": False,
+        "autoget": app.supporter.parse_posts_v0(
+            db.posts.find(
+                query,
+                sort=[("t.e", pymongo.DESCENDING)],
+                skip=(query_args.page-1)*25,
+                limit=25
+            ),
+            include_replies=True,
+            requester=request.user
+        ),
+        "page#": query_args.page,
+        "pages": (get_total_pages("posts", query) if request.user else 1)
+    }, 200
 
-    chat = db.chats.find_one(query)
+
+@chats_bp.get("/<chat_id>/<emote_type>")
+async def get_chat_emotes(chat_id: str, emote_type: Literal["emojis", "stickers"]):
+    # Make sure emote type is valid
+    if emote_type not in ["emojis", "stickers"]:
+        abort(404)
+
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Make sure chat exists and requester has access
+    if not db.chats.count_documents({
+        "_id": chat_id,
+        "members": request.user,
+        "deleted": False
+    }, limit=1):
+        abort(404)
+
+    # Get and return emotes
+    return {
+        "error": False,
+        "autoget": list(db[f"chat_{emote_type}"].find({
+            "chat_id": chat_id
+        }, sort=[("created_at", pymongo.DESCENDING)], projection={
+            "chat_id": 0,
+            "created_at": 0,
+            "created_by": 0
+        })),
+        "page#": 1,
+        "pages": 1
+    }, 200
+
+
+@chats_bp.get("/<chat_id>/<emote_type>/<emote_id>")
+async def get_chat_emote(chat_id: str, emote_type: Literal["emojis", "stickers"], emote_id: str):
+    # Make sure emote type is valid
+    if emote_type not in ["emojis", "stickers"]:
+        abort(404)
+
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Make sure chat exists and requester has access
+    if not db.chats.count_documents({
+        "_id": chat_id,
+        "members": request.user,
+        "deleted": False
+    }, limit=1):
+        abort(404)
+
+    # Get emote
+    emote = db[f"chat_{emote_type}"].find_one({
+        "_id": emote_id,
+        "chat_id": chat_id
+    }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})
+    if not emote:
+        abort(404)
+
+    # Return emote
+    emote["error"] = False
+    return emote, 200
+
+
+@chats_bp.put("/<chat_id>/<emote_type>/<emote_id>")
+@validate_request(EmoteBody)
+async def create_chat_emote(chat_id: str, emote_type: Literal["emojis", "stickers"], emote_id: str, data: EmoteBody):
+    # Make sure emote type is valid
+    if emote_type not in ["emojis", "stickers"]:
+        abort(404)
+
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Check ratelimit
+    if security.ratelimited(f"update_chat:{request.user}"):
+        abort(429)
+
+    # Ratelimit
+    security.ratelimit(f"update_chat:{request.user}", 5, 5)
+
+    # Get chat
+    chat = db.chats.find_one({
+        "_id": chat_id,
+        "members": {"$all": [request.user]},
+        "deleted": False
+    })
     if not chat:
         abort(404)
 
-    query = {"post_origin": chat_id, "pinned": True}
-    posts = db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(page-1)*25, limit=25)
+    # Make sure chat is DM or requester is owner
+    if chat["type"] != 1 and chat["owner"] != request.user:
+        abort(403)
 
-    if not posts:
-        posts = []
+    # Make sure there's not too many emotes in the chat (100 for emojis, 25 for stickers)
+    if emote_type == "emojis":
+        if db.chat_emojis.count_documents({"chat_id": chat_id}, limit=100) >= 100:
+            return {"error": True, "type": "tooManyEmojis"}, 403
+    elif emote_type == "stickers":
+        if db.chat_stickers.count_documents({"chat_id": chat_id}, limit=25) >= 25:
+            return {"error": True, "type": "tooManyStickers"}, 403
+
+    # Claim file
+    try:
+        file = claim_file(emote_id, emote_type)
+    except Exception as e:
+        log(f"Unable to claim emote: {e}")
+        return {"error": True, "type": "unableToClaimEmote"}, 500
+
+    # Fall back to filename if no name is specified
+    if not data.name:
+        name_pattern = re.compile(r'[^A-Za-z0-9\-\_]')
+        data.name = name_pattern.sub("_", file["filename"])[:20]
+
+    # Create emote
+    emote = {
+        "_id": emote_id,
+        "chat_id": chat_id,
+        "name": data.name,
+        "animated": (file["mime"] == "image/gif"),
+        "created_at": int(time.time()),
+        "created_by": request.user
+    }
+    db[f"chat_{emote_type}"].insert_one(emote)
+    del emote["created_at"]
+    del emote["created_by"]
+    app.cl.send_event(f"create_{emote_type[:-1]}", emote, usernames=chat["members"])
+
+    # Return new emote
+    del emote["chat_id"]
+    emote["error"] = False
+    return emote, 200
 
 
-    return {
-        "error": False,
-        "page": page,
-        "page#": page,
-        "pages": get_total_pages("posts", query),
-        "posts": list(posts)
-    }, 200
+@chats_bp.patch("/<chat_id>/<emote_type>/<emote_id>")
+@validate_request(EmoteBody)
+async def update_chat_emote(chat_id: str, emote_type: Literal["emojis", "stickers"], emote_id: str, data: EmoteBody):
+    # Make sure emote type is valid
+    if emote_type not in ["emojis", "stickers"]:
+        abort(404)
+
+    # Make sure a new name is being specified
+    if not data.name:
+        abort(400)
+
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Check ratelimit
+    if security.ratelimited(f"update_chat:{request.user}"):
+        abort(429)
+
+    # Ratelimit
+    security.ratelimit(f"update_chat:{request.user}", 5, 5)
+
+    # Get chat
+    chat = db.chats.find_one({
+        "_id": chat_id,
+        "members": {"$all": [request.user]},
+        "deleted": False
+    })
+    if not chat:
+        abort(404)
+
+    # Make sure chat is DM or requester is owner
+    if chat["type"] != 1 and chat["owner"] != request.user:
+        abort(403)
+
+    # Get emote
+    emote = db[f"chat_{emote_type}"].find_one({
+        "_id": emote_id,
+        "chat_id": chat_id
+    }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})
+    if not emote:
+        abort(404)
+
+    # Update emote name
+    emote["name"] = data.name
+    db[f"chat_{emote_type}"].update_one({"_id": emote_id}, {"$set": {"name": data.name}})
+    app.cl.send_event(f"update_{emote_type[:-1]}", {
+        "_id": emote_id,
+        "chat_id": chat_id,
+        "name": data.name
+    }, usernames=chat["members"])
+
+    # Return updated emote
+    emote["error"] = False
+    return emote, 200
+
+
+@chats_bp.delete("/<chat_id>/<emote_type>/<emote_id>")
+async def delete_chat_emote(chat_id: str, emote_type: Literal["emojis", "stickers"], emote_id: str):
+    # Make sure emote type is valid
+    if emote_type not in ["emojis", "stickers"]:
+        abort(404)
+
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Check ratelimit
+    if security.ratelimited(f"update_chat:{request.user}"):
+        abort(429)
+
+    # Ratelimit
+    security.ratelimit(f"update_chat:{request.user}", 5, 5)
+
+    # Get chat
+    chat = db.chats.find_one({
+        "_id": chat_id,
+        "members": {"$all": [request.user]},
+        "deleted": False
+    })
+    if not chat:
+        abort(404)
+
+    # Make sure chat is DM or requester is owner
+    if chat["type"] != 1 and chat["owner"] != request.user:
+        abort(403)
+
+    # Delete emote
+    result = db[f"chat_{emote_type}"].delete_one({"_id": emote_id, "chat_id": chat_id})
+    if not result.deleted_count:
+        abort(404)
+    app.cl.send_event(f"delete_{emote_type[:-1]}", {
+        "_id": emote_id,
+        "chat_id": chat_id
+    }, usernames=chat["members"])
+    delete_file(emote_id)
+
+    return {"error": False}, 200
