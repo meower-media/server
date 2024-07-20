@@ -75,6 +75,9 @@ async def get_me():
     if not request.user:
         abort(401)
 
+    # Update last_seen (this is only to remove CL3's dependency on the DB)
+    db.usersv0.update_one({"_id": request.user}, {"$set": {"last_seen": int(time.time())}})
+
     # Get and return account
     return security.get_account(request.user, include_config=True), 200
 
@@ -177,6 +180,24 @@ async def update_config(data: UpdateConfigBody):
         app.cl.send_event("update_profile", updated_profile_data)
 
     return {"error": False}, 200
+
+
+@me_bp.get("/relationships")
+async def get_relationships():
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    return {
+        "error": False,
+        "autoget": [{
+            "username": r["_id"]["to"],
+            "state": r["state"],
+            "updated_at": r["updated_at"]
+        } for r in db.relationships.find({"_id.from": request.user})],
+        "page#": 1,
+        "pages": 1
+    }, 200
 
 
 @me_bp.patch("/password")

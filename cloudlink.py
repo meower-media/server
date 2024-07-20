@@ -8,9 +8,7 @@ from typing import Optional, Iterable, TypedDict, Literal, Any
 from inspect import getfullargspec
 from urllib.parse import urlparse, parse_qs
 
-import security
 from utils import log, full_stack
-from database import db
 
 VERSION = "0.1.7.8"
 
@@ -258,11 +256,10 @@ class CloudlinkClient:
         # Automatic login
         if "token" in self.req_params:
             token = self.req_params.get("token")[0]
-            account = db.usersv0.find_one({"tokens": token}, projection={"_id": 1})
+            account = self.proxy_api_request("/me", "get", headers={"token": token})
             if account:
-                self.authenticate(security.get_account(account["_id"], include_config=True), used_token=token)
-            else:
-                self.send_statuscode("PasswordInvalid")
+                del account["error"]
+                self.authenticate(account, token)
 
     @property
     def req_params(self):
@@ -276,7 +273,7 @@ class CloudlinkClient:
         else:
             return self.websocket.remote_address
 
-    def authenticate(self, account: dict[str, Any], used_token: Optional[str] = None, listener: Optional[str] = None):
+    def authenticate(self, account: dict[str, Any], token: str, listener: Optional[str] = None):
         if self.username:
             self.logout()
 
@@ -296,25 +293,20 @@ class CloudlinkClient:
         # Send auth payload
         self.send("auth", {
             "username": self.username,
-            "token": security.create_user_token(self.username, self.ip, used_token=used_token),
+            "token": token,
             "account": account,
-            "relationships": [{
-                "username": r["_id"]["to"],
-                "state": r["state"],
-                "updated_at": r["updated_at"]
-            } for r in db.relationships.find({"_id.from": self.username})],
+            "relationships": self.proxy_api_request("/me/relationships", "get")["autoget"],
             **({
-                "chats": self.server.supporter.get_chats(self.username)
+                "chats": self.proxy_api_request("/chats", "get")["autoget"]
             } if self.proto_version != 0 else {})
         }, listener=listener)
 
     def logout(self):
         if not self.username:
             return
-        
-        db.usersv0.update_one({"_id": self.username, "last_seen": {"$ne": None}}, {"$set": {
-            "last_seen": int(time.time())
-        }})
+
+        # Trigger last_seen update
+        self.proxy_api_request("/me", "get")
 
         self.server.usernames[self.username].remove(self)
         if len(self.server.usernames[self.username]) == 0:
@@ -322,17 +314,18 @@ class CloudlinkClient:
             self.server.send_ulist()
         self.username = None
 
-    async def proxy_api_request(
+    def proxy_api_request(
         self, endpoint: str,
         method: Literal["get", "post", "patch", "delete"],
+        headers: dict[str, str] = {},
         json: Optional[dict[str, Any]] = None,
         listener: Optional[str] = None,
     ):
         # Set headers
-        headers = {
+        headers.update({
             "X-Internal-Token": os.environ["INTERNAL_API_TOKEN"],
             "X-Internal-Ip": self.ip,
-        }
+        })
         if self.username:
             headers["X-Internal-Username"] = self.username
 
@@ -445,7 +438,7 @@ class CloudlinkCommands:
 
         # Send API request
         try:
-            resp = await client.proxy_api_request("/auth/login", "post", json={
+            resp = client.proxy_api_request("/auth/login", "post", json={
                 "username": val.get("username"),
                 "password": val.get("pswd"),
             }, listener=listener)
@@ -455,7 +448,7 @@ class CloudlinkCommands:
         else:
             if resp and not resp["error"]:
                 # Authenticate client
-                client.authenticate(resp["account"], used_token=resp["token"], listener=listener)
+                client.authenticate(resp["account"], resp["token"], listener=listener)
                 
                 # Tell the client it is authenticated
                 client.send_statuscode("OK", listener)
@@ -471,7 +464,7 @@ class CloudlinkCommands:
 
         # Send API request
         try:
-            resp = await client.proxy_api_request("/auth/register", "post", json={
+            resp = client.proxy_api_request("/auth/register", "post", json={
                 "username": val.get("username"),
                 "password": val.get("pswd"),
             }, listener=listener)
@@ -481,7 +474,7 @@ class CloudlinkCommands:
         else:
             if resp and not resp["error"]:
                 # Authenticate client
-                client.authenticate(resp["account"], used_token=resp["token"], listener=listener)
+                client.authenticate(resp["account"], resp["token"], listener=listener)
                 
                 # Tell the client it is authenticated
                 client.send_statuscode("OK", listener)
@@ -497,7 +490,7 @@ class CloudlinkCommands:
 
         # Send API request
         try:
-            resp = await client.proxy_api_request("/me/config", "post", json=val, listener=listener)
+            resp = client.proxy_api_request("/me/config", "post", json=val, listener=listener)
         except:
             print(full_stack())
             client.send_statuscode("InternalServerError", listener)
@@ -516,7 +509,7 @@ class CloudlinkCommands:
 
         # Send API request
         try:
-            resp = await client.proxy_api_request("/me/password", "patch", json=val, listener=listener)
+            resp = client.proxy_api_request("/me/password", "patch", json=val, listener=listener)
         except:
             print(full_stack())
             client.send_statuscode("InternalServerError", listener)
@@ -531,7 +524,7 @@ class CloudlinkCommands:
 
         # Send API request
         try:
-            resp = await client.proxy_api_request("/me/tokens", "delete", listener=listener)
+            resp = client.proxy_api_request("/me/tokens", "delete", listener=listener)
         except:
             print(full_stack())
             client.send_statuscode("InternalServerError", listener)
@@ -550,7 +543,7 @@ class CloudlinkCommands:
 
         # Send API request
         try:
-            resp = await client.proxy_api_request("/me", "delete", json={"password": val}, listener=listener)
+            resp = client.proxy_api_request("/me", "delete", json={"password": val}, listener=listener)
         except:
             print(full_stack())
             client.send_statuscode("InternalServerError", listener)
@@ -577,7 +570,7 @@ class CloudlinkCommands:
 
         # Send API request
         try:
-            resp = await client.proxy_api_request(endpoint, "post", json={
+            resp = client.proxy_api_request(endpoint, "post", json={
                 "reason": val.get("reason"),
                 "comment": val.get("comment"),
             }, listener=listener)
