@@ -14,3 +14,6 @@ msgpack
 grpcio
 protobuf
 pyotp
+emoji
+websockets
+qrcode

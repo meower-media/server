@@ -96,12 +96,14 @@ async def get_posts(username, query_args: GetPostsQueryArgs):
 
     # Get posts
     query = {"post_origin": "home", "isDeleted": False, "u": username}
-    posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page-1)*25, limit=25))
-
-    # Return posts
     return {
         "error": False,
-        "autoget": posts,
+        "autoget": app.supporter.parse_posts_v0(db.posts.find(
+            query,
+            sort=[("t.e", pymongo.DESCENDING)],
+            skip=(query_args.page-1)*25,
+            limit=25
+        ), requester=request.user),
         "page#": query_args.page,
         "pages": get_total_pages("posts", query)
     }, 200
@@ -296,4 +298,13 @@ async def get_dm_chat(username):
     # Return chat
     if chat["last_active"] == 0:
         chat["last_active"] = int(time.time())
+    chat.update({
+        "error": False,
+        "emojis": list(db.chat_emojis.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0})),
+        "stickers": list(db.chat_stickers.find({
+            "chat_id": chat["_id"]
+        }, projection={"chat_id": 0, "created_at": 0, "created_by": 0}))
+    })
     return chat, 200

@@ -1,18 +1,11 @@
-import websockets
-import asyncio
-import json
-import time
-import requests
-import os
+import websockets, asyncio, json, time, requests, os
 from typing import Optional, Iterable, TypedDict, Literal, Any
 from inspect import getfullargspec
 from urllib.parse import urlparse, parse_qs
 
-import security
 from utils import log, full_stack
-from database import db
 
-VERSION = "0.1.7.8"
+VERSION = "0.1.7.9"
 
 class CloudlinkPacket(TypedDict):
     cmd: str
@@ -24,7 +17,6 @@ class CloudlinkPacket(TypedDict):
 
 class CloudlinkServer:
     def __init__(self):
-        self.real_ip_header: Optional[str] = None
         self.statuscodes: dict[str, str] = {
             #"Test": "I:000 | Test", -- unused
             "OK": "I:100 | OK",
@@ -61,12 +53,28 @@ class CloudlinkServer:
             #"LoggedOut": "I:024 | Logged out",  -- deprecated
             "Deleted": "E:025 | Deleted"
         }
-        self.commands: dict[str, function] = {}  # {"command_name": function1(client: CloudlinkClient, val: any)}
+        self.commands: dict[str, function] = {
+            # Core commands
+            "ping": CloudlinkCommands.ping,
+            "get_ulist": CloudlinkCommands.get_ulist,
+            "pmsg": CloudlinkCommands.pmsg,
+            "pvar": CloudlinkCommands.pvar,
+
+            # Authentication
+            "authpswd": CloudlinkCommands.authpswd,
+            "gen_account": CloudlinkCommands.gen_account,
+
+            # Accounts
+            "update_config": CloudlinkCommands.update_config,
+            "change_pswd": CloudlinkCommands.change_pswd,
+            "del_tokens": CloudlinkCommands.del_tokens,
+            "del_account": CloudlinkCommands.del_account,
+
+            # Moderation
+            "report": CloudlinkCommands.report
+        }
         self.clients: set[CloudlinkClient] = set()
         self.usernames: dict[str, list[CloudlinkClient]] = {}  # {"username": [cl_client1, cl_client2, ...]}
-
-        # Initialise default commands
-        CloudlinkCommands(self)
     
     async def client_handler(self, websocket: websockets.WebSocketServerProtocol):
         # Create CloudlinkClient
@@ -148,23 +156,6 @@ class CloudlinkServer:
             self.clients.remove(cl_client)
             cl_client.logout()
 
-    def set_real_ip_header(self, real_ip_header: Optional[str] = None):
-        self.real_ip_header = real_ip_header
-
-    def add_statuscode(self, statuscode_name: str, statuscode_details: str):
-        self.statuscodes[statuscode_name] = statuscode_details
-
-    def remove_statuscode(self, statuscode_name: str):
-        if statuscode_name in self.statuscodes:
-            del self.statuscodes[statuscode_name]
-
-    def add_command(self, command_name: str, command_func):
-        self.commands[command_name] = command_func
-    
-    def remove_command(self, command_name: str):
-        if command_name in self.commands:
-            del self.commands[command_name]
-
     def send_event(
         self,
         cmd: str,
@@ -184,6 +175,10 @@ class CloudlinkServer:
             if usernames is not None:
                 for username in usernames:
                     clients += self.usernames.get(username, [])
+
+        # Parse post
+        if cmd == "post" or cmd == "update_post":
+            val = self.supporter.parse_posts_v0([val])[0]
 
         # Send v1 packet
         websockets.broadcast({
@@ -248,31 +243,30 @@ class CloudlinkClient:
             self.proto_version: int = int(self.req_params.get("v")[0])
         except:
             self.proto_version: int = 0
-        self.ip: str = self.get_ip()
         self.trusted: bool = False
 
         # Automatic login
         if "token" in self.req_params:
             token = self.req_params.get("token")[0]
-            account = db.usersv0.find_one({"tokens": token}, projection={"_id": 1})
+            account = self.proxy_api_request("/me", "get", headers={"token": token})
             if account:
-                self.authenticate(security.get_account(account["_id"], include_config=True), used_token=token)
-            else:
-                self.send_statuscode("PasswordInvalid")
+                del account["error"]
+                self.authenticate(account, token)
 
     @property
     def req_params(self):
         return parse_qs(urlparse(self.websocket.path).query)
 
-    def get_ip(self):
-        if self.server.real_ip_header and self.server.real_ip_header in self.websocket.request_headers:
-            return self.websocket.request_headers[self.server.real_ip_header]
+    @property
+    def ip(self):
+        if "REAL_IP_HEADER" in os.environ and os.environ["REAL_IP_HEADER"] in self.websocket.request_headers:
+            return self.websocket.request_headers[os.environ["REAL_IP_HEADER"]]
         elif type(self.websocket.remote_address) == tuple:
             return self.websocket.remote_address[0]
         else:
             return self.websocket.remote_address
 
-    def authenticate(self, account: dict[str, Any], used_token: Optional[str] = None, listener: Optional[str] = None):
+    def authenticate(self, account: dict[str, Any], token: str, listener: Optional[str] = None):
         if self.username:
             self.logout()
 
@@ -292,25 +286,20 @@ class CloudlinkClient:
         # Send auth payload
         self.send("auth", {
             "username": self.username,
-            "token": security.create_user_token(self.username, self.ip, used_token=used_token),
+            "token": token,
             "account": account,
-            "relationships": [{
-                "username": r["_id"]["to"],
-                "state": r["state"],
-                "updated_at": r["updated_at"]
-            } for r in db.relationships.find({"_id.from": self.username})],
+            "relationships": self.proxy_api_request("/me/relationships", "get")["autoget"],
             **({
-                "chats": self.server.supporter.get_chats(self.username)
+                "chats": self.proxy_api_request("/chats", "get")["autoget"]
             } if self.proto_version != 0 else {})
         }, listener=listener)
 
     def logout(self):
         if not self.username:
             return
-        
-        db.usersv0.update_one({"_id": self.username, "last_seen": {"$ne": None}}, {"$set": {
-            "last_seen": int(time.time())
-        }})
+
+        # Trigger last_seen update
+        self.proxy_api_request("/me", "get")
 
         self.server.usernames[self.username].remove(self)
         if len(self.server.usernames[self.username]) == 0:
@@ -318,17 +307,18 @@ class CloudlinkClient:
             self.server.send_ulist()
         self.username = None
 
-    async def proxy_api_request(
+    def proxy_api_request(
         self, endpoint: str,
         method: Literal["get", "post", "patch", "delete"],
+        headers: dict[str, str] = {},
         json: Optional[dict[str, Any]] = None,
         listener: Optional[str] = None,
     ):
         # Set headers
-        headers = {
+        headers.update({
             "X-Internal-Token": os.environ["INTERNAL_API_TOKEN"],
             "X-Internal-Ip": self.ip,
-        }
+        })
         if self.username:
             headers["X-Internal-Username"] = self.username
 
@@ -343,7 +333,7 @@ class CloudlinkClient:
         else:
             match resp["type"]:
                 case "repairModeEnabled":
-                    await self.kick()
+                    self.kick()
                 case "ipBlocked"|"registrationBlocked":
                     self.send_statuscode("Blocked", listener)
                 case "badRequest":
@@ -374,61 +364,46 @@ class CloudlinkClient:
     def send_statuscode(self, statuscode: str, listener: Optional[str] = None):
         return self.send("statuscode", self.server.statuscodes[statuscode], listener=listener)
 
-    async def kick(self):
-        await self.websocket.close()
+    def kick(self):
+        async def _kick():
+            await self.websocket.close()
+        asyncio.create_task(_kick())
 
 class CloudlinkCommands:
-    def __init__(self, cl: CloudlinkServer):
-        self.cl = cl
-
-        # Core commands
-        self.cl.add_command("ping", self.ping)
-        self.cl.add_command("get_ulist", self.get_ulist)
-        self.cl.add_command("pmsg", self.pmsg)
-        self.cl.add_command("pvar", self.pvar)
-
-        # Authentication
-        self.cl.add_command("authpswd", self.authpswd)
-        self.cl.add_command("gen_account", self.gen_account)
-
-        # Accounts
-        self.cl.add_command("update_config", self.update_config)
-        self.cl.add_command("change_pswd", self.change_pswd)
-        self.cl.add_command("del_tokens", self.del_tokens)
-        self.cl.add_command("del_account", self.del_account)
-
-        # Moderation
-        self.cl.add_command("report", self.report)
-
-    async def ping(self, client: CloudlinkClient, val, listener: Optional[str] = None):
+    @staticmethod
+    async def ping(client: CloudlinkClient, val, listener: Optional[str] = None):
         client.send_statuscode("OK", listener)
     
-    async def get_ulist(self, client: CloudlinkClient, val, listener: Optional[str] = None):
-        client.send("ulist", self.cl.get_ulist(), listener=listener)
+    @staticmethod
+    async def get_ulist(client: CloudlinkClient, val, listener: Optional[str] = None):
+        client.send("ulist", client.server.get_ulist(), listener=listener)
 
-    async def pmsg(self, client: CloudlinkClient, val, listener: Optional[str] = None, id: Optional[str] = None):
+    @staticmethod
+    async def pmsg(client: CloudlinkClient, val, listener: Optional[str] = None, id: Optional[str] = None):
         if not client.username:
             client.send_statuscode("IDRequired", listener)
             return
-        if id not in self.cl.usernames:
+        if id not in client.server.usernames:
             client.send_statuscode("IDNotFound", listener)
             return
         
-        self.cl.send_event("pmsg", val, extra={"origin": client.username}, usernames=[id])
+        client.server.send_event("pmsg", val, extra={"origin": client.username}, usernames=[id])
         client.send_statuscode("OK", listener)
 
-    async def pvar(self, client: CloudlinkClient, val, listener: Optional[str] = None, id: Optional[str] = None, name: Optional[str] = None):
+    @staticmethod
+    async def pvar(client: CloudlinkClient, val, listener: Optional[str] = None, id: Optional[str] = None, name: Optional[str] = None):
         if not client.username:
             client.send_statuscode("IDRequired", listener)
             return
-        if id not in self.cl.usernames:
+        if id not in client.server.usernames:
             client.send_statuscode("IDNotFound", listener)
             return
         
-        self.cl.send_event("pvar", val, extra={"origin": client.username, "name": name}, usernames=[id])
+        client.server.send_event("pvar", val, extra={"origin": client.username, "name": name}, usernames=[id])
         client.send_statuscode("OK", listener)
 
-    async def authpswd(self, client: CloudlinkClient, val, listener: Optional[str] = None):
+    @staticmethod
+    async def authpswd(client: CloudlinkClient, val, listener: Optional[str] = None):
         # Make sure the client isn't already authenticated
         if client.username:
             return client.send_statuscode("OK", listener)
@@ -439,7 +414,7 @@ class CloudlinkCommands:
 
         # Send API request
         try:
-            resp = await client.proxy_api_request("/auth/login", "post", json={
+            resp = client.proxy_api_request("/auth/login", "post", json={
                 "username": val.get("username"),
                 "password": val.get("pswd"),
             }, listener=listener)
@@ -449,12 +424,13 @@ class CloudlinkCommands:
         else:
             if resp and not resp["error"]:
                 # Authenticate client
-                client.authenticate(resp["account"], used_token=resp["token"], listener=listener)
+                client.authenticate(resp["account"], resp["token"], listener=listener)
                 
                 # Tell the client it is authenticated
                 client.send_statuscode("OK", listener)
 
-    async def gen_account(self, client: CloudlinkClient, val, listener: Optional[str] = None):
+    @staticmethod
+    async def gen_account(client: CloudlinkClient, val, listener: Optional[str] = None):
         # Make sure the client isn't already authenticated
         if client.username:
             return client.send_statuscode("OK", listener)
@@ -465,7 +441,7 @@ class CloudlinkCommands:
 
         # Send API request
         try:
-            resp = await client.proxy_api_request("/auth/register", "post", json={
+            resp = client.proxy_api_request("/auth/register", "post", json={
                 "username": val.get("username"),
                 "password": val.get("pswd"),
             }, listener=listener)
@@ -475,12 +451,13 @@ class CloudlinkCommands:
         else:
             if resp and not resp["error"]:
                 # Authenticate client
-                client.authenticate(resp["account"], used_token=resp["token"], listener=listener)
+                client.authenticate(resp["account"], resp["token"], listener=listener)
                 
                 # Tell the client it is authenticated
                 client.send_statuscode("OK", listener)
 
-    async def update_config(self, client: CloudlinkClient, val, listener: Optional[str] = None):
+    @staticmethod
+    async def update_config(client: CloudlinkClient, val, listener: Optional[str] = None):
         # Make sure the client is authenticated
         if not client.username:
             return client.send_statuscode("IDRequired", listener)
@@ -491,7 +468,7 @@ class CloudlinkCommands:
 
         # Send API request
         try:
-            resp = await client.proxy_api_request("/me/config", "post", json=val, listener=listener)
+            resp = client.proxy_api_request("/me/config", "post", json=val, listener=listener)
         except:
             print(full_stack())
             client.send_statuscode("InternalServerError", listener)
@@ -499,7 +476,8 @@ class CloudlinkCommands:
             if resp and not resp["error"]:
                 client.send_statuscode("OK", listener)
 
-    async def change_pswd(self, client: CloudlinkClient, val, listener: Optional[str] = None):
+    @staticmethod
+    async def change_pswd(client: CloudlinkClient, val, listener: Optional[str] = None):
         # Make sure the client is authenticated
         if not client.username:
             return client.send_statuscode("IDRequired", listener)
@@ -510,7 +488,7 @@ class CloudlinkCommands:
 
         # Send API request
         try:
-            resp = await client.proxy_api_request("/me/password", "patch", json=val, listener=listener)
+            resp = client.proxy_api_request("/me/password", "patch", json=val, listener=listener)
         except:
             print(full_stack())
             client.send_statuscode("InternalServerError", listener)
@@ -518,14 +496,15 @@ class CloudlinkCommands:
             if resp and not resp["error"]:
                 client.send_statuscode("OK", listener)
 
-    async def del_tokens(self, client: CloudlinkClient, val, listener: Optional[str] = None):
+    @staticmethod
+    async def del_tokens(client: CloudlinkClient, val, listener: Optional[str] = None):
         # Make sure the client is authenticated
         if not client.username:
             return client.send_statuscode("IDRequired", listener)
 
         # Send API request
         try:
-            resp = await client.proxy_api_request("/me/tokens", "delete", listener=listener)
+            resp = client.proxy_api_request("/me/tokens", "delete", listener=listener)
         except:
             print(full_stack())
             client.send_statuscode("InternalServerError", listener)
@@ -533,7 +512,8 @@ class CloudlinkCommands:
             if resp and not resp["error"]:
                 client.send_statuscode("OK", listener)
 
-    async def del_account(self, client: CloudlinkClient, val, listener: Optional[str] = None):
+    @staticmethod
+    async def del_account(client: CloudlinkClient, val, listener: Optional[str] = None):
         # Make sure the client is authenticated
         if not client.username:
             return client.send_statuscode("IDRequired", listener)
@@ -544,7 +524,7 @@ class CloudlinkCommands:
 
         # Send API request
         try:
-            resp = await client.proxy_api_request("/me", "delete", json={"password": val}, listener=listener)
+            resp = client.proxy_api_request("/me", "delete", json={"password": val}, listener=listener)
         except:
             print(full_stack())
             client.send_statuscode("InternalServerError", listener)
@@ -552,7 +532,8 @@ class CloudlinkCommands:
             if resp and not resp["error"]:
                 client.send_statuscode("OK", listener)
 
-    async def report(self, client: CloudlinkClient, val, listener: Optional[str] = None):
+    @staticmethod
+    async def report(client: CloudlinkClient, val, listener: Optional[str] = None):
         # Make sure the client is authenticated
         if not client.username:
             return client.send_statuscode("IDRequired", listener)
@@ -571,7 +552,7 @@ class CloudlinkCommands:
 
         # Send API request
         try:
-            resp = await client.proxy_api_request(endpoint, "post", json={
+            resp = client.proxy_api_request(endpoint, "post", json={
                 "reason": val.get("reason"),
                 "comment": val.get("comment"),
             }, listener=listener)
