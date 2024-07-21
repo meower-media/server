@@ -1,16 +1,11 @@
-import websockets
-import asyncio
-import json
-import time
-import requests
-import os
+import websockets, asyncio, json, time, requests, os
 from typing import Optional, Iterable, TypedDict, Literal, Any
 from inspect import getfullargspec
 from urllib.parse import urlparse, parse_qs
 
 from utils import log, full_stack
 
-VERSION = "0.1.7.8"
+VERSION = "0.1.7.9"
 
 class CloudlinkPacket(TypedDict):
     cmd: str
@@ -22,7 +17,6 @@ class CloudlinkPacket(TypedDict):
 
 class CloudlinkServer:
     def __init__(self):
-        self.real_ip_header: Optional[str] = None
         self.statuscodes: dict[str, str] = {
             #"Test": "I:000 | Test", -- unused
             "OK": "I:100 | OK",
@@ -59,12 +53,28 @@ class CloudlinkServer:
             #"LoggedOut": "I:024 | Logged out",  -- deprecated
             "Deleted": "E:025 | Deleted"
         }
-        self.commands: dict[str, function] = {}  # {"command_name": function1(client: CloudlinkClient, val: any)}
+        self.commands: dict[str, function] = {
+            # Core commands
+            "ping": CloudlinkCommands.ping,
+            "get_ulist": CloudlinkCommands.get_ulist,
+            "pmsg": CloudlinkCommands.pmsg,
+            "pvar": CloudlinkCommands.pvar,
+
+            # Authentication
+            "authpswd": CloudlinkCommands.authpswd,
+            "gen_account": CloudlinkCommands.gen_account,
+
+            # Accounts
+            "update_config": CloudlinkCommands.update_config,
+            "change_pswd": CloudlinkCommands.change_pswd,
+            "del_tokens": CloudlinkCommands.del_tokens,
+            "del_account": CloudlinkCommands.del_account,
+
+            # Moderation
+            "report": CloudlinkCommands.report
+        }
         self.clients: set[CloudlinkClient] = set()
         self.usernames: dict[str, list[CloudlinkClient]] = {}  # {"username": [cl_client1, cl_client2, ...]}
-
-        # Initialise default commands
-        CloudlinkCommands(self)
     
     async def client_handler(self, websocket: websockets.WebSocketServerProtocol):
         # Create CloudlinkClient
@@ -145,23 +155,6 @@ class CloudlinkServer:
         finally:
             self.clients.remove(cl_client)
             cl_client.logout()
-
-    def set_real_ip_header(self, real_ip_header: Optional[str] = None):
-        self.real_ip_header = real_ip_header
-
-    def add_statuscode(self, statuscode_name: str, statuscode_details: str):
-        self.statuscodes[statuscode_name] = statuscode_details
-
-    def remove_statuscode(self, statuscode_name: str):
-        if statuscode_name in self.statuscodes:
-            del self.statuscodes[statuscode_name]
-
-    def add_command(self, command_name: str, command_func):
-        self.commands[command_name] = command_func
-    
-    def remove_command(self, command_name: str):
-        if command_name in self.commands:
-            del self.commands[command_name]
 
     def send_event(
         self,
@@ -250,7 +243,6 @@ class CloudlinkClient:
             self.proto_version: int = int(self.req_params.get("v")[0])
         except:
             self.proto_version: int = 0
-        self.ip: str = self.get_ip()
         self.trusted: bool = False
 
         # Automatic login
@@ -265,9 +257,10 @@ class CloudlinkClient:
     def req_params(self):
         return parse_qs(urlparse(self.websocket.path).query)
 
-    def get_ip(self):
-        if self.server.real_ip_header and self.server.real_ip_header in self.websocket.request_headers:
-            return self.websocket.request_headers[self.server.real_ip_header]
+    @property
+    def ip(self):
+        if "REAL_IP_HEADER" in os.environ and os.environ["REAL_IP_HEADER"] in self.websocket.request_headers:
+            return self.websocket.request_headers[os.environ["REAL_IP_HEADER"]]
         elif type(self.websocket.remote_address) == tuple:
             return self.websocket.remote_address[0]
         else:
@@ -377,57 +370,40 @@ class CloudlinkClient:
         asyncio.create_task(_kick())
 
 class CloudlinkCommands:
-    def __init__(self, cl: CloudlinkServer):
-        self.cl = cl
-
-        # Core commands
-        self.cl.add_command("ping", self.ping)
-        self.cl.add_command("get_ulist", self.get_ulist)
-        self.cl.add_command("pmsg", self.pmsg)
-        self.cl.add_command("pvar", self.pvar)
-
-        # Authentication
-        self.cl.add_command("authpswd", self.authpswd)
-        self.cl.add_command("gen_account", self.gen_account)
-
-        # Accounts
-        self.cl.add_command("update_config", self.update_config)
-        self.cl.add_command("change_pswd", self.change_pswd)
-        self.cl.add_command("del_tokens", self.del_tokens)
-        self.cl.add_command("del_account", self.del_account)
-
-        # Moderation
-        self.cl.add_command("report", self.report)
-
-    async def ping(self, client: CloudlinkClient, val, listener: Optional[str] = None):
+    @staticmethod
+    async def ping(client: CloudlinkClient, val, listener: Optional[str] = None):
         client.send_statuscode("OK", listener)
     
-    async def get_ulist(self, client: CloudlinkClient, val, listener: Optional[str] = None):
-        client.send("ulist", self.cl.get_ulist(), listener=listener)
+    @staticmethod
+    async def get_ulist(client: CloudlinkClient, val, listener: Optional[str] = None):
+        client.send("ulist", client.server.get_ulist(), listener=listener)
 
-    async def pmsg(self, client: CloudlinkClient, val, listener: Optional[str] = None, id: Optional[str] = None):
+    @staticmethod
+    async def pmsg(client: CloudlinkClient, val, listener: Optional[str] = None, id: Optional[str] = None):
         if not client.username:
             client.send_statuscode("IDRequired", listener)
             return
-        if id not in self.cl.usernames:
+        if id not in client.server.usernames:
             client.send_statuscode("IDNotFound", listener)
             return
         
-        self.cl.send_event("pmsg", val, extra={"origin": client.username}, usernames=[id])
+        client.server.send_event("pmsg", val, extra={"origin": client.username}, usernames=[id])
         client.send_statuscode("OK", listener)
 
-    async def pvar(self, client: CloudlinkClient, val, listener: Optional[str] = None, id: Optional[str] = None, name: Optional[str] = None):
+    @staticmethod
+    async def pvar(client: CloudlinkClient, val, listener: Optional[str] = None, id: Optional[str] = None, name: Optional[str] = None):
         if not client.username:
             client.send_statuscode("IDRequired", listener)
             return
-        if id not in self.cl.usernames:
+        if id not in client.server.usernames:
             client.send_statuscode("IDNotFound", listener)
             return
         
-        self.cl.send_event("pvar", val, extra={"origin": client.username, "name": name}, usernames=[id])
+        client.server.send_event("pvar", val, extra={"origin": client.username, "name": name}, usernames=[id])
         client.send_statuscode("OK", listener)
 
-    async def authpswd(self, client: CloudlinkClient, val, listener: Optional[str] = None):
+    @staticmethod
+    async def authpswd(client: CloudlinkClient, val, listener: Optional[str] = None):
         # Make sure the client isn't already authenticated
         if client.username:
             return client.send_statuscode("OK", listener)
@@ -453,7 +429,8 @@ class CloudlinkCommands:
                 # Tell the client it is authenticated
                 client.send_statuscode("OK", listener)
 
-    async def gen_account(self, client: CloudlinkClient, val, listener: Optional[str] = None):
+    @staticmethod
+    async def gen_account(client: CloudlinkClient, val, listener: Optional[str] = None):
         # Make sure the client isn't already authenticated
         if client.username:
             return client.send_statuscode("OK", listener)
@@ -479,7 +456,8 @@ class CloudlinkCommands:
                 # Tell the client it is authenticated
                 client.send_statuscode("OK", listener)
 
-    async def update_config(self, client: CloudlinkClient, val, listener: Optional[str] = None):
+    @staticmethod
+    async def update_config(client: CloudlinkClient, val, listener: Optional[str] = None):
         # Make sure the client is authenticated
         if not client.username:
             return client.send_statuscode("IDRequired", listener)
@@ -498,7 +476,8 @@ class CloudlinkCommands:
             if resp and not resp["error"]:
                 client.send_statuscode("OK", listener)
 
-    async def change_pswd(self, client: CloudlinkClient, val, listener: Optional[str] = None):
+    @staticmethod
+    async def change_pswd(client: CloudlinkClient, val, listener: Optional[str] = None):
         # Make sure the client is authenticated
         if not client.username:
             return client.send_statuscode("IDRequired", listener)
@@ -517,7 +496,8 @@ class CloudlinkCommands:
             if resp and not resp["error"]:
                 client.send_statuscode("OK", listener)
 
-    async def del_tokens(self, client: CloudlinkClient, val, listener: Optional[str] = None):
+    @staticmethod
+    async def del_tokens(client: CloudlinkClient, val, listener: Optional[str] = None):
         # Make sure the client is authenticated
         if not client.username:
             return client.send_statuscode("IDRequired", listener)
@@ -532,7 +512,8 @@ class CloudlinkCommands:
             if resp and not resp["error"]:
                 client.send_statuscode("OK", listener)
 
-    async def del_account(self, client: CloudlinkClient, val, listener: Optional[str] = None):
+    @staticmethod
+    async def del_account(client: CloudlinkClient, val, listener: Optional[str] = None):
         # Make sure the client is authenticated
         if not client.username:
             return client.send_statuscode("IDRequired", listener)
@@ -551,7 +532,8 @@ class CloudlinkCommands:
             if resp and not resp["error"]:
                 client.send_statuscode("OK", listener)
 
-    async def report(self, client: CloudlinkClient, val, listener: Optional[str] = None):
+    @staticmethod
+    async def report(client: CloudlinkClient, val, listener: Optional[str] = None):
         # Make sure the client is authenticated
         if not client.username:
             return client.send_statuscode("IDRequired", listener)
