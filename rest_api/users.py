@@ -10,8 +10,10 @@ import security
 from database import db, get_total_pages
 
 
-users_bp = Blueprint("users_bp", __name__, url_prefix="/users/<username>")
+users_bp = Blueprint("users_bp", __name__, url_prefix="/users")
 
+class GetUsersQueryArgs(BaseModel):
+    page: Optional[int] = Field(default=1, ge=1)
 class GetPostsQueryArgs(BaseModel):
     page: Optional[int] = Field(default=1, ge=1)
 
@@ -33,8 +35,43 @@ class ReportBody(BaseModel):
         validate_assignment = True
         str_strip_whitespace = True
 
-@users_bp.before_request
-async def check_user_exists():
+@users_bp.get("/")
+@validate_querystring(GetUsersQueryArgs)
+async def get_users(query_args: GetUsersQueryArgs):
+    users = list(db.usersv0.find(
+        sort=[("lower_username", pymongo.DESCENDING)],
+        skip=(query_args.page-1)*25,
+        limit=25,
+        projection=security.SENSITIVE_ACCOUNT_FIELDS_DB_PROJECTION
+    ))
+
+    for user in users:
+        for key in security.SENSITIVE_ACCOUNT_FIELDS:
+            if key in user:
+                del user[key]
+
+        user["lvl"] = 0
+
+        if user["ban"]:
+            if user["ban"]["state"] == "perm_ban":
+                user["banned"] = True
+            elif (user["ban"]["state"] == "temp_ban") and (user["ban"]["expires"] > time.time()):
+                user["banned"] = True
+            else:
+                user["banned"] = False
+        else:
+            user["banned"] = False
+        del user["ban"]
+    
+    return {
+        "error": False,
+        "autoget": users,
+        "page#": query_args.page,
+        "pages": (get_total_pages("users", {}) if request.user else 1)
+    }, 200
+
+@users_bp.get("/<username>")
+async def get_user(username):
     username = request.view_args.get("username")
     user = db.usersv0.find_one({"lower_username": username.lower()}, projection={"_id": 1, "flags": 1})
     if (not user) or (user["flags"] & security.UserFlags.DELETED == security.UserFlags.DELETED):
@@ -42,17 +79,21 @@ async def check_user_exists():
     else:
         request.view_args["username"] = user["_id"]
 
-
-@users_bp.get("/")
-async def get_user(username):
     account = security.get_account(username, (request.user and request.user.lower() == username.lower()))
     account["error"] = False
     return account, 200
 
 
-@users_bp.get("/posts")
+@users_bp.get("/<username>/posts")
 @validate_querystring(GetPostsQueryArgs)
 async def get_posts(username, query_args: GetPostsQueryArgs):
+    username = request.view_args.get("username")
+    user = db.usersv0.find_one({"lower_username": username.lower()}, projection={"_id": 1, "flags": 1})
+    if (not user) or (user["flags"] & security.UserFlags.DELETED == security.UserFlags.DELETED):
+        abort(404)
+    else:
+        request.view_args["username"] = user["_id"]
+
     # Get posts
     query = {"post_origin": "home", "isDeleted": False, "u": username}
     posts = list(db.posts.find(query, sort=[("t.e", pymongo.DESCENDING)], skip=(query_args.page-1)*25, limit=25))
@@ -66,8 +107,15 @@ async def get_posts(username, query_args: GetPostsQueryArgs):
     }, 200
 
 
-@users_bp.get("/relationship")
+@users_bp.get("/<username>/relationship")
 async def get_relationship(username):
+    username = request.view_args.get("username")
+    user = db.usersv0.find_one({"lower_username": username.lower()}, projection={"_id": 1, "flags": 1})
+    if (not user) or (user["flags"] & security.UserFlags.DELETED == security.UserFlags.DELETED):
+        abort(404)
+    else:
+        request.view_args["username"] = user["_id"]
+
     # Check authorization
     if not request.user:
         abort(401)
@@ -90,9 +138,16 @@ async def get_relationship(username):
         }, 200
 
 
-@users_bp.patch("/relationship")
+@users_bp.patch("/<username>/relationship")
 @validate_request(UpdateRelationshipBody)
 async def update_relationship(username, data: UpdateRelationshipBody):
+    username = request.view_args.get("username")
+    user = db.usersv0.find_one({"lower_username": username.lower()}, projection={"_id": 1, "flags": 1})
+    if (not user) or (user["flags"] & security.UserFlags.DELETED == security.UserFlags.DELETED):
+        abort(404)
+    else:
+        request.view_args["username"] = user["_id"]
+
     # Check authorization
     if not request.user:
         abort(401)
@@ -141,9 +196,16 @@ async def update_relationship(username, data: UpdateRelationshipBody):
     del relationship["_id"]
     return relationship, 200
 
-@users_bp.post("/report")
+@users_bp.post("/<username>/report")
 @validate_request(ReportBody)
 async def report_post(username, data: ReportBody):
+    username = request.view_args.get("username")
+    user = db.usersv0.find_one({"lower_username": username.lower()}, projection={"_id": 1, "flags": 1})
+    if (not user) or (user["flags"] & security.UserFlags.DELETED == security.UserFlags.DELETED):
+        abort(404)
+    else:
+        request.view_args["username"] = user["_id"]
+
     if not request.user:
         abort(401)
 
@@ -183,8 +245,15 @@ async def report_post(username, data: ReportBody):
     return {"error": False}, 200
 
 
-@users_bp.get("/dm")
+@users_bp.get("/<username>/dm")
 async def get_dm_chat(username):
+    username = request.view_args.get("username")
+    user = db.usersv0.find_one({"lower_username": username.lower()}, projection={"_id": 1, "flags": 1})
+    if (not user) or (user["flags"] & security.UserFlags.DELETED == security.UserFlags.DELETED):
+        abort(404)
+    else:
+        request.view_args["username"] = user["_id"]
+
     # Check authorization
     if not request.user:
         abort(401)
