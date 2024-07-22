@@ -1,21 +1,21 @@
 from cloudlink.types import api_error_statuscode_map, statuscodes
 from os import environ
-from typing import Literal
+from typing import Literal, TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
 from websockets import WebSocketServerProtocol
 import requests
 
+if TYPE_CHECKING:
+	from cloudlink.server import CloudlinkServer
+
 class CloudlinkClient:
 	def __init__(
 		self,
-		server,
+		server: 'CloudlinkServer',
 		websocket: WebSocketServerProtocol
-	):
-		# Python moment:tm:
-		import cloudlink.server
-		
+	):		
 		# Setup client
-		self.server: cloudlink.server.CloudlinkServer = server
+		self.server = server
 		self.websocket = websocket
 		self.username: str | None = None
 
