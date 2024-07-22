@@ -102,7 +102,7 @@ class CloudlinkServer:
         finally:
             self.clients.remove(cl_client)
             cl_client.logout()
-        
+
     def send_event(
         self,
         cmd: str,
@@ -196,9 +196,10 @@ class CloudlinkClient:
     def req_params(self):
         return parse_qs(urlparse(self.websocket.path).query)
 
-    def get_ip(self):
-        if self.server.real_ip_header and self.server.real_ip_header in self.websocket.request_headers:
-            return self.websocket.request_headers[self.server.real_ip_header]
+    @property
+    def ip(self):
+        if "REAL_IP_HEADER" in os.environ and os.environ["REAL_IP_HEADER"] in self.websocket.request_headers:
+            return self.websocket.request_headers[os.environ["REAL_IP_HEADER"]]
         elif type(self.websocket.remote_address) == tuple:
             return self.websocket.remote_address[0]
         else:
