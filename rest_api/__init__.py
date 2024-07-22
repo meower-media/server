@@ -1,4 +1,4 @@
-from quart import Quart, request
+from quart import Quart, abort, request
 from quart_cors import cors
 from quart_schema import QuartSchema, RequestSchemaValidationError, validate_headers
 from pydantic import BaseModel
@@ -37,8 +37,18 @@ async def check_repair_mode():
 
 
 @app.before_request
+async def internal_auth():
+    if 'Cf-Connecting-Ip' not in request.headers:
+        if request.headers.get("X-Internal-Token") == os.getenv("API_INTERNAL_TOKEN"):
+            if os.getenv("API_INTERNAL_TOKEN") == "" and request.remote_addr != "127.0.0.1":
+                abort(401)
+
+@app.before_request
 async def check_ip():
-    request.ip = (request.headers.get("Cf-Connecting-Ip", request.remote_addr))
+    if request.headers.get("X-Internal-Ip"):
+        request.ip = request.headers.get("X-Internal-Ip")
+    else:
+        request.ip = (request.headers.get("Cf-Connecting-Ip", request.remote_addr))
     if blocked_ips.search_best(request.ip):
         return {"error": True, "type": "ipBlocked"}, 403
 
@@ -53,7 +63,15 @@ async def check_auth(headers: TokenHeader):
     # Authenticate request
     account = None
 
-    if headers.token:  # external auth
+    if request.headers.get("X-Internal-Username"):
+        account = db.usersv0.find_one({"_id": request.headers.get("X-Internal-Username")}, projection={
+            "_id": 1,
+            "flags": 1,
+            "permissions": 1,
+            "ban.state": 1,
+            "ban.expires": 1
+        })
+    elif headers.token:  # external auth
         account = db.usersv0.find_one({"tokens": headers.token}, projection={
             "_id": 1,
             "flags": 1,
@@ -76,7 +94,8 @@ async def index():
         "captcha": {
             "enabled": os.getenv("CAPTCHA_SECRET") is not None,
             "sitekey": os.getenv("CAPTCHA_SITEKEY")
-        }
+        },
+        "registration_enabled": app.supporter.registration
     }, 200
 
 

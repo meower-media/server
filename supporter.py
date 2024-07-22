@@ -2,7 +2,7 @@ from threading import Thread
 from typing import Optional, Iterable, Any
 import uuid, time, msgpack, pymongo, re, copy
 
-from cloudlink import CloudlinkServer
+from cloudlink.server import CloudlinkServer
 from database import db, rdb
 from time import time
 from uploads import FileDetails
