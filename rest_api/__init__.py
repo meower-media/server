@@ -52,7 +52,7 @@ async def internal_auth():
 
 @app.before_request
 async def check_ip():
-    if hasattr(request, "internal_ip"):  # internal IP forwarding
+    if hasattr(request, "internal_ip") and request.internal_ip:  # internal IP forwarding
         request.ip = request.internal_ip
     else:
         request.ip = (request.headers.get("Cf-Connecting-Ip", request.remote_addr))
@@ -70,7 +70,7 @@ async def check_auth(headers: TokenHeader):
     # Authenticate request
     account = None
     if request.path != "/status":
-        if hasattr(request, "internal_username"):  # internal auth
+        if hasattr(request, "internal_username") and request.internal_username:  # internal auth
             account = db.usersv0.find_one({"_id": request.internal_username}, projection={
                 "_id": 1,
                 "flags": 1,

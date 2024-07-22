@@ -18,7 +18,6 @@ from rest_api import app as rest_api
 if __name__ == "__main__":
     # Create Cloudlink server
     cl = CloudlinkServer()
-    cl.set_real_ip_header(os.getenv("REAL_IP_HEADER"))
 
     # Create Supporter class
     supporter = Supporter(cl)
