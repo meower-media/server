@@ -1,6 +1,6 @@
 from threading import Thread
 from typing import Optional, Iterable, Any
-import uuid, time, msgpack, pymongo, re
+import uuid, time, msgpack, pymongo, re, copy
 
 from cloudlink import CloudlinkServer
 from database import db, rdb
@@ -109,9 +109,9 @@ class Supporter:
 
         # Send live packet
         if origin == "inbox":
-            self.cl.send_event("inbox_message", post, usernames=(None if author == "Server" else [author]))
+            self.cl.send_event("inbox_message", copy.copy(post), usernames=(None if author == "Server" else [author]))
         else:
-            self.cl.send_event("post", post, usernames=(None if origin in ["home", "livechat"] else chat_members))
+            self.cl.send_event("post", copy.copy(post), usernames=(None if origin in ["home", "livechat"] else chat_members))
 
         # Update other database items
         if origin == "inbox":
