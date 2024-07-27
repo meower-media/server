@@ -861,7 +861,7 @@ async def clear_avatar(username):
 
     # Update user
     db.usersv0.update_one(
-        {"_id": username, "$ne": {"avatar": None}}, {"$set": {"avatar": ""}}
+        {"_id": username, "avatar": {"$ne": None}}, {"$set": {"avatar": ""}}
     )
 
     # Sync config between sessions
