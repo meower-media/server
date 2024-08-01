@@ -5,7 +5,7 @@ from urllib.parse import urlparse, parse_qs
 
 from utils import log, full_stack
 
-VERSION = "0.1.7.9"
+VERSION = "0.1.7.10"
 
 class CloudlinkPacket(TypedDict):
     cmd: str
@@ -57,21 +57,10 @@ class CloudlinkServer:
             # Core commands
             "ping": CloudlinkCommands.ping,
             "get_ulist": CloudlinkCommands.get_ulist,
-            "pmsg": CloudlinkCommands.pmsg,
-            "pvar": CloudlinkCommands.pvar,
 
             # Authentication
             "authpswd": CloudlinkCommands.authpswd,
-            "gen_account": CloudlinkCommands.gen_account,
-
-            # Accounts
-            "update_config": CloudlinkCommands.update_config,
-            "change_pswd": CloudlinkCommands.change_pswd,
-            "del_tokens": CloudlinkCommands.del_tokens,
-            "del_account": CloudlinkCommands.del_account,
-
-            # Moderation
-            "report": CloudlinkCommands.report
+            "gen_account": CloudlinkCommands.gen_account
         }
         self.clients: set[CloudlinkClient] = set()
         self.usernames: dict[str, list[CloudlinkClient]] = {}  # {"username": [cl_client1, cl_client2, ...]}
@@ -379,30 +368,6 @@ class CloudlinkCommands:
         client.send("ulist", client.server.get_ulist(), listener=listener)
 
     @staticmethod
-    async def pmsg(client: CloudlinkClient, val, listener: Optional[str] = None, id: Optional[str] = None):
-        if not client.username:
-            client.send_statuscode("IDRequired", listener)
-            return
-        if id not in client.server.usernames:
-            client.send_statuscode("IDNotFound", listener)
-            return
-        
-        client.server.send_event("pmsg", val, extra={"origin": client.username}, usernames=[id])
-        client.send_statuscode("OK", listener)
-
-    @staticmethod
-    async def pvar(client: CloudlinkClient, val, listener: Optional[str] = None, id: Optional[str] = None, name: Optional[str] = None):
-        if not client.username:
-            client.send_statuscode("IDRequired", listener)
-            return
-        if id not in client.server.usernames:
-            client.send_statuscode("IDNotFound", listener)
-            return
-        
-        client.server.send_event("pvar", val, extra={"origin": client.username, "name": name}, usernames=[id])
-        client.send_statuscode("OK", listener)
-
-    @staticmethod
     async def authpswd(client: CloudlinkClient, val, listener: Optional[str] = None):
         # Make sure the client isn't already authenticated
         if client.username:
@@ -454,111 +419,4 @@ class CloudlinkCommands:
                 client.authenticate(resp["account"], resp["token"], listener=listener)
                 
                 # Tell the client it is authenticated
-                client.send_statuscode("OK", listener)
-
-    @staticmethod
-    async def update_config(client: CloudlinkClient, val, listener: Optional[str] = None):
-        # Make sure the client is authenticated
-        if not client.username:
-            return client.send_statuscode("IDRequired", listener)
-        
-        # Check val datatype
-        if not isinstance(val, dict):
-            return client.send_statuscode("Datatype", listener)
-
-        # Send API request
-        try:
-            resp = client.proxy_api_request("/me/config", "post", json=val, listener=listener)
-        except:
-            print(full_stack())
-            client.send_statuscode("InternalServerError", listener)
-        else:
-            if resp and not resp["error"]:
-                client.send_statuscode("OK", listener)
-
-    @staticmethod
-    async def change_pswd(client: CloudlinkClient, val, listener: Optional[str] = None):
-        # Make sure the client is authenticated
-        if not client.username:
-            return client.send_statuscode("IDRequired", listener)
-
-        # Check val datatype
-        if not isinstance(val, dict):
-            return client.send_statuscode("Datatype", listener)
-
-        # Send API request
-        try:
-            resp = client.proxy_api_request("/me/password", "patch", json=val, listener=listener)
-        except:
-            print(full_stack())
-            client.send_statuscode("InternalServerError", listener)
-        else:
-            if resp and not resp["error"]:
-                client.send_statuscode("OK", listener)
-
-    @staticmethod
-    async def del_tokens(client: CloudlinkClient, val, listener: Optional[str] = None):
-        # Make sure the client is authenticated
-        if not client.username:
-            return client.send_statuscode("IDRequired", listener)
-
-        # Send API request
-        try:
-            resp = client.proxy_api_request("/me/tokens", "delete", listener=listener)
-        except:
-            print(full_stack())
-            client.send_statuscode("InternalServerError", listener)
-        else:
-            if resp and not resp["error"]:
-                client.send_statuscode("OK", listener)
-
-    @staticmethod
-    async def del_account(client: CloudlinkClient, val, listener: Optional[str] = None):
-        # Make sure the client is authenticated
-        if not client.username:
-            return client.send_statuscode("IDRequired", listener)
-        
-        # Check val datatype
-        if not isinstance(val, str):
-            return client.send_statuscode("Datatype", listener)
-
-        # Send API request
-        try:
-            resp = client.proxy_api_request("/me", "delete", json={"password": val}, listener=listener)
-        except:
-            print(full_stack())
-            client.send_statuscode("InternalServerError", listener)
-        else:
-            if resp and not resp["error"]:
-                client.send_statuscode("OK", listener)
-
-    @staticmethod
-    async def report(client: CloudlinkClient, val, listener: Optional[str] = None):
-        # Make sure the client is authenticated
-        if not client.username:
-            return client.send_statuscode("IDRequired", listener)
-        
-        # Check val datatype
-        if not isinstance(val, str):
-            return client.send_statuscode("Datatype", listener)
-
-        # Get endpoint
-        if val.get("type") == 0:
-            endpoint = f"/posts/{val.get('id')}/report"
-        elif val.get("type") == 1:
-            endpoint = f"/users/{val.get('id')}/report"
-        else:
-            return client.send_statuscode("Datatype", listener)
-
-        # Send API request
-        try:
-            resp = client.proxy_api_request(endpoint, "post", json={
-                "reason": val.get("reason"),
-                "comment": val.get("comment"),
-            }, listener=listener)
-        except:
-            print(full_stack())
-            client.send_statuscode("InternalServerError", listener)
-        else:
-            if resp and not resp["error"]:
                 client.send_statuscode("OK", listener)
