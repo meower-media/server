@@ -4,7 +4,6 @@ import uuid, time, msgpack, pymongo, re, copy
 
 from cloudlink import CloudlinkServer
 from database import db, rdb
-from utils import timestamp
 from uploads import FileDetails
 
 """
@@ -73,7 +72,6 @@ class Supporter:
     ) -> tuple[bool, dict]:
         # Create post ID and get timestamp
         post_id = str(uuid.uuid4())
-        ts = timestamp(1).copy()
 
         # Make sure replied to posts exist
         for reply in reply_to:
@@ -88,7 +86,7 @@ class Supporter:
             "_id": post_id,
             "post_origin": origin, 
             "u": author,
-            "t": ts, 
+            "t": {"e": int(time.time())},
             "p": content,
             "attachments": attachments,
             "isDeleted": False,
