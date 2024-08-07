@@ -9,7 +9,7 @@ import pymongo
 import uuid
 import time
 import pyotp
-import qrcode
+import qrcode, qrcode.image.svg
 import uuid
 import secrets
 
@@ -364,26 +364,13 @@ async def get_new_totp_secret():
     provisioning_uri = pyotp.TOTP(secret).provisioning_uri(name=request.user, issuer_name="Meower")
 
     # Create QR code
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=10,
-        border=4,
-    )
-    qr.add_data(provisioning_uri)
-    qr.make(fit=True)
-
-    # Create image from QR code
-    img = qr.make_image(fill_color="black", back_color="white")
-    buffered = BytesIO()
-    img.save(buffered, format="WebP")
-    img_str = b64encode(buffered.getvalue()).decode("utf-8")
+    qr = qrcode.make(provisioning_uri, image_factory=qrcode.image.svg.SvgImage)
 
     return {
         "error": False,
         "secret": secret,
         "provisioning_uri": provisioning_uri,
-        "qr_code_data_uri": f"data:image/webp;base64,{img_str}"
+        "qr_code_svg": qr.to_string(encoding='unicode')
     }
 
 
