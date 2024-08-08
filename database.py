@@ -6,7 +6,7 @@ from radix import Radix
 
 from utils import log
 
-CURRENT_DB_VERSION = 8
+CURRENT_DB_VERSION = 9
 
 # Create Redis connection
 log("Connecting to Redis...")
@@ -289,6 +289,22 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
     # Post replies
     log("[Migrator] Adding post replies to database")
     db.posts.update_many({"reply_to": {"$exists": False}}, {"$set": {"reply_to": []}})
+
+    # Fix MFA recovery codes
+    log("[Migrator] Fixing MFA recovery codes")
+    for user in db.usersv0.aggregate([
+        {"$match": {"mfa_recovery_code": {"$ne": None}}},
+        {"$project": {
+            "mfa_recovery_code": 1,
+            "length": {"$strLenCP": "$mfa_recovery_code"}
+        }},
+        {"$match": {
+            "length": {"$gt": 10}
+        }}
+    ]):
+        db.usersv0.update_one({"_id": user["_id"]}, {"$set": {
+            "mfa_recovery_code": user["mfa_recovery_code"][:10]
+        }})
 
     db.config.update_one({"_id": "migration"}, {"$set": {"database": CURRENT_DB_VERSION}})
     log(f"[Migrator] Finished Migrating DB to version {CURRENT_DB_VERSION}")

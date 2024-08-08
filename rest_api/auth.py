@@ -47,7 +47,27 @@ async def login(data: AuthRequest):
     # Check credentials
     if data.password not in account["tokens"]:
         # Check password
-        if not security.check_password_hash(data.password, account["pswd"]):
+        password_valid = security.check_password_hash(data.password, account["pswd"])
+
+        # Maybe they put their MFA credentials at the end of their password?
+        if (not password_valid) and db.authenticators.count_documents({"user": account["_id"]}, limit=1):
+            if (not data.mfa_recovery_code) and data.password.endswith(account["mfa_recovery_code"]):
+                try:
+                    data.mfa_recovery_code = data.password[-10:]
+                    data.password = data.password[:-10]
+                except: pass
+                else:
+                    password_valid = security.check_password_hash(data.password, account["pswd"])
+            elif not data.totp_code:
+                try:
+                    data.totp_code = int(data.password[-6:])
+                    data.password = data.password[:-6]
+                except: pass
+                else:
+                    password_valid = security.check_password_hash(data.password, account["pswd"])
+
+        # Abort if password is invalid
+        if not password_valid:
             security.ratelimit(f"login:u:{account['_id']}", 5, 60)
             abort(401)
 
