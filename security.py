@@ -134,7 +134,7 @@ def create_account(username: str, password: str, ip: str):
         "avatar_color": "000000",
         "quote": "",
         "pswd": hash_password(password),
-        "mfa_recovery_code": secrets.token_hex(10),
+        "mfa_recovery_code": secrets.token_hex(5),
         "tokens": [],
         "flags": 0,
         "permissions": 0,
