@@ -60,11 +60,12 @@ async def login(data: AuthRequest):
                     password_valid = security.check_password_hash(data.password, account["pswd"])
             elif not data.totp_code:
                 try:
-                    data.totp_code = int(data.password[-6:])
+                    data.totp_code = data.password[-6:]
                     data.password = data.password[:-6]
                 except: pass
                 else:
-                    password_valid = security.check_password_hash(data.password, account["pswd"])
+                    if re.fullmatch(security.TOTP_REGEX, data.totp_code):
+                        password_valid = security.check_password_hash(data.password, account["pswd"])
 
         # Abort if password is invalid
         if not password_valid:
