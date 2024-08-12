@@ -192,7 +192,8 @@ class Supporter:
                 "flags": 1,
                 "pfp_data": 1,
                 "avatar": 1,
-                "avatar_color": 1
+                "avatar_color": 1,
+                "pronouns": 1,
             })})
 
             # Replies

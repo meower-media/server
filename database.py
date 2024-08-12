@@ -6,7 +6,7 @@ from radix import Radix
 
 from utils import log
 
-CURRENT_DB_VERSION = 9
+CURRENT_DB_VERSION = 10
 
 # Create Redis connection
 log("Connecting to Redis...")
@@ -306,7 +306,12 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
             "mfa_recovery_code": user["mfa_recovery_code"][:10]
         }})
 
+    log("[Migrator] Adding pronouns to users")
+    db.usersv0.update_many({"pronouns": {"$exists": False}}, {"$set": {"pronouns": []}})
+
     db.config.update_one({"_id": "migration"}, {"$set": {"database": CURRENT_DB_VERSION}})
     log(f"[Migrator] Finished Migrating DB to version {CURRENT_DB_VERSION}")
+
+
 
 print("") # finished startup logs

@@ -146,7 +146,8 @@ def create_account(username: str, password: str, ip: str):
             "reason": ""
         },
         "last_seen": int(time.time()),
-        "delete_after": None
+        "delete_after": None,
+        "pronouns": []
     })
     db.user_settings.insert_one({"_id": username})
 
@@ -279,6 +280,8 @@ def update_settings(username, newdata):
         updated_user_vals["avatar"] = newdata["avatar"]
     if "avatar_color" in newdata and isinstance(newdata["avatar_color"], str) and len(newdata["avatar_color"]) == 6:
         updated_user_vals["avatar_color"] = newdata["avatar_color"]
+    if "pronouns" in newdata and isinstance(newdata["pronouns"], list):
+        updated_user_vals["pronouns"] = newdata["pronouns"]
     
     # Update quote
     if "quote" in newdata and isinstance(newdata["quote"], str) and len(newdata["quote"]) <= 360:
