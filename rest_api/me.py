@@ -40,6 +40,7 @@ class UpdateConfigBody(BaseModel):
     debug: Optional[bool] = Field(default=None)
     hide_blocked_users: Optional[bool] = Field(default=None)
     favorited_chats: Optional[List[str]] = Field(default=None)
+    pronouns: Optional[List[List[str]]] = Field(default=None)
 
     class Config:
         validate_assignment = True
@@ -79,7 +80,9 @@ async def get_me():
     db.usersv0.update_one({"_id": request.user}, {"$set": {"last_seen": int(time.time())}})
 
     # Get and return account
-    return security.get_account(request.user, include_config=True), 200
+    account = security.get_account(request.user, include_config=True)
+    account["error"] = False
+    return account, 200
 
 
 @me_bp.delete("/")
@@ -160,6 +163,8 @@ async def update_config(data: UpdateConfigBody):
             except Exception as e:
                 log(f"Unable to delete avatar: {e}")
 
+
+
     # Update config
     security.update_settings(request.user, new_config)
 
@@ -176,6 +181,9 @@ async def update_config(data: UpdateConfigBody):
         updated_profile_data["avatar_color"] = new_config["avatar_color"]
     if "quote" in new_config:
         updated_profile_data["quote"] = new_config["quote"]
+    if "pronouns" in new_config:
+        updated_profile_data["pronouns"] = new_config["pronouns"]
+
     if len(updated_profile_data) > 1:
         app.cl.send_event("update_profile", updated_profile_data)
 
