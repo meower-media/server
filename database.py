@@ -4,9 +4,10 @@ import os
 import secrets
 from radix import Radix
 
+from meoid import gen_id_injected
 from utils import log
 
-CURRENT_DB_VERSION = 9
+CURRENT_DB_VERSION = 10
 
 # Create Redis connection
 log("Connecting to Redis...")
@@ -305,6 +306,25 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
         db.usersv0.update_one({"_id": user["_id"]}, {"$set": {
             "mfa_recovery_code": user["mfa_recovery_code"][:10]
         }})
+
+
+    log("[Migrator] Adding Meoid to posts")
+    for post in db.get_collection("posts").find({"meoid": {"$exists": False}}):
+        db.get_collection("posts").update_one({"_id": post["_id"]}, {"$set": {"meowid": gen_id_injected(post["t"]["e"])}})
+
+    log("[Migrator] Adding Meoid to chats")
+    for chat in db.get_collection("chats").find({"meoid": {"$exists": False}}):
+        db.get_collection("chats").update_one({"_id": chat["_id"]}, {"$set": {"meowid": gen_id_injected(chat["created"])}})
+
+    log("[Migrator] Adding Meoid to usersv0")
+    for user in db.get_collection("usersv0").find({"meoid": {"$exists": False}}):
+        time = user.get("created", 0)
+        if time is None:
+            time = 0
+        db.get_collection("usersv0").update_one({"_id": user["_id"]}, {"$set": {"meowid": gen_id_injected(time)}})
+        db.get_collection("user_settings").update_one({"_id": user["_id"]}, {"$set": {"meowid": gen_id_injected(time)}})
+
+
 
     db.config.update_one({"_id": "migration"}, {"$set": {"database": CURRENT_DB_VERSION}})
     log(f"[Migrator] Finished Migrating DB to version {CURRENT_DB_VERSION}")
