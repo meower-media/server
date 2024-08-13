@@ -4,14 +4,9 @@ from quart_schema import QuartSchema, RequestSchemaValidationError, validate_hea
 from pydantic import BaseModel
 import time, os
 
-from .auth import auth_bp
-from .me import me_bp
-from .home import home_bp
-from .inbox import inbox_bp
-from .posts import posts_bp
-from .users import users_bp
-from .chats import chats_bp
-from .search import search_bp
+from .v0 import v0
+
+
 from .admin import admin_bp
 
 from database import db, blocked_ips, registration_blocked_ips
@@ -97,7 +92,7 @@ async def check_auth(headers: TokenHeader):
 
 @app.get("/")  # Welcome message
 async def index():
-	return {
+    return {
         "captcha": {
             "enabled": os.getenv("CAPTCHA_SECRET") is not None,
             "sitekey": os.getenv("CAPTCHA_SITEKEY")
@@ -108,7 +103,7 @@ async def index():
 @app.get("/favicon.ico")  # Favicon, my ass. We need no favicon for an API.
 @hide
 async def favicon_my_ass():
-	return "", 200
+    return "", 200
 
 
 @app.get("/status")
@@ -167,12 +162,12 @@ async def validation_error(e):
 
 @app.errorhandler(400)  # Bad request
 async def bad_request(e):
-	return {"error": True, "type": "badRequest"}, 400
+    return {"error": True, "type": "badRequest"}, 400
 
 
 @app.errorhandler(401)  # Unauthorized
 async def unauthorized(e):
-	return {"error": True, "type": "Unauthorized"}, 401
+    return {"error": True, "type": "Unauthorized"}, 401
 
 
 @app.errorhandler(403)  # Missing permissions
@@ -182,22 +177,22 @@ async def missing_permissions(e):
 
 @app.errorhandler(404)  # We do need a 404 handler.
 async def not_found(e):
-	return {"error": True, "type": "notFound"}, 404
+    return {"error": True, "type": "notFound"}, 404
 
 
 @app.errorhandler(405)  # Method not allowed
 async def method_not_allowed(e):
-	return {"error": True, "type": "methodNotAllowed"}, 405
+    return {"error": True, "type": "methodNotAllowed"}, 405
 
 
 @app.errorhandler(429)  # Too many requests
 async def too_many_requests(e):
-	return {"error": True, "type": "tooManyRequests"}, 429
+    return {"error": True, "type": "tooManyRequests"}, 429
 
 
 @app.errorhandler(500)  # Internal
 async def internal(e):
-	return {"error": True, "type": "Internal"}, 500
+    return {"error": True, "type": "Internal"}, 500
 
 
 @app.errorhandler(501)  # Not implemented
@@ -206,12 +201,6 @@ async def not_implemented(e):
 
 
 # Register blueprints
-app.register_blueprint(auth_bp)
-app.register_blueprint(me_bp)
-app.register_blueprint(home_bp)
-app.register_blueprint(inbox_bp)
-app.register_blueprint(posts_bp)
-app.register_blueprint(users_bp)
-app.register_blueprint(chats_bp)
-app.register_blueprint(search_bp)
 app.register_blueprint(admin_bp)
+app.register_blueprint(v0, url_prefix="/v0")
+app.register_blueprint(v0, url_prefix="/", name="root")
