@@ -4,7 +4,7 @@ import os
 import secrets
 from radix import Radix
 
-from meoid import gen_id_injected
+from meoid import gen_id_injected, MEOWER_EPOCH
 from utils import log
 
 CURRENT_DB_VERSION = 10
@@ -320,7 +320,7 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
     for user in db.get_collection("usersv0").find({"meoid": {"$exists": False}}):
         time = user.get("created", 0)
         if time is None:
-            time = 0
+            time = MEOWER_EPOCH
         db.get_collection("usersv0").update_one({"_id": user["_id"]}, {"$set": {"meowid": gen_id_injected(time)}})
         db.get_collection("user_settings").update_one({"_id": user["_id"]}, {"$set": {"meowid": gen_id_injected(time)}})
 
