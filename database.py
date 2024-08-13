@@ -312,7 +312,8 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
     updates: list[pymongo.UpdateOne] = []
     for post in db.get_collection("posts").find({"meowid": {"$exists": False}}, projection={"_id": 1, "t.e": 1}):
         updates.append(pymongo.UpdateOne({"_id": post["_id"]}, {"$set": {"meowid": gen_id_injected(post["t"]["e"])}}))
-    db.get_collection("posts").bulk_write(updates)
+    if len(updates):
+        db.get_collection("posts").bulk_write(updates)
 
     log("[Migrator] Adding MeowID to chats")
     updates: list[pymongo.UpdateOne] = []
@@ -321,7 +322,8 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
         if time is None:
             time = (MEOWER_EPOCH // 1000)
         updates.append(pymongo.UpdateOne({"_id": chat["_id"]}, {"$set": {"meowid": gen_id_injected(time)}}))
-    db.get_collection("chats").bulk_write(updates)
+    if len(updates):
+        db.get_collection("chats").bulk_write(updates)
 
     log("[Migrator] Adding MeowID to usersv0")
     updates: list[pymongo.UpdateOne] = []
@@ -330,8 +332,9 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
         if time is None:
             time = (MEOWER_EPOCH // 1000)
         updates.append(pymongo.UpdateOne({"_id": user["_id"]}, {"$set": {"meowid": gen_id_injected(time)}}))
-    db.get_collection("usersv0").bulk_write(updates)
-    db.get_collection("user_settings").bulk_write(updates)
+    if len(updates):
+        db.get_collection("usersv0").bulk_write(updates)
+        db.get_collection("user_settings").bulk_write(updates)
 
 
 
