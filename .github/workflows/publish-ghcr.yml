@@ -17,8 +17,11 @@ jobs:
 
     - name: Login to GHCR.io
       run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+  
+    - name: Get short SHA
+      run: echo "SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_ENV
 
     - name: Build and push images
       run: |
         IMAGE_NAME=ghcr.io/${{ github.repository }}
-        docker buildx build --push -t $IMAGE_NAME:${{ github.sha }} .
+        docker buildx build --push -t $IMAGE_NAME:${{ env.SHORT_SHA }} .
