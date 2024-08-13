@@ -332,8 +332,8 @@ class Supporter:
 
         emotes = {}
         for emoji in post["emoji_ids"]:
-            emotes[emoji] = {
-                "id": int(hashlib.sha1(emoji["_id"].encode()).hexdigest(), 16),
+            emotes[emoji["_id"]] = {
+                "id": emoji["_id"],
                 "chat_id": db.get_collection("chats").find_one({"_id": emoji["chat_id"]}, projection={"meowid": 1})["meowid"],
                 "name": emoji["name"],
                 "animated": emoji["animated"],
