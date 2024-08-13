@@ -40,7 +40,7 @@ class UpdateConfigBody(BaseModel):
     debug: Optional[bool] = Field(default=None)
     hide_blocked_users: Optional[bool] = Field(default=None)
     favorited_chats: Optional[List[str]] = Field(default=None)
-    pronouns: Optional[List[List[str]]] = Field(default=None)
+    pronouns: Optional[List[str]] = Field(default=None, max_length=10)
 
     class Config:
         validate_assignment = True
