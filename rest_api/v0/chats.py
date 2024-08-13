@@ -6,6 +6,7 @@ import pymongo, uuid, time, re
 
 import security
 from database import db, get_total_pages
+from meowid import gen_id
 from uploads import claim_file, delete_file
 from utils import log
 
@@ -96,6 +97,7 @@ async def create_chat(data: ChatBody):
         data.allow_pinning = False
     chat = {
         "_id": str(uuid.uuid4()),
+        "meowid": gen_id(),
         "type": 0,
         "nickname": data.nickname,
         "icon": data.icon,

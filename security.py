@@ -3,6 +3,7 @@ from typing import Optional
 import time, requests, os, uuid, secrets, bcrypt, msgpack
 
 from database import db, rdb
+from meowid import gen_id
 from utils import log
 from uploads import clear_files
 
@@ -127,6 +128,7 @@ def create_account(username: str, password: str, ip: str):
     # Create user
     db.usersv0.insert_one({
         "_id": username,
+        "meowid": gen_id(),
         "lower_username": username.lower(),
         "uuid": str(uuid.uuid4()),
         "created": int(time.time()),

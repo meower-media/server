@@ -1,9 +1,11 @@
+import hashlib
 from threading import Thread
 from typing import Optional, Iterable, Any
 import uuid, time, msgpack, pymongo, re, copy
 
 from cloudlink import CloudlinkServer
 from database import db, rdb
+from meowid import gen_id
 from uploads import FileDetails
 
 """
@@ -13,6 +15,38 @@ This module provides constant variables, and other miscellaneous supporter utili
 
 FILE_ID_REGEX = "[a-zA-Z0-9]{24}"
 CUSTOM_EMOJI_REGEX = f"<:({FILE_ID_REGEX})>"
+
+OpCreateUser  = 0
+OpUpdateUser  = 1
+OpDeleteUser  = 2
+OpUpdateUserSettings  = 3
+
+OpRevokeSession  = 4
+
+OpUpdateRelationship  = 5
+
+OpCreateChat  = 6
+OpUpdateChat  = 7
+OpDeleteChat  = 8
+
+OpCreateChatMember  = 9
+OpUpdateChatMember  = 10
+OpDeleteChatMember  = 11
+
+OpCreateChatEmote  = 12
+OpUpdateChatEmote  = 13
+OpDeleteChatEmote  = 14
+
+OpTyping  = 15
+
+OpCreatePost       = 16
+OpUpdatePost       = 17
+OpDeletePost       = 18
+OpBulkDeletePosts  = 19
+
+OpPostReactionAdd     = 20
+OpPostReactionRemove  = 21
+
 
 class Supporter:
     def __init__(self, cl: CloudlinkServer):
@@ -84,6 +118,7 @@ class Supporter:
         # Construct post object
         post = {
             "_id": post_id,
+            "meowid": gen_id(),
             "post_origin": origin, 
             "u": author,
             "t": {"e": int(time.time())},
@@ -105,11 +140,15 @@ class Supporter:
         if nonce:
             post["nonce"] = nonce
 
+
+
         # Send live packet
         if origin == "inbox":
             self.cl.send_event("inbox_message", copy.copy(post), usernames=(None if author == "Server" else [author]))
         else:
             self.cl.send_event("post", copy.copy(post), usernames=(None if origin in ["home", "livechat"] else chat_members))
+
+        self.send_post_event(post)
 
         # Update other database items
         if origin == "inbox":
@@ -192,7 +231,8 @@ class Supporter:
                 "flags": 1,
                 "pfp_data": 1,
                 "avatar": 1,
-                "avatar_color": 1
+                "avatar_color": 1,
+                "meowid": 1
             })})
 
             # Replies
@@ -238,3 +278,80 @@ class Supporter:
                 })
 
         return posts
+
+    @staticmethod
+    def send_event(event: int, data: dict[str, any]):
+        payload = bytearray(msgpack.packb(data))
+        payload.insert(0, event)
+
+        rdb.publish("events", payload)
+
+
+    def parse_post_meowid(self, post: dict[str, Any], include_replies: bool = True):
+        post = list(self.parse_posts_v0([post], include_replies=include_replies, include_revisions=False))[0]
+
+        match post["post_origin"]:
+            case "home":
+                chat_id = 0
+            case "livechat":
+                chat_id = 1
+            case "inbox":
+                chat_id = 2
+            case _:
+                chat_id = db.get_collection("chats").find_one({"_id": post["post_origin"]}, projection={"meowid": 1})["meowid"]
+
+        replys = []
+        if include_replies:
+            replys = [reply["meowid"] for reply in post["reply_to"]]
+
+        return {
+            "id": post["meowid"],
+            "chat_id": chat_id,
+            "author_id": post["author"]["meowid"],
+            "reply_to_ids": replys,
+            "emoji_ids": [emoji["id"] for emoji in post["emojis"]],
+            "sticker_ids": post["stickers"],
+            "attachments": post["attachments"],
+            "content": post["p"],
+            "reactions": [{
+                "emoji": reaction["emoji"],
+                "count": reaction["count"]
+            } for reaction in post["reactions"]],
+            "last_edited": post.get("edited_at", 0),
+            "pinned": post["pinned"]
+        }
+
+    def send_post_event(self, original_post: dict[str, Any]):
+        post = self.parse_post_meowid(original_post, include_replies=True)
+
+        replies = {}
+        for reply in post["reply_to_ids"]:
+            replies[reply] = self.parse_post_meowid(db.get_collection("posts").find_one({"meowid": reply}), include_replies=False)
+
+        # TODO: What is the users field?
+
+        emotes = {}
+        for emoji in post["emoji_ids"]:
+            emotes[emoji] = {
+                "id": int(hashlib.sha1(emoji["_id"].encode()).hexdigest(), 16),
+                "chat_id": db.get_collection("chats").find_one({"_id": emoji["chat_id"]}, projection={"meowid": 1})["meowid"],
+                "name": emoji["name"],
+                "animated": emoji["animated"],
+            }
+
+        data = {
+            "post": post,
+            "reply_to": replies,
+            "emotes": emotes,
+            "attachments": original_post["attachments"],
+        }
+
+        is_dm = db.get_collection("chats").find_one({"_id": original_post["post_origin"], "owner": None}, projection={"meowid": 1})
+        if is_dm:
+            data["dm_to"] = db.get_collection("users").find_one({"_id": original_post["author"]["_id"]}, projection={"meowid": 1})["meowid"]
+            data["dm_chat"] = None  # unspecifed
+
+        if "nonce" in original_post:
+            data["nonce"] = original_post["nonce"]
+
+        self.send_event(OpCreatePost, data)
