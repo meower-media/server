@@ -21,4 +21,4 @@ jobs:
     - name: Build and push images
       run: |
         IMAGE_NAME=ghcr.io/${{ github.repository }}
-        docker buildx build --push -t $IMAGE_NAME:${{ github.sha }} -t $IMAGE_NAME:latest .
+        docker buildx build --push -t $IMAGE_NAME:${{ github.sha }} .
