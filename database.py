@@ -319,7 +319,7 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
     for chat in db.get_collection("chats").find({"meowid": {"$exists": False}}, projection={"_id": 1, "created": 1}):
         time = chat.get("created", 0)
         if time is None:
-            time = MEOWER_EPOCH
+            time = (MEOWER_EPOCH // 1000)
         updates.append(pymongo.UpdateOne({"_id": chat["_id"]}, {"$set": {"meowid": gen_id_injected(time)}}))
     db.get_collection("chats").bulk_write(updates)
 
@@ -328,9 +328,10 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
     for user in db.get_collection("usersv0").find({"meowid": {"$exists": False}}, projection={"_id": 1, "created": 1}):
         time = user.get("created", 0)
         if time is None:
-            time = MEOWER_EPOCH
+            time = (MEOWER_EPOCH // 1000)
         updates.append(pymongo.UpdateOne({"_id": user["_id"]}, {"$set": {"meowid": gen_id_injected(time)}}))
     db.get_collection("usersv0").bulk_write(updates)
+    db.get_collection("user_settings").bulk_write(updates)
 
 
 
