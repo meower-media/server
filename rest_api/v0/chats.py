@@ -648,12 +648,12 @@ async def create_chat_emote(chat_id: str, emote_type: Literal["emojis", "sticker
     if chat["type"] != 1 and chat["owner"] != request.user:
         abort(403)
 
-    # Make sure there's not too many emotes in the chat (100 for emojis, 25 for stickers)
+    # Make sure there's not too many emotes in the chat (250 for emojis, 50 for stickers)
     if emote_type == "emojis":
-        if db.chat_emojis.count_documents({"chat_id": chat_id}, limit=100) >= 100:
+        if db.chat_emojis.count_documents({"chat_id": chat_id}, limit=250) >= 250:
             return {"error": True, "type": "tooManyEmojis"}, 403
     elif emote_type == "stickers":
-        if db.chat_stickers.count_documents({"chat_id": chat_id}, limit=25) >= 25:
+        if db.chat_stickers.count_documents({"chat_id": chat_id}, limit=50) >= 50:
             return {"error": True, "type": "tooManyStickers"}, 403
 
     # Claim file
