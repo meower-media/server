@@ -203,7 +203,7 @@ async def update_chat(chat_id, data: ChatBody):
         if data.icon is None or chat["icon"] == data.icon:
             app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the icon of the group chat.", chat_members=chat["members"])
     if data.allow_pinning is not None:
-        chat["allow_pinning"] = data.allow_pinning
+        updated_vals["allow_pinning"] = data.allow_pinning
     
     # Update chat
     db.chats.update_one({"_id": chat_id}, {"$set": updated_vals})
