@@ -2,7 +2,7 @@ from quart import Blueprint, current_app as app, request, abort
 from quart_schema import validate_querystring, validate_request
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
-import pymongo, uuid, time, re
+import pymongo, uuid, time, re, os
 
 import security
 from database import db, get_total_pages
@@ -650,10 +650,10 @@ async def create_chat_emote(chat_id: str, emote_type: Literal["emojis", "sticker
 
     # Make sure there's not too many emotes in the chat (250 for emojis, 50 for stickers)
     if emote_type == "emojis":
-        if db.chat_emojis.count_documents({"chat_id": chat_id}, limit=250) >= 250:
+        if db.chat_emojis.count_documents({"chat_id": chat_id}, limit=250) >= int(os.getenv("CHAT_EMOJIS_LIMIT", 250)):
             return {"error": True, "type": "tooManyEmojis"}, 403
     elif emote_type == "stickers":
-        if db.chat_stickers.count_documents({"chat_id": chat_id}, limit=50) >= 50:
+        if db.chat_stickers.count_documents({"chat_id": chat_id}, limit=50) >= int(os.getenv("CHAT_STICKERS_LIMIT", 50)):
             return {"error": True, "type": "tooManyStickers"}, 403
 
     # Claim file
