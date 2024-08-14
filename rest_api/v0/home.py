@@ -31,6 +31,8 @@ class PostBody(BaseModel):
 @home_bp.get("/")
 @validate_querystring(GetHomeQueryArgs)
 async def get_home_posts(query_args: GetHomeQueryArgs):
+    if not request.user:
+        query_args.page = 1
     query = {"post_origin": "home", "isDeleted": False}
     return {
         "error": False,
