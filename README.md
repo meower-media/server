@@ -1,4 +1,4 @@
-![](https://raw.githubusercontent.com/meower-media/server/add-branding/branding/server%20banner.svg)
+![](./branding/server%20banner.svg)
 # Server
 Official source code of the Meower server, written in Python. Powered by CloudLink. 
 
