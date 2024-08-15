@@ -79,7 +79,7 @@ async def get_me():
     db.usersv0.update_one({"_id": request.user}, {"$set": {"last_seen": int(time.time())}})
 
     # Get and return account
-    return security.get_account(request.user, include_config=True), 200
+    return {"error": False, **security.get_account(request.user, include_config=True)}, 200
 
 
 @me_bp.delete("/")
