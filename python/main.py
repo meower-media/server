@@ -1,5 +1,7 @@
 # Load .env file
 from dotenv import load_dotenv
+
+
 load_dotenv()
 
 import asyncio
@@ -13,6 +15,7 @@ from supporter import Supporter
 from security import background_tasks_loop
 from grpc_auth import service as grpc_auth
 from rest_api import app as rest_api
+from events import events
 
 
 if __name__ == "__main__":
@@ -22,6 +25,8 @@ if __name__ == "__main__":
     # Create Supporter class
     supporter = Supporter(cl)
     cl.supporter = supporter
+
+    events.add_supporter(supporter)
 
     # Start background tasks loop
     Thread(target=background_tasks_loop, daemon=True).start()
