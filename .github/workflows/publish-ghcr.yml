@@ -23,5 +23,6 @@ jobs:
 
     - name: Build and push images
       run: |
+        cd python
         IMAGE_NAME=ghcr.io/${{ github.repository }}
         docker buildx build --push -t $IMAGE_NAME:${{ env.SHORT_SHA }} .
