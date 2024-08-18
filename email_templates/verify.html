@@ -1,0 +1,12 @@
+{% extends "_base.html" %}
+{% block body %}
+    <span>To confirm adding your email address ({{ email }}) to your {{ env['EMAIL_PLATFORM_NAME'] }} account, please click the button below.</span>
+    <span>If you didn't request this, please ignore this email, no further action is required.</span>
+    <a
+        href="{{ env['EMAIL_PLATFORM_FRONTEND'] }}/emails/verify#{{ token }}"
+        target="_blank"
+        style="padding: 12px; background-color: #f29e2e; border-radius: 6px; text-decoration: none; color: white; max-width: fit-content;"
+    >
+        <b>Verify Email Address</b>
+    </a>
+{% endblock %}

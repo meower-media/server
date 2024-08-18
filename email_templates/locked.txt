@@ -1,0 +1,8 @@
+{% extends "_base.txt" %}
+{% block body %}
+Your {{ env['EMAIL_PLATFORM_NAME'] }} account has been locked because we believe it may have been compromised. This can happen if your {{ env['EMAIL_PLATFORM_NAME'] }} password is weak, you used the same password on another website and that website was hacked, or you accidentally gave an access token to someone else.
+
+You will be required to reset your password using this email address ({{ address }}) before logging back in to {{ env['EMAIL_PLATFORM_NAME'] }}.
+
+If you have any questions, please reach out to {{ env['EMAIL_PLATFORM_SUPPORT'] }}.
+{% endblock %}

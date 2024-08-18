@@ -1,6 +1,9 @@
 from hashlib import sha256
 from typing import Optional
-import time, requests, os, uuid, secrets, bcrypt, msgpack
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.utils import formataddr
+import time, requests, os, uuid, secrets, bcrypt, msgpack, jinja2, smtplib
 
 from database import db, rdb
 from utils import log
@@ -41,6 +44,10 @@ USERNAME_REGEX = "[a-zA-Z0-9-_]{1,20}"
 TOTP_REGEX = "[0-9]{6}"
 BCRYPT_SALT_ROUNDS = 14
 TOKEN_BYTES = 64
+
+
+email_file_loader = jinja2.FileSystemLoader("email_templates")
+email_env = jinja2.Environment(loader=email_file_loader)
 
 
 class UserFlags:
@@ -536,3 +543,44 @@ def hash_password(password: str) -> str:
 
 def check_password_hash(password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed_password.encode())
+
+
+def send_email(template: str, to_name: str, to_address: str, token: Optional[str] = ""):
+    txt_tmpl = email_env.get_template(f"{template}.txt")
+    html_tmpl = email_env.get_template(f"{template}.html")
+
+    message = MIMEMultipart("alternative")
+    message["From"] = formataddr((os.environ["EMAIL_FROM_NAME"], os.environ["EMAIL_FROM_ADDRESS"]))
+    message["To"] = formataddr((to_name, to_address))
+
+    match template:
+        case "verify":
+            message["Subject"] = "Verify your email address"
+        case "recovery":
+            message["Subject"] = "Reset your password"
+        case "email_changed":
+            message["Subject"] = "Your email has been changed"
+        case "password_changed":
+            message["Subject"] = "Your password has been changed"
+        case "mfa_added":
+            message["Subject"] = "Multi-factor authenticator added"
+        case "mfa_removed":
+            message["Subject"] = "Multi-factor authenticator removed"
+        case "locked":
+            message["Subject"] = "Your account has been locked"
+
+    data = {
+        "subject": message["Subject"],
+        "name": to_name,
+        "address": to_address,
+        "token": token,
+        "env": os.environ
+    }
+    message.attach(MIMEText(txt_tmpl.render(data), "plain"))
+    message.attach(MIMEText(html_tmpl.render(data), "html"))
+
+    with smtplib.SMTP(os.environ["EMAIL_SMTP_HOST"], int(os.environ["EMAIL_SMTP_PORT"])) as server:
+        if os.getenv("EMAIL_SMTP_TLS"):
+            server.starttls()
+        server.login(os.environ["EMAIL_SMTP_USERNAME"], os.environ["EMAIL_SMTP_PASSWORD"])
+        server.sendmail(os.environ["EMAIL_FROM_ADDRESS"], to_address, message.as_string())

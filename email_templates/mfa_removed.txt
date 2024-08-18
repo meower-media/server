@@ -1,0 +1,4 @@
+{% extends "_base.txt" %}
+{% block body %}
+A multi-factor authenticator was recently removed from your {{ env['EMAIL_PLATFORM_NAME'] }} account.
+{% endblock %}
