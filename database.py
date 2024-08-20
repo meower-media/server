@@ -1,10 +1,14 @@
 import pymongo
+import pymongo.errors
 import redis
 import os
 import secrets
+import time
 from radix import Radix
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
-from utils import log
+from utils import log, create_ed25519_keys, import_priv_ed25519_key, import_pub_ed25519_key
+from signing import SigningKeys
 
 CURRENT_DB_VERSION = 9
 
@@ -198,20 +202,41 @@ for username in ["Server", "Deleted", "Meower", "Admin", "username"]:
             "last_seen": None,
             "delete_after": None
         })
-    except: pass
+    except pymongo.errors.DuplicateKeyError: pass
 try:
     db.config.insert_one({
         "_id": "migration",
         "database": 1
     })
-except: pass
+except pymongo.errors.DuplicateKeyError: pass
 try:
     db.config.insert_one({
         "_id": "status",
         "repair_mode": False,
         "registration": True
     })
-except: pass
+except pymongo.errors.DuplicateKeyError: pass
+
+
+# Load existing signing keys or create new ones
+# The active private key should be rotated every 10 days by the background thread
+# and public keys older than 90 days should be invalidated.
+_priv_key = Ed25519PrivateKey.generate()
+if db.config.count_documents({"_id": "signing_key"}, limit=1):
+    _priv_key = Ed25519PrivateKey.from_private_bytes(db.config.find_one({"_id": "signing_key"})["raw"])
+else:
+    db.config.update_one({"_id": "signing_key"}, {"$set": {
+        "raw": _priv_key.private_bytes_raw(),
+        "rotated_at": int(time.time())
+    }}, upsert=True)
+    db.pub_signing_keys.insert_one({
+        "raw": _priv_key.public_key().public_bytes_raw(),
+        "created_at": int(time.time())
+    })
+signing_keys = SigningKeys(_priv_key, [
+    Ed25519PublicKey.from_public_bytes(pub_signing_key["raw"])
+    for pub_signing_key in db.pub_signing_keys.find({})
+])
 
 
 # Load netblocks

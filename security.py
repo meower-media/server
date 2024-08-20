@@ -1,11 +1,11 @@
 from hashlib import sha256
-from typing import Optional
+from typing import Optional, Any
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
 import time, requests, os, uuid, secrets, bcrypt, msgpack, jinja2, smtplib
 
-from database import db, rdb
+from database import db, rdb, signing_keys
 from utils import log
 from uploads import clear_files
 
@@ -15,6 +15,7 @@ This module provides account management and authentication services.
 """
 
 SENSITIVE_ACCOUNT_FIELDS = {
+    "email",
     "pswd",
     "mfa_recovery_code",
     "tokens",
@@ -261,6 +262,14 @@ def create_user_token(username: str, ip: str, used_token: Optional[str] = None) 
     return new_token
 
 
+def create_token(ttype: int, subject: Any, scopes: int, expires_in: Optional[int] = None) -> str:
+    pass
+
+
+def extract_token(token: str) -> tuple[int, Any, int]:
+    pass
+
+
 def update_settings(username, newdata):
     # Check datatype
     if not isinstance(username, str):
@@ -496,6 +505,21 @@ def background_tasks_loop():
         time.sleep(1800)  # Once every 30 minutes
 
         log("Running background tasks...")
+
+        # Rotate signing key (every 10 days)
+        if db.config.count_documents({"_id": "signing_key", "rotated_at": {"$lt": int(time.time())-864000}}, limit=1):
+            new_priv_bytes, new_pub_bytes = signing_keys.rotate()
+            db.pub_signing_keys.insert_one({
+                "raw": new_pub_bytes,
+                "created_at": int(time.time())
+            })
+            db.config.update_one({"_id": "signing_key"}, {"$set": {
+                "raw": new_priv_bytes,
+                "rotated_at": int(time.time())
+            }}, upsert=True)
+
+        # Delete public signing keys that are older than 90 days
+        db.pub_signing_keys.delete_many({"created_at": {"$lt": int(time.time())-7776000}})
 
         # Delete accounts scheduled for deletion
         for user in db.usersv0.find({"delete_after": {"$lt": int(time.time())}}, projection={"_id": 1}):
