@@ -1086,7 +1086,7 @@ async def get_chat_posts(chat_id, query_args: GetChatPostsQueryArgs):
     # Return posts
     return {
         "error": False,
-        "autoget": app.supporter.parse_posts_v0(post, requester=request.user),
+        "autoget": app.supporter.parse_posts_v0(posts, requester=request.user),
         "page#": query_args.page,
         "pages": get_total_pages("posts", query)
     }, 200
