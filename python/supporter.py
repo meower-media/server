@@ -1,9 +1,11 @@
+import hashlib
 from threading import Thread
 from typing import Optional, Iterable, Any
 import uuid, time, msgpack, pymongo, re, copy
 
 from cloudlink import CloudlinkServer
 from database import db, rdb
+from meowid import gen_id
 from uploads import FileDetails
 
 """
@@ -13,6 +15,8 @@ This module provides constant variables, and other miscellaneous supporter utili
 
 FILE_ID_REGEX = "[a-zA-Z0-9]{24}"
 CUSTOM_EMOJI_REGEX = f"<:({FILE_ID_REGEX})>"
+
+
 
 class Supporter:
     def __init__(self, cl: CloudlinkServer):
@@ -84,6 +88,7 @@ class Supporter:
         # Construct post object
         post = {
             "_id": post_id,
+            "meowid": gen_id(),
             "post_origin": origin, 
             "u": author,
             "t": {"e": int(time.time())},
@@ -105,11 +110,15 @@ class Supporter:
         if nonce:
             post["nonce"] = nonce
 
+
+
         # Send live packet
         if origin == "inbox":
             self.cl.send_event("inbox_message", copy.copy(post), usernames=(None if author == "Server" else [author]))
         else:
             self.cl.send_event("post", copy.copy(post), usernames=(None if origin in ["home", "livechat"] else chat_members))
+
+        self.send_post_event(post)
 
         # Update other database items
         if origin == "inbox":
@@ -192,7 +201,8 @@ class Supporter:
                 "flags": 1,
                 "pfp_data": 1,
                 "avatar": 1,
-                "avatar_color": 1
+                "avatar_color": 1,
+                "meowid": 1
             })})
 
             # Replies
@@ -238,3 +248,4 @@ class Supporter:
                 })
 
         return posts
+

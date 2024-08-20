@@ -4,9 +4,10 @@ import os
 import secrets
 from radix import Radix
 
+from meowid import gen_id_injected, MEOWER_EPOCH
 from utils import log
 
-CURRENT_DB_VERSION = 9
+CURRENT_DB_VERSION = 10
 
 # Create Redis connection
 log("Connecting to Redis...")
@@ -305,6 +306,37 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
         db.usersv0.update_one({"_id": user["_id"]}, {"$set": {
             "mfa_recovery_code": user["mfa_recovery_code"][:10]
         }})
+
+
+    log("[Migrator] Adding MeowID to posts")
+    updates: list[pymongo.UpdateOne] = []
+    for post in db.get_collection("posts").find({"meowid": {"$exists": False}}, projection={"_id": 1, "t.e": 1}):
+        updates.append(pymongo.UpdateOne({"_id": post["_id"]}, {"$set": {"meowid": gen_id_injected(post["t"]["e"])}}))
+    if len(updates):
+        db.get_collection("posts").bulk_write(updates)
+
+    log("[Migrator] Adding MeowID to chats")
+    updates: list[pymongo.UpdateOne] = []
+    for chat in db.get_collection("chats").find({"meowid": {"$exists": False}}, projection={"_id": 1, "created": 1}):
+        time = chat.get("created", 0)
+        if time is None:
+            time = (MEOWER_EPOCH // 1000)
+        updates.append(pymongo.UpdateOne({"_id": chat["_id"]}, {"$set": {"meowid": gen_id_injected(time)}}))
+    if len(updates):
+        db.get_collection("chats").bulk_write(updates)
+
+    log("[Migrator] Adding MeowID to usersv0")
+    updates: list[pymongo.UpdateOne] = []
+    for user in db.get_collection("usersv0").find({"meowid": {"$exists": False}}, projection={"_id": 1, "created": 1}):
+        time = user.get("created", 0)
+        if time is None:
+            time = (MEOWER_EPOCH // 1000)
+        updates.append(pymongo.UpdateOne({"_id": user["_id"]}, {"$set": {"meowid": gen_id_injected(time)}}))
+    if len(updates):
+        db.get_collection("usersv0").bulk_write(updates)
+        db.get_collection("user_settings").bulk_write(updates)
+
+
 
     db.config.update_one({"_id": "migration"}, {"$set": {"database": CURRENT_DB_VERSION}})
     log(f"[Migrator] Finished Migrating DB to version {CURRENT_DB_VERSION}")
