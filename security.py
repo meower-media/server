@@ -1,5 +1,6 @@
 from hashlib import sha256
-from typing import Optional, Any
+from typing import Optional, Any, Literal
+from base64 import urlsafe_b64encode, urlsafe_b64decode
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
@@ -45,6 +46,12 @@ USERNAME_REGEX = "[a-zA-Z0-9-_]{1,20}"
 TOTP_REGEX = "[0-9]{6}"
 BCRYPT_SALT_ROUNDS = 14
 TOKEN_BYTES = 64
+
+
+TOKEN_TYPES = Literal[
+    "acc",   # account authorization
+    "email", # email actions (such as email verification or account recovery)
+]
 
 
 email_file_loader = jinja2.FileSystemLoader("email_templates")
@@ -142,6 +149,7 @@ def create_account(username: str, password: str, ip: str):
         "avatar": "",
         "avatar_color": "000000",
         "quote": "",
+        "email": "",
         "pswd": hash_password(password),
         "mfa_recovery_code": secrets.token_hex(5),
         "tokens": [],
@@ -262,12 +270,36 @@ def create_user_token(username: str, ip: str, used_token: Optional[str] = None) 
     return new_token
 
 
-def create_token(ttype: int, subject: Any, scopes: int, expires_in: Optional[int] = None) -> str:
-    pass
+def create_token(ttype: TOKEN_TYPES, claims: Any, expires_in: Optional[int] = None) -> str:
+    token = b"miau_" + ttype.encode()
+
+    # Add claims
+    token += b"." + urlsafe_b64encode(msgpack(claims))
+
+    # Add expiration
+    token += b"." + urlsafe_b64encode(str(int(time.time())+expires_in).encode())
+
+    # Sign token and add signature to token
+    token += b"." + urlsafe_b64encode(signing_keys[ttype + "_priv"].sign(token))
+
+    return token.decode()
 
 
-def extract_token(token: str) -> tuple[int, Any, int]:
-    pass
+def extract_token(token: str, expected_type: TOKEN_TYPES) -> Optional[Any]:
+    # Extract data from the token
+    ttype, claims, expires_at, signature = token.split(".")
+
+    # Check type
+    if ttype.replace("miau_", "") != expected_type:
+        return None
+
+    # Check signature
+    signing_keys[ttype.replace("miau_", "") + "_pub"].verify(
+        urlsafe_b64decode(signature),
+        (ttype.encode() + b"." + claims.encode() + b"." + expires_at.encode())
+    )
+
+    return msgpack.unpack(urlsafe_b64decode(claims))
 
 
 def update_settings(username, newdata):

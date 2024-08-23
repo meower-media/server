@@ -3,12 +3,10 @@ import pymongo.errors
 import redis
 import os
 import secrets
-import time
 from radix import Radix
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from utils import log, create_ed25519_keys, import_priv_ed25519_key, import_pub_ed25519_key
-from signing import SigningKeys
+from utils import log
 
 CURRENT_DB_VERSION = 9
 
@@ -219,24 +217,38 @@ except pymongo.errors.DuplicateKeyError: pass
 
 
 # Load existing signing keys or create new ones
-# The active private key should be rotated every 10 days by the background thread
-# and public keys older than 90 days should be invalidated.
-_priv_key = Ed25519PrivateKey.generate()
-if db.config.count_documents({"_id": "signing_key"}, limit=1):
-    _priv_key = Ed25519PrivateKey.from_private_bytes(db.config.find_one({"_id": "signing_key"})["raw"])
-else:
-    db.config.update_one({"_id": "signing_key"}, {"$set": {
-        "raw": _priv_key.private_bytes_raw(),
-        "rotated_at": int(time.time())
-    }}, upsert=True)
-    db.pub_signing_keys.insert_one({
-        "raw": _priv_key.public_key().public_bytes_raw(),
-        "created_at": int(time.time())
+signing_keys = {}
+if db.config.count_documents({"_id": "signing_keys"}, limit=1):
+    data = db.config.count_documents({"_id": "signing_keys"}, limit=1)
+
+    acc_priv = Ed25519PrivateKey.from_private_bytes(data["acc_priv"])
+    email_priv = Ed25519PrivateKey.from_private_bytes(data["email_priv"])
+
+    signing_keys.update({
+        "acc_priv": acc_priv,
+        "acc_pub": acc_priv.public_key(),
+
+        "email_priv": email_priv,
+        "email_pub": email_priv.public_key()
     })
-signing_keys = SigningKeys(_priv_key, [
-    Ed25519PublicKey.from_public_bytes(pub_signing_key["raw"])
-    for pub_signing_key in db.pub_signing_keys.find({})
-])
+else:
+    acc_priv = Ed25519PrivateKey.generate()
+    email_priv = Ed25519PrivateKey.generate()
+
+    signing_keys.update({
+        "acc_priv": acc_priv,
+        "acc_pub": acc_priv.public_key(),
+
+        "email_priv": email_priv,
+        "email_pub": email_priv.public_key()
+    })
+
+    data = {
+        "_id": "signing_keys",
+        "acc_priv": acc_priv.private_bytes_raw(),
+        "email_priv": email_priv.private_bytes_raw()
+    }
+    db.confing.insert_one(signing_keys)
 
 
 # Load netblocks

@@ -12,6 +12,7 @@ import pyotp
 import qrcode, qrcode.image.svg
 import uuid
 import secrets
+import os
 
 import security
 from database import db, rdb, get_total_pages
@@ -44,6 +45,10 @@ class UpdateConfigBody(BaseModel):
     class Config:
         validate_assignment = True
         str_strip_whitespace = True
+
+class UpdateEmailBody(BaseModel):
+    password: str = Field(min_length=1, max_length=255)  # change in API v1
+    email: Optional[str] = Field(default=None, max_length=255)
 
 class ChangePasswordBody(BaseModel):
     old: str = Field(min_length=1, max_length=255)  # change in API v1
@@ -198,6 +203,30 @@ async def get_relationships():
         "page#": 1,
         "pages": 1
     }, 200
+
+
+@me_bp.patch("/email")
+@validate_request(UpdateEmailBody)
+async def update_email(data: UpdateEmailBody):
+    # Make sure email is enabled
+    if not os.getenv("EMAIL_SMTP_HOST"):
+        return {"error": True, "type": "featureDisabled"}, 503
+
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Check ratelimits
+    if security.ratelimited(f"login:u:{request.user}") or security.ratelimited(f"emailch:{request.user}"):
+        abort(429)
+
+    # Check password
+    account = db.usersv0.find_one({"_id": request.user}, projection={"email": 1, "pswd": 1})
+    if not security.check_password_hash(data.old, account["pswd"]):
+        security.ratelimit(f"login:u:{request.user}", 5, 60)
+        return {"error": True, "type": "invalidCredentials"}, 401
+    
+    # Send email
 
 
 @me_bp.patch("/password")
