@@ -8,6 +8,7 @@ from .users import users_bp
 from .auth import auth_bp
 from .home import home_bp
 from .me import me_bp
+from .emojis import emojis_bp
 
 v0 = Blueprint("v0", __name__)
 
@@ -19,4 +20,4 @@ v0.register_blueprint(posts_bp)
 v0.register_blueprint(users_bp)
 v0.register_blueprint(chats_bp)
 v0.register_blueprint(search_bp)
-
+v0.register_blueprint(emojis_bp)
