@@ -2,6 +2,7 @@ from quart import Quart, request, abort
 from quart_cors import cors
 from quart_schema import QuartSchema, RequestSchemaValidationError, validate_headers, hide
 from pydantic import BaseModel
+from sentry_sdk import capture_exception
 import time, os
 
 from .v0 import v0
@@ -10,6 +11,7 @@ from .v0 import v0
 from .admin import admin_bp
 
 from database import db, blocked_ips, registration_blocked_ips
+from sessions import AccSession
 import security
 
 
@@ -41,6 +43,7 @@ async def internal_auth():
                 abort(401)
 
             request.internal_ip = request.headers.get("X-Internal-Ip")
+            request.headers["User-Agent"] = request.headers.get("X-Internal-UA")
             request.internal_username = request.headers.get("X-Internal-Username")
             request.bypass_captcha = True
 
@@ -74,13 +77,18 @@ async def check_auth(headers: TokenHeader):
                 "ban.expires": 1
             })
         elif headers.token:  # external auth
-            account = db.usersv0.find_one({"tokens": headers.token}, projection={
-                "_id": 1,
-                "flags": 1,
-                "permissions": 1,
-                "ban.state": 1,
-                "ban.expires": 1
-            })
+            try:
+                username = AccSession.get_username_by_token(headers.token)
+            except Exception as e:
+                capture_exception(e)
+            else:
+                account = db.usersv0.find_one({"_id": username}, projection={
+                    "_id": 1,
+                    "flags": 1,
+                    "permissions": 1,
+                    "ban.state": 1,
+                    "ban.expires": 1
+                })
         
         if account:
             if account["ban"]["state"] == "perm_ban" or (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time()):

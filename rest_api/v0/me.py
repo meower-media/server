@@ -17,6 +17,7 @@ import os
 import security
 from database import db, rdb, get_total_pages
 from uploads import claim_file, delete_file
+from sessions import AccSession
 from utils import log
 
 
@@ -106,13 +107,12 @@ async def delete_account(data: DeleteAccountBody):
     
     # Schedule account for deletion
     db.usersv0.update_one({"_id": request.user}, {"$set": {
-        "tokens": [],
         "delete_after": int(time.time())+604800  # 7 days
     }})
 
-    # Disconnect clients
-    for client in app.cl.usernames.get(request.user, []):
-        client.kick()
+    # Revoke sessions
+    for session in AccSession.get_all(request.user):
+        session.revoke()
 
     return {"error": False}, 200
 
@@ -432,12 +432,9 @@ async def delete_tokens():
     if not request.user:
         abort(401)
     
-    # Revoke tokens
-    db.usersv0.update_one({"_id": request.user}, {"$set": {"tokens": []}})
-
-    # Disconnect clients
-    for client in app.cl.usernames.get(request.user, []):
-        client.kick()
+    # Revoke sessions
+    for session in AccSession.get_all(request.user):
+        session.revoke()
 
     return {"error": False}, 200
 

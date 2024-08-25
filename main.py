@@ -5,6 +5,7 @@ load_dotenv()
 import asyncio
 import os
 import uvicorn
+import sentry_sdk
 
 from threading import Thread
 
@@ -16,6 +17,9 @@ from rest_api import app as rest_api
 
 
 if __name__ == "__main__":
+    # Initialise Sentry (uses SENTRY_DSN env var)
+    sentry_sdk.init()
+
     # Create Cloudlink server
     cl = CloudlinkServer()
 

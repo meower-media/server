@@ -8,6 +8,7 @@ import time, pymongo
 
 import security
 from database import db, get_total_pages, blocked_ips, registration_blocked_ips
+from sessions import AccSession
 
 
 admin_bp = Blueprint("admin_bp", __name__, url_prefix="/admin")
@@ -651,17 +652,17 @@ async def delete_user(username, query_args: DeleteUserQueryArgs):
             {"_id": username}, {"$set": {"delete_after": None}}
         )
     elif deletion_mode in ["schedule", "immediate", "purge"]:
-        db.usersv0.update_one(
-            {"_id": username},
-            {
-                "$set": {
-                    "tokens": [],
-                    "delete_after": int(time.time()) + (604800 if deletion_mode == "schedule" else 0),
-                }
-            },
-        )
-        for client in app.cl.usernames.get(username, []):
-            client.kick()
+        if deletion_mode == "schedule":
+            db.usersv0.update_one(
+                {"_id": username},
+                {
+                    "$set": {
+                        "delete_after": int(time.time()) + (604800 if deletion_mode == "schedule" else 0),
+                    }
+                },
+            )
+        for session in AccSession.get_all(username):
+            session.revoke()
         if deletion_mode in ["immediate", "purge"]:
             security.delete_account(username, purge=(deletion_mode == "purge"))
     else:
@@ -828,12 +829,9 @@ async def kick_user(username):
     if not security.has_permission(request.permissions, security.AdminPermissions.KICK_USERS):
         abort(401)
 
-    # Revoke tokens
-    db.usersv0.update_one({"_id": username}, {"$set": {"tokens": []}})
-
-    # Kick clients
-    for client in app.cl.usernames.get(username, []):
-        client.kick()
+    # Revoke sessions
+    for session in AccSession.get_all(username):
+        session.revoke()
 
     # Add log
     security.add_audit_log(

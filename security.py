@@ -1,14 +1,15 @@
-from hashlib import sha256
 from typing import Optional, Any, Literal
+from hashlib import sha256
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
-import time, requests, os, uuid, secrets, bcrypt, msgpack, jinja2, smtplib
+import time, requests, os, uuid, secrets, bcrypt, hmac, msgpack, jinja2, smtplib
 
 from database import db, rdb, signing_keys
 from utils import log
 from uploads import clear_files
+import errors
 
 """
 Meower Security Module
@@ -19,7 +20,6 @@ SENSITIVE_ACCOUNT_FIELDS = {
     "email",
     "pswd",
     "mfa_recovery_code",
-    "tokens",
     "delete_after"
 }
 
@@ -152,7 +152,6 @@ def create_account(username: str, password: str, ip: str):
         "email": "",
         "pswd": hash_password(password),
         "mfa_recovery_code": secrets.token_hex(5),
-        "tokens": [],
         "flags": 0,
         "permissions": 0,
         "ban": {
@@ -233,73 +232,34 @@ def get_account(username, include_config=False):
     return account
 
 
-def create_user_token(username: str, ip: str, used_token: Optional[str] = None) -> str:
-    # Get required account details
-    account = db.usersv0.find_one({"_id": username}, projection={
-        "_id": 1,
-        "tokens": 1,
-        "delete_after": 1
-    })
+def create_token(ttype: TOKEN_TYPES, claims: Any) -> str:
+    # Encode claims
+    encoded_claims = msgpack.packb(claims)
 
-    # Update netlog
-    db.netlog.update_one({"_id": {
-        "ip": ip,
-        "user": username,
-    }}, {"$set": {"last_used": int(time.time())}}, upsert=True)
+    # Sign encoded claims
+    signature = hmac.digest(signing_keys[ttype], encoded_claims, digest=sha256)
 
-    # Restore account
-    if account["delete_after"]:
-        db.usersv0.update_one({"_id": account["_id"]}, {"$set": {"delete_after": None}})
-        rdb.publish("admin", msgpack.packb({
-            "op": "alert_user",
-            "user": account["_id"],
-            "content": "Your account was scheduled for deletion but you logged back in. Your account is no longer scheduled for deletion! If you didn't request for your account to be deleted, please change your password immediately."
-        }))
-    
-    # Generate new token, revoke used token, and update last seen timestamp
-    new_token = secrets.token_urlsafe(TOKEN_BYTES)
-    account["tokens"].append(new_token)
-    if used_token in account["tokens"]:
-        account["tokens"].remove(used_token)
-    db.usersv0.update_one({"_id": account["_id"]}, {"$set": {
-        "tokens": account["tokens"],
-        "last_seen": int(time.time())
-    }})
-
-    # Return new token
-    return new_token
-
-
-def create_token(ttype: TOKEN_TYPES, claims: Any, expires_in: Optional[int] = None) -> str:
-    token = b"miau_" + ttype.encode()
-
-    # Add claims
-    token += b"." + urlsafe_b64encode(msgpack(claims))
-
-    # Add expiration
-    token += b"." + urlsafe_b64encode(str(int(time.time())+expires_in).encode())
-
-    # Sign token and add signature to token
-    token += b"." + urlsafe_b64encode(signing_keys[ttype + "_priv"].sign(token))
+    # Construct token
+    token = b".".join([urlsafe_b64encode(encoded_claims), urlsafe_b64encode(signature)])
 
     return token.decode()
 
 
 def extract_token(token: str, expected_type: TOKEN_TYPES) -> Optional[Any]:
-    # Extract data from the token
-    ttype, claims, expires_at, signature = token.split(".")
-
-    # Check type
-    if ttype.replace("miau_", "") != expected_type:
-        return None
+    # Extract data and signature
+    encoded_claims, signature = token.split(".")
+    encoded_claims = urlsafe_b64decode(encoded_claims)
+    signature = urlsafe_b64decode(signature)
 
     # Check signature
-    signing_keys[ttype.replace("miau_", "") + "_pub"].verify(
-        urlsafe_b64decode(signature),
-        (ttype.encode() + b"." + claims.encode() + b"." + expires_at.encode())
-    )
+    expected_signature = hmac.digest(signing_keys[expected_type], encoded_claims, digest=sha256)
+    if not hmac.compare_digest(signature, expected_signature):
+        raise errors.InvalidTokenSignature
 
-    return msgpack.unpack(urlsafe_b64decode(claims))
+    # Decode claims
+    claims = msgpack.unpackb(encoded_claims)
+    
+    return claims
 
 
 def update_settings(username, newdata):
@@ -412,7 +372,6 @@ def delete_account(username, purge=False):
         "quote": None,
         "pswd": None,
         "mfa_recovery_code": None,
-        "tokens": None,
         "flags": account["flags"],
         "permissions": None,
         "ban": None,

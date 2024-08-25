@@ -4,7 +4,10 @@ from quart import Blueprint, request, abort, current_app as app
 from quart_schema import validate_request
 from pydantic import Field
 from typing import Optional
-from database import db, registration_blocked_ips
+from base64 import urlsafe_b64encode
+from hashlib import sha256
+from database import db, rdb, registration_blocked_ips
+from sessions import AccSession
 import security
 
 auth_bp = Blueprint("auth_bp", __name__, url_prefix="/auth")
@@ -29,7 +32,6 @@ async def login(data: AuthRequest):
     account = db.usersv0.find_one({"lower_username": data.username.lower()}, projection={
         "_id": 1,
         "flags": 1,
-        "tokens": 1,
         "pswd": 1,
         "mfa_recovery_code": 1
     })
@@ -44,8 +46,19 @@ async def login(data: AuthRequest):
     if security.ratelimited(f"login:u:{account['_id']}"):
         abort(429)
 
-    # Check credentials
-    if data.password not in account["tokens"]:
+    # Legacy tokens (remove in the future at some point)
+    if len(data.password) == 86:
+        encoded_token = urlsafe_b64encode(sha256(data.password.encode()).digest())
+        username = rdb.get(encoded_token)
+        if username and username.decode() == account["_id"]:
+            data.password = AccSession.create(username.decode(), request.ip, request.headers.get("User-Agent")).token
+            rdb.delete(encoded_token)
+
+    # Check credentials & get session
+    try:  # token for already existing session
+        session = AccSession.get_by_token(data.password)
+        session.refresh(request.ip, request.headers.get("User-Agent"), check_token=data.password)
+    except:  # no error capturing here, as it's probably just a password rather than a token, and we don't want to capture passwords
         # Check password
         password_valid = security.check_password_hash(data.password, account["pswd"])
 
@@ -106,11 +119,15 @@ async def login(data: AuthRequest):
                     "mfa_methods": list(mfa_methods)
                 }, 401
 
-    # Return account and token
+        # Create session
+        session = AccSession.create(account["_id"], request.ip, request.headers.get("User-Agent"))
+
+    # Return session and account details
     return {
         "error": False,
-        "account": security.get_account(account['_id'], True),
-        "token": security.create_user_token(account['_id'], request.ip, used_token=data.password)
+        "session": session.v0,
+        "token": session.token,
+        "account": security.get_account(account['_id'], True)
     }, 200
 
 @auth_bp.post("/register")
@@ -156,9 +173,13 @@ async def register(data: AuthRequest):
     # Ratelimit
     security.ratelimit(f"register:{request.ip}:s", 5, 900)
     
-    # Return account and token
+    # Create session
+    session, token = security.create_session(data.username, request.ip, request.headers.get("User-Agent"))
+
+    # Return session and account details
     return {
         "error": False,
-        "account": security.get_account(data.username, True),
-        "token": security.create_user_token(data.username, request.ip)
+        "session": session,
+        "token": token,
+        "account": security.get_account(data.username, True)
     }, 200

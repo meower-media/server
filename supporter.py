@@ -128,8 +128,13 @@ class Supporter:
         pubsub.subscribe("admin")
         for msg in pubsub.listen():
             try:
-                msg = msgpack.loads(msg["data"])
+                msg = msgpack.unpackb(msg["data"])
                 match msg.pop("op"):
+                    case "revoke_acc_session":
+                        for c in self.cl.usernames.get(msg["user"], []):
+                            if "sid" in msg and msg["sid"] != c.acc_session_id:
+                                continue
+                            c.kick()
                     case "alert_user":
                         self.create_post("inbox", msg["user"], msg["content"])
                     case "ban_user":
@@ -163,7 +168,7 @@ class Supporter:
 
                         # Logout user (can't kick because of async stuff)
                         for c in self.cl.usernames.get(username, []):
-                            c.logout()
+                            c.kick()
             except:
                 continue
 

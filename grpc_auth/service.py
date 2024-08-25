@@ -6,7 +6,10 @@ from . import (
     auth_service_pb2 as pb2
 )
 
+from sentry_sdk import capture_exception
+
 from database import db
+from sessions import AccSession
 
 
 class AuthService(pb2_grpc.AuthServicer):
@@ -22,15 +25,19 @@ class AuthService(pb2_grpc.AuthServicer):
         if not authed:
             context.abort(grpc.StatusCode.UNAUTHENTICATED, "Invalid or missing token")
 
-        account = db.usersv0.find_one({"tokens": request.token}, projection={
-            "_id": 1,
-            "ban.state": 1,
-            "ban.expires": 1
-        })
-        if account:
+        try:
+            username = AccSession.get_username_by_token(request.token)
+        except Exception as e:
+            capture_exception(e)
+        else:
+            account = db.usersv0.find_one({"_id": username}, projection={
+                "_id": 1,
+                "ban.state": 1,
+                "ban.expires": 1
+            })
             if account and \
-               (account["ban"]["state"] == "perm_ban" or \
-               (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time())):
+                (account["ban"]["state"] == "perm_ban" or \
+                (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time())):
                 account = None
 
         return pb2.CheckTokenResp(

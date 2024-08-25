@@ -4,11 +4,12 @@ import redis
 import os
 import secrets
 from radix import Radix
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from hashlib import sha256
+from base64 import urlsafe_b64encode
 
 from utils import log
 
-CURRENT_DB_VERSION = 9
+CURRENT_DB_VERSION = 10
 
 # Create Redis connection
 log("Connecting to Redis...")
@@ -42,8 +43,6 @@ for collection_name in []:
 
 # Create usersv0 indexes
 try: db.usersv0.create_index([("lower_username", pymongo.ASCENDING)], name="lower_username", unique=True)
-except: pass
-try: db.usersv0.create_index([("tokens", pymongo.ASCENDING)], name="tokens", unique=True)
 except: pass
 try: db.usersv0.create_index([("created", pymongo.DESCENDING)], name="recent_users")
 except: pass
@@ -193,7 +192,6 @@ for username in ["Server", "Deleted", "Meower", "Admin", "username"]:
             "avatar_color": None,
             "quote": None,
             "pswd": None,
-            "tokens": None,
             "flags": 1,
             "permissions": None,
             "ban": None,
@@ -214,41 +212,17 @@ try:
         "registration": True
     })
 except pymongo.errors.DuplicateKeyError: pass
-
-
-# Load existing signing keys or create new ones
-signing_keys = {}
-if db.config.count_documents({"_id": "signing_keys"}, limit=1):
-    data = db.config.count_documents({"_id": "signing_keys"}, limit=1)
-
-    acc_priv = Ed25519PrivateKey.from_private_bytes(data["acc_priv"])
-    email_priv = Ed25519PrivateKey.from_private_bytes(data["email_priv"])
-
-    signing_keys.update({
-        "acc_priv": acc_priv,
-        "acc_pub": acc_priv.public_key(),
-
-        "email_priv": email_priv,
-        "email_pub": email_priv.public_key()
-    })
-else:
-    acc_priv = Ed25519PrivateKey.generate()
-    email_priv = Ed25519PrivateKey.generate()
-
-    signing_keys.update({
-        "acc_priv": acc_priv,
-        "acc_pub": acc_priv.public_key(),
-
-        "email_priv": email_priv,
-        "email_pub": email_priv.public_key()
-    })
-
-    data = {
+try:
+    db.config.insert_one({
         "_id": "signing_keys",
-        "acc_priv": acc_priv.private_bytes_raw(),
-        "email_priv": email_priv.private_bytes_raw()
-    }
-    db.confing.insert_one(signing_keys)
+        "acc": secrets.token_bytes(64),
+        "email": secrets.token_bytes(64)
+    })
+except pymongo.errors.DuplicateKeyError: pass
+
+
+# Load signing keys
+signing_keys = db.config.find_one({"_id": "signing_keys"})
 
 
 # Load netblocks
@@ -342,6 +316,15 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
         db.usersv0.update_one({"_id": user["_id"]}, {"$set": {
             "mfa_recovery_code": user["mfa_recovery_code"][:10]
         }})
+
+    # New sessions
+    log("[Migrator] Adding new sessions")
+    from sessions import AccSession
+    for user in db.usersv0.find({"tokens": {"$exists": True}}, projection={"_id": 1, "tokens": 1}):
+        if user["tokens"]:
+            for token in user["tokens"]:
+                rdb.set(urlsafe_b64encode(sha256(token.encode()).digest()), user["_id"], ex=1209600)  # 14 days
+        db.usersv0.update_one({"_id": user["_id"]}, {"$set": {"tokens": []}})
 
     db.config.update_one({"_id": "migration"}, {"$set": {"database": CURRENT_DB_VERSION}})
     log(f"[Migrator] Finished Migrating DB to version {CURRENT_DB_VERSION}")
