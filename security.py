@@ -433,7 +433,7 @@ def delete_account(username, purge=False):
 
 def get_netinfo(ip_address):
     """
-    Get IP info from IPHub.
+    Get IP info from IP-API.
 
     Returns:
     ```json
@@ -451,21 +451,23 @@ def get_netinfo(ip_address):
     # Get IP hash
     ip_hash = sha256(ip_address.encode()).hexdigest()
 
-    # Get from database or IPHub if not cached
+    # Get from database or IP-API if not cached
     netinfo = db.netinfo.find_one({"_id": ip_hash})
     if not netinfo:
-        iphub_key = os.getenv("IPHUB_KEY")
-        if iphub_key:
-            iphub_info = requests.get(f"http://v2.api.iphub.info/ip/{ip_address}", headers={
-                "X-Key": iphub_key
-            }).json()
+        resp = requests.get(f"http://ip-api.com/json/{ip_address}?fields=25349915")
+        if resp.ok:
+            resp_json = resp.json()
             netinfo = {
                 "_id": ip_hash,
-                "country_code": iphub_info["countryCode"],
-                "country_name": iphub_info["countryName"],
-                "asn": iphub_info["asn"],
-                "isp": iphub_info["isp"],
-                "vpn": (iphub_info["block"] == 1),
+                "country_code": resp_json["countryCode"],
+                "country_name": resp_json["country"],
+                "region": resp_json["regionName"],
+                "city": resp_json["city"],
+                "timezone": resp_json["timezone"],
+                "currency": resp_json["currency"],
+                "as": resp_json["as"],
+                "isp": resp_json["isp"],
+                "vpn": (resp_json.get("hosting") or resp_json.get("proxy")),
                 "last_refreshed": int(time.time())
             }
             db.netinfo.update_one({"_id": ip_hash}, {"$set": netinfo}, upsert=True)
@@ -474,7 +476,11 @@ def get_netinfo(ip_address):
                 "_id": ip_hash,
                 "country_code": "Unknown",
                 "country_name": "Unknown",
-                "asn": "Unknown",
+                "region": "Unknown",
+                "city": "Unknown",
+                "timezone": "Unknown",
+                "currency": "Unknown",
+                "as": "Unknown",
                 "isp": "Unknown",
                 "vpn": False,
                 "last_refreshed": int(time.time())
