@@ -16,6 +16,6 @@ for filename in os.listdir("emojis"):
 @emojis_bp.get("/<lang>")
 async def get_default_emojis(lang: str):
     if lang in DEFAULT_EMOJIS:
-        return DEFAULT_EMOJIS[lang], 200
+        return {"error": False, "groups": DEFAULT_EMOJIS[lang]}, 200
     else:
         abort(404)
