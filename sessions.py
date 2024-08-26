@@ -1,4 +1,4 @@
-from typing import Optional, TypedDict
+from typing import Optional, TypedDict, Literal
 import uuid, time, msgpack
 
 from database import db, rdb
@@ -110,3 +110,33 @@ class AccSession:
             "user": self._db["user"],
             "sid": self._db["_id"]
         }))
+
+
+class EmailTicket:
+    def __init__(
+        self,
+        email_address: str,
+        username: str,
+        action: Literal["verify", "recover", "lockdown"],
+        expires_at: int
+    ):
+        self.email_address = email_address
+        self.username = username
+        self.action = action
+        self.expires_at = expires_at
+
+        if self.expires_at < int(time.time()):
+            raise errors.EmailTicketExpired
+
+    @classmethod
+    def get_by_token(cls: "EmailTicket", token: str) -> "EmailTicket":
+        return cls(*security.extract_token(token, "email"))
+
+    @property
+    def token(self) -> str:
+        return security.create_token("email", [
+            self.email_address,
+            self.username,
+            self.action,
+            self.expires_at
+        ])
