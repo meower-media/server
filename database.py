@@ -61,6 +61,12 @@ except: pass
 try: db.authenticators.create_index([("user", pymongo.ASCENDING)], name="user")
 except: pass
 
+# Create account sessions indexes
+try: db.acc_sessions.create_index([("user", pymongo.ASCENDING)], name="user")
+except: pass
+try: db.acc_sessions.create_index([("refreshed_at", pymongo.ASCENDING)], name="refreshed_at")
+except: pass
+
 # Create data exports indexes
 try: db.data_exports.create_index([("user", pymongo.ASCENDING)], name="user")
 except: pass
@@ -319,12 +325,13 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
 
     # New sessions
     log("[Migrator] Adding new sessions")
-    from sessions import AccSession
     for user in db.usersv0.find({"tokens": {"$exists": True}}, projection={"_id": 1, "tokens": 1}):
         if user["tokens"]:
             for token in user["tokens"]:
                 rdb.set(urlsafe_b64encode(sha256(token.encode()).digest()), user["_id"], ex=1209600)  # 14 days
-        db.usersv0.update_one({"_id": user["_id"]}, {"$set": {"tokens": []}})
+    db.usersv0.update_many({}, {"$unset": {"tokens": ""}})
+    try: db.usersv0.drop_index("tokens")
+    except: pass
 
     db.config.update_one({"_id": "migration"}, {"$set": {"database": CURRENT_DB_VERSION}})
     log(f"[Migrator] Finished Migrating DB to version {CURRENT_DB_VERSION}")

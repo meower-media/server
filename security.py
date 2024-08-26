@@ -382,6 +382,9 @@ def delete_account(username, purge=False):
     # Delete authenticators
     db.authenticators.delete_many({"user": username})
 
+    # Delete sessions
+    db.acc_sessions.delete_many({"user": username})
+
     # Delete uploaded files
     clear_files(username)
 
@@ -497,27 +500,15 @@ def background_tasks_loop():
 
         log("Running background tasks...")
 
-        # Rotate signing key (every 10 days)
-        if db.config.count_documents({"_id": "signing_key", "rotated_at": {"$lt": int(time.time())-864000}}, limit=1):
-            new_priv_bytes, new_pub_bytes = signing_keys.rotate()
-            db.pub_signing_keys.insert_one({
-                "raw": new_pub_bytes,
-                "created_at": int(time.time())
-            })
-            db.config.update_one({"_id": "signing_key"}, {"$set": {
-                "raw": new_priv_bytes,
-                "rotated_at": int(time.time())
-            }}, upsert=True)
-
-        # Delete public signing keys that are older than 90 days
-        db.pub_signing_keys.delete_many({"created_at": {"$lt": int(time.time())-7776000}})
-
         # Delete accounts scheduled for deletion
         for user in db.usersv0.find({"delete_after": {"$lt": int(time.time())}}, projection={"_id": 1}):
             try:
                 delete_account(user["_id"])
             except Exception as e:
                 log(f"Failed to delete account {user['_id']}: {e}")
+
+        # Revoke old sessions (60 days)
+        db.acc_sessions.delete_many({"refreshed_at": {"$lt": int(time.time())-5184000}})
 
         # Purge old netinfo
         db.netinfo.delete_many({"last_refreshed": {"$lt": int(time.time())-2419200}})
