@@ -110,7 +110,7 @@ async def login(data: AuthRequest):
     return {
         "error": False,
         "account": security.get_account(account['_id'], True),
-        "token": security.create_user_token(account['_id'], request.ip, used_token=data.password)
+        "token": security.create_user_token(account['_id'], request.ip)
     }, 200
 
 @auth_bp.post("/register")
