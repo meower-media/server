@@ -240,11 +240,6 @@ def create_user_token(username: str, ip: str, used_token: Optional[str] = None) 
             "content": "Your account was scheduled for deletion but you logged back in. Your account is no longer scheduled for deletion! If you didn't request for your account to be deleted, please change your password immediately."
         }))
     
-    # Return original token if one is specified
-    # This is a temporary fix for people being randomly logged out
-    if used_token:
-    	return used_token
-    
     # Generate new token, revoke used token, and update last seen timestamp
     new_token = secrets.token_urlsafe(TOKEN_BYTES)
     account["tokens"].append(new_token)
