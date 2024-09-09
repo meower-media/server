@@ -228,7 +228,11 @@ async def update_email(data: UpdateEmailBody):
     if not security.check_password_hash(data.password, account["pswd"]):
         security.ratelimit(f"login:u:{request.user}", 5, 60)
         return {"error": True, "type": "invalidCredentials"}, 401
-    
+
+    # Make sure the email address hasn't been used before
+    if db.usersv0.count_documents({"normalized_email_hash": security.get_normalized_email_hash(data.email)}, limit=1):
+        return {"error": True, "type": "emailExists"}, 409
+
     # Ratelimit
     security.ratelimit(f"emailch:{request.user}", 3, 2700)
 
