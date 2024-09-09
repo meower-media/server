@@ -1,0 +1,6 @@
+{% extends "_base.txt" %}
+{% block body %}
+To reset your {{ env['EMAIL_PLATFORM_NAME'] }} account password, please follow this link (this link will expire in 30 minutes): {{ env['EMAIL_PLATFORM_FRONTEND'] }}/emails/recover#{{ token }}
+
+If you didn't request this, please ignore this email, no further action is required.
+{% endblock %}

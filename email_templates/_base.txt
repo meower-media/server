@@ -2,10 +2,4 @@ Hey {{ name }}!
 
 {% block body %}{% endblock %}
 
-{# We include the platform brand in the _lockdown.txt file as well #}
-{# because doing extends seems to cut-off the rest of the file. #}
-{% if include_lockdown %}
-{% extends "_lockdown.txt" %}
-{% else %}
 - {{ env['EMAIL_PLATFORM_BRAND'] }}
-{% endif %}

@@ -5,19 +5,21 @@
             <div style="width: max-content; margin-left: auto; margin-right: auto; padding-bottom: 25px;">
                 <img src="{{ env['EMAIL_PLATFORM_LOGO'] }}" alt="{{ env['EMAIL_PLATFORM_NAME'] }} Logo" />
             </div>
-            <div style="display: flex; flex-direction: column; gap: 25px; background-color: #f2f2f2; padding: 20px; border-radius: 6px; border-top: 7px solid #f29e2e; font-family: Arial, Helvetica, sans-serif; box-shadow: 0 0 5px rgba(0,0,0,.1);">
-                <span style="font-size: 32px; font-weight: 600;">{{ subject }}</span>
-                <span>Hey {{ name }}!</span>
+            <table style="width: 100%; background-color: #f2f2f2; padding: 20px; border-radius: 6px; border-top: 7px solid #f29e2e; font-family: Arial, Helvetica, sans-serif; font-size: 16px; box-shadow: 0 0 5px rgba(0,0,0,.1);">
+                <tr>
+                    <td style="font-size: 32px; font-weight: 600; padding-bottom: 12px;">{{ subject }}</td>
+                </tr>
+                
+                <tr>
+                    <td style="padding-bottom: 12px;">Hey {{ name }}!</td>
+                </tr>
+                
                 {% block body %}{% endblock %}
 
-                {# We include the platform brand in the _lockdown.html file as well #}
-                {# because doing extends seems to cut-off the rest of the file. #}
-                {% if include_lockdown %}
-                    {% extends "_lockdown.html" %}
-                {% else %}
-                    <span>- {{ env['EMAIL_PLATFORM_BRAND'] }}</span>
-                {% endif %}
-            </div>
+                <tr>
+                    <td style="padding-bottom: 12px;">- {{ env['EMAIL_PLATFORM_BRAND'] }}</td>
+                </tr>
+            </table>
         </div>
     </body>
 </html>

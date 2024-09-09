@@ -4,5 +4,7 @@ Your {{ env['EMAIL_PLATFORM_NAME'] }} account has been locked because we believe
 
 You will be required to reset your password using this email address ({{ address }}) before logging back in to {{ env['EMAIL_PLATFORM_NAME'] }}.
 
+If you had multi-factor authentication enabled, it has been temporarily disabled as a precaution, in case it was modified by someone attempting to lock you out of your account.
+
 If you have any questions, please reach out to {{ env['EMAIL_PLATFORM_SUPPORT'] }}.
 {% endblock %}

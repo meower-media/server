@@ -1,11 +1,15 @@
 {% extends "_base.html" %}
 {% block body %}
     <tr>
-        <td style="padding-bottom: 12px;">To confirm adding your email address <a style="color: black;" href="mailto:{{ address }}" target="_blank">({{ address }})</a> to your {{ env['EMAIL_PLATFORM_NAME'] }} account, please click the button below.</td>
+        <td style="padding-bottom: 12px;">
+            To reset your {{ env['EMAIL_PLATFORM_NAME'] }} account password, please click the button below.
+        </td>
     </tr>
 
     <tr>
-        <td style="padding-bottom: 24px;">If this wasn't you, please ignore this email, no further action is required.</td>
+        <td style="padding-bottom: 24px;">
+            If you didn't request this, please ignore this email, no further action is required.
+        </td>
     </tr>
 
     <tr>
@@ -15,11 +19,11 @@
     <tr>
         <td style="padding-bottom: 28px;">
             <a
-                href="{{ env['EMAIL_PLATFORM_FRONTEND'] }}/emails/verify#{{ token }}"
+                href="{{ env['EMAIL_PLATFORM_FRONTEND'] }}/emails/recover#{{ token }}"
                 target="_blank"
                 style="padding: 12px; background-color: #f29e2e; border-radius: 6px; text-decoration: none; color: white; max-width: fit-content;"
             >
-                <b>Verify Email Address</b>
+                <b>Reset Password</b>
             </a>
         </td>
     </tr>

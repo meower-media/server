@@ -1,3 +1,0 @@
-If you didn't request this, please follow this link within the next 24 hours to revert this change and secure your account: {{ env['EMAIL_PLATFORM_FRONTEND'] }}/emails/lockdown#{{ token }}
-
-- {{ env['EMAIL_PLATFORM_BRAND'] }}
