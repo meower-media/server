@@ -29,6 +29,15 @@ class AccSession:
 
     @classmethod
     def create(cls: "AccSession", user: str, ip: str, user_agent: str) -> "AccSession":
+        # restore account if it is pending deletion
+        result = db.usersv0.update_one({"_id": user}, {"$set": {"delete_after": None}})
+        if result.modified_count:
+            rdb.publish("admin", msgpack.packb({
+                "op": "alert_user",
+                "user": user,
+                "content": "Your account was scheduled for deletion but you logged back in. Your account is no longer scheduled for deletion! If you didn't request for your account to be deleted, please change your password immediately."
+            }))
+
         data: AccSessionDB = {
             "_id": str(uuid.uuid4()),
             "user": user,
