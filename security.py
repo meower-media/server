@@ -515,7 +515,7 @@ def get_ip_info(ip_address):
         "vpn": False
     }
 
-
+  
 def log_security_action(action_type: str, user: str, data: dict):
     db.security_log.insert_one({
         "_id": str(uuid.uuid4()),
