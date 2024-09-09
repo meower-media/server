@@ -710,7 +710,7 @@ async def ban_user(username, data: UpdateUserBanBody):
         data.state == "temp_ban" and data.expires > time.time()
     ):
         for client in app.cl.usernames.get(username, []):
-            client.kick()
+            await client.websocket.close()
     else:
         app.cl.send_event("update_config", {"ban": data.model_dump()}, usernames=[username])
 
@@ -1217,7 +1217,7 @@ async def create_netblock(cidr, data: NetblockBody):
     if data.type == 0:
         for client in copy(app.cl.clients):
             if blocked_ips.search_best(client.ip):
-                client.kick()
+                await client.websocket.close()
 
     # Add log
     security.add_audit_log(
@@ -1319,7 +1319,7 @@ async def kick_all_clients():
 
     # Kick all clients
     for client in copy(app.cl.clients):
-        client.kick()
+        await client.websocket.close()
 
     # Add log
     security.add_audit_log("kicked_all", request.user, request.ip, {})
@@ -1341,7 +1341,7 @@ async def enable_repair_mode():
 
     # Kick all clients
     for client in copy(app.cl.clients):
-        client.kick()
+        await client.websocket.close()
 
     # Add log
     security.add_audit_log("enabled_repair_mode", request.user, request.ip, {})
