@@ -532,21 +532,19 @@ async def get_user(username):
             # Get netlogs
             netlogs = [
                 {
-                    "ip": netlog["_id"]["ip"],
-                    "user": netlog["_id"]["user"],
-                    "last_used": netlog["last_used"],
+                    "ip": session._db["ip"],
+                    "user": session.username,
+                    "last_used": session._db["refreshed_at"],
                 }
-                for netlog in db.netlog.find(
-                    {"_id.user": username}, sort=[("last_used", pymongo.DESCENDING)]
-                )
+                for session in AccSession.get_all(username)
             ]
 
             # Get alts
             alts = [
-                netlog["_id"]["user"]
-                for netlog in db.netlog.find(
-                    {"_id.ip": {"$in": [netlog["ip"] for netlog in netlogs]}}
-                )
+                session["user"]
+                for session in db.acc_sessions.find({
+                    "ip": {"$in": [netlog["ip"] for netlog in netlogs]}
+                })
             ]
             if username in alts:
                 alts.remove(username)
@@ -557,7 +555,7 @@ async def get_user(username):
                 payload["recent_ips"] = [
                     {
                         "ip": netlog["ip"],
-                        "netinfo": security.get_netinfo(netlog["ip"]),
+                        "netinfo": security.get_ip_info(netlog["ip"]),
                         "last_used": netlog["last_used"],
                         "blocked": (
                             blocked_ips.search_best(netlog["ip"])
@@ -1096,9 +1094,6 @@ async def get_netinfo(ip):
     if not security.has_permission(request.permissions, security.AdminPermissions.VIEW_IPS):
         abort(403)
 
-    # Get netinfo
-    netinfo = security.get_netinfo(ip)
-
     # Get netblocks
     netblocks = []
     for radix_node in blocked_ips.search_covering(ip):
@@ -1107,16 +1102,17 @@ async def get_netinfo(ip):
         netblocks.append(db.netblock.find_one({"_id": radix_node.prefix}))
 
     # Get netlogs
-    netlogs = [
-        {
-            "ip": netlog["_id"]["ip"],
-            "user": netlog["_id"]["user"],
-            "last_used": netlog["last_used"],
-        }
-        for netlog in db.netlog.find(
-            {"_id.ip": ip}, sort=[("last_used", pymongo.DESCENDING)]
-        )
-    ]
+    hit_users = set()
+    netlogs = []
+    for session in db.acc_sessions.find({"ip": ip}, sort=[("refreshed_at", pymongo.DESCENDING)]):
+        if session["user"] in hit_users:
+            continue
+        netlogs.append({
+            "ip": session["ip"],
+            "user": session["user"],
+            "last_used": session["refreshed_at"]
+        })
+        hit_users.add(session["user"])
 
     # Add log
     security.add_audit_log("got_netinfo", request.user, request.ip, {"ip": ip})
@@ -1124,7 +1120,7 @@ async def get_netinfo(ip):
     # Return netinfo, netblocks, and netlogs
     return {
         "error": False,
-        "netinfo": netinfo,
+        "netinfo": security.get_ip_info(ip),
         "netblocks": netblocks,
         "netlogs": netlogs,
     }, 200

@@ -1,10 +1,11 @@
 from typing import Optional, Any, Literal
 from hashlib import sha256
 from base64 import urlsafe_b64encode, urlsafe_b64decode
+from threading import Thread
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
-import time, requests, os, uuid, secrets, bcrypt, hmac, msgpack, jinja2, smtplib
+import time, requests, os, uuid, secrets, bcrypt, hmac, msgpack, jinja2, smtplib, re
 
 from database import db, rdb, signing_keys
 from utils import log
@@ -17,7 +18,7 @@ This module provides account management and authentication services.
 """
 
 SENSITIVE_ACCOUNT_FIELDS = {
-    "email",
+    "normalized_email_hash",
     "pswd",
     "mfa_recovery_code",
     "delete_after"
@@ -26,6 +27,9 @@ SENSITIVE_ACCOUNT_FIELDS = {
 SENSITIVE_ACCOUNT_FIELDS_DB_PROJECTION = {}
 for key in SENSITIVE_ACCOUNT_FIELDS:
     SENSITIVE_ACCOUNT_FIELDS_DB_PROJECTION[key] = 0
+
+SYSTEM_USER_USERNAMES = {"server", "deleted", "meower", "admin", "username"}
+SYSTEM_USER = {}
 
 DEFAULT_USER_SETTINGS = {
     "unread_inbox": True,
@@ -43,6 +47,8 @@ DEFAULT_USER_SETTINGS = {
 
 
 USERNAME_REGEX = "[a-zA-Z0-9-_]{1,20}"
+# I hate this. But, thanks https://stackoverflow.com/a/201378
+EMAIL_REGEX = r"""(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9]))\.){3}(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9])|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])"""
 TOTP_REGEX = "[0-9]{6}"
 BCRYPT_SALT_ROUNDS = 14
 TOKEN_BYTES = 64
@@ -54,6 +60,14 @@ TOKEN_TYPES = Literal[
 ]
 
 
+EMAIL_SUBJECTS = {
+    "verify": "Verify your email address",
+    "recover": "Reset your password",
+    "security_alert": "Security alert",
+    "locked": "Your account has been locked"
+}
+
+
 email_file_loader = jinja2.FileSystemLoader("email_templates")
 email_env = jinja2.Environment(loader=email_file_loader)
 
@@ -63,6 +77,8 @@ class UserFlags:
     DELETED = 2
     PROTECTED = 4
     POST_RATELIMIT_BYPASS = 8
+    REQUIRE_EMAIL = 16  # not used yet
+    LOCKED = 32
 
 
 class AdminPermissions:
@@ -134,6 +150,9 @@ def account_exists(username, ignore_case=False):
         log(f"Error on account_exists: Expected str for username, got {type(username)}")
         return False
 
+    if (ignore_case or username == username.lower()) and username.lower() in SYSTEM_USER_USERNAMES:
+        return True
+    
     query = ({"lower_username": username.lower()} if ignore_case else {"_id": username})
     return (db.usersv0.count_documents(query, limit=1) > 0)
 
@@ -150,6 +169,7 @@ def create_account(username: str, password: str, ip: str):
         "avatar_color": "000000",
         "quote": "",
         "email": "",
+        "normalized_email_hash": "",
         "pswd": hash_password(password),
         "mfa_recovery_code": secrets.token_hex(5),
         "flags": 0,
@@ -173,7 +193,7 @@ def create_account(username: str, password: str, ip: str):
     }))
 
     # Automatically report if VPN is detected
-    if get_netinfo(ip)["vpn"]:
+    if get_ip_info(ip)["vpn"]:
         db.reports.insert_one({
             "_id": str(uuid.uuid4()),
             "type": "user",
@@ -183,7 +203,7 @@ def create_account(username: str, password: str, ip: str):
             "reports": [{
                 "user": "Server",
                 "ip": ip,
-                "reason": "User registered while using a VPN.",
+                "reason": f"User registered while using a VPN ({ip}).",
                 "comment": "",
                 "time": int(time())
             }]
@@ -195,6 +215,24 @@ def get_account(username, include_config=False):
     if not isinstance(username, str):
         log(f"Error on get_account: Expected str for username, got {type(username)}")
         return None
+
+    # System users
+    if username.lower() in SYSTEM_USER_USERNAMES:
+        return {
+            "_id": username.title(),
+            "lower_username": username.lower(),
+            "uuid": None,
+            "created": None,
+            "pfp_data": None,
+            "avatar": None,
+            "avatar_color": None,
+            "quote": None,
+            "email": None,
+            "flags": 1,
+            "permissions": None,
+            "ban": None,
+            "last_seen": None
+        }
 
     # Get account
     account = db.usersv0.find_one({"lower_username": username.lower()}, projection=SENSITIVE_ACCOUNT_FIELDS_DB_PROJECTION)
@@ -226,7 +264,8 @@ def get_account(username, include_config=False):
             del user_settings["_id"]
             account.update(user_settings)
     else:
-        # Remove ban if not including config
+        # Remove email and ban if not including config
+        del account["email"]
         del account["ban"]
 
     return account
@@ -370,6 +409,8 @@ def delete_account(username, purge=False):
         "avatar": None,
         "avatar_color": None,
         "quote": None,
+        "email": None,
+        "normalized_email_hash": None,
         "pswd": None,
         "mfa_recovery_code": None,
         "flags": account["flags"],
@@ -379,20 +420,23 @@ def delete_account(username, purge=False):
         "delete_after": None
     }})
 
+    # Delete pending email
+    rdb.delete(f"pe{username}")
+
     # Delete authenticators
     db.authenticators.delete_many({"user": username})
 
     # Delete sessions
     db.acc_sessions.delete_many({"user": username})
 
+    # Delete security logs
+    db.security_log.delete_many({"user": username})
+
     # Delete uploaded files
     clear_files(username)
 
     # Delete user settings
     db.user_settings.delete_one({"_id": username})
-
-    # Delete netlogs
-    db.netlog.delete_many({"_id.user": username})
 
     # Remove from reports
     db.reports.update_many({"reports.user": username}, {"$pull": {
@@ -431,62 +475,100 @@ def delete_account(username, purge=False):
         db.usersv0.delete_one({"_id": username})
 
 
-def get_netinfo(ip_address):
-    """
-    Get IP info from IP-API.
-
-    Returns:
-    ```json
-    {
-        "_id": str,
-        "country_code": str,
-        "country_name": str,
-        "asn": int,
-        "isp": str,
-        "vpn": bool
-    }
-    ```
-    """
-
+def get_ip_info(ip_address):
     # Get IP hash
-    ip_hash = sha256(ip_address.encode()).hexdigest()
+    ip_hash = urlsafe_b64encode(sha256(ip_address.encode()).digest()).decode()
 
-    # Get from database or IP-API if not cached
-    netinfo = db.netinfo.find_one({"_id": ip_hash})
-    if not netinfo:
-        resp = requests.get(f"http://ip-api.com/json/{ip_address}?fields=25349915")
-        if resp.ok:
-            resp_json = resp.json()
-            netinfo = {
-                "_id": ip_hash,
-                "country_code": resp_json["countryCode"],
-                "country_name": resp_json["country"],
-                "region": resp_json["regionName"],
-                "city": resp_json["city"],
-                "timezone": resp_json["timezone"],
-                "currency": resp_json["currency"],
-                "as": resp_json["as"],
-                "isp": resp_json["isp"],
-                "vpn": (resp_json.get("hosting") or resp_json.get("proxy")),
-                "last_refreshed": int(time.time())
-            }
-            db.netinfo.update_one({"_id": ip_hash}, {"$set": netinfo}, upsert=True)
-        else:
-            netinfo = {
-                "_id": ip_hash,
-                "country_code": "Unknown",
-                "country_name": "Unknown",
-                "region": "Unknown",
-                "city": "Unknown",
-                "timezone": "Unknown",
-                "currency": "Unknown",
-                "as": "Unknown",
-                "isp": "Unknown",
-                "vpn": False,
-                "last_refreshed": int(time.time())
-            }
+    # Get from cache
+    ip_info = rdb.get(f"ip{ip_hash}")
+    if ip_info:
+        return msgpack.unpackb(ip_info)
+    
+    # Get from IP-API
+    resp = requests.get(f"http://ip-api.com/json/{ip_address}?fields=25349915")
+    if resp.ok and resp.json()["status"] == "success":
+        resp_json = resp.json()
+        ip_info = {
+            "country_code": resp_json["countryCode"],
+            "country_name": resp_json["country"],
+            "region": resp_json["regionName"],
+            "city": resp_json["city"],
+            "timezone": resp_json["timezone"],
+            "currency": resp_json["currency"],
+            "as": resp_json["as"],
+            "isp": resp_json["isp"],
+            "vpn": (resp_json.get("hosting") or resp_json.get("proxy"))
+        }
+        rdb.set(f"ip{ip_hash}", msgpack.packb(ip_info), ex=int(time.time())+(86400*21))  # cache for 3 weeks
+        return ip_info
+    
+    # Fallback
+    return {
+        "country_code": "Unknown",
+        "country_name": "Unknown",
+        "region": "Unknown",
+        "city": "Unknown",
+        "timezone": "Unknown",
+        "currency": "Unknown",
+        "as": "Unknown",
+        "isp": "Unknown",
+        "vpn": False
+    }
 
-    return netinfo
+
+def log_security_action(action_type: str, user: str, data: dict):
+    db.security_log.insert_one({
+        "_id": str(uuid.uuid4()),
+        "type": action_type,
+        "user": user,
+        "time": int(time.time()),
+        "data": data
+    })
+
+    if action_type in {
+        "email_changed",
+        "password_changed",
+        "mfa_added",
+        "mfa_removed",
+        "mfa_recovery_reset",
+        "mfa_recovery_used",
+        "locked"
+    }:
+        tmpl_name = "locked" if action_type == "locked" else "security_alert"
+        platform_name = os.environ["EMAIL_PLATFORM_NAME"]
+
+        account = db.usersv0.find_one({"_id": user}, projection={"_id": 1, "email": 1})
+
+        txt_tmpl, html_tmpl = render_email_tmpl(tmpl_name, account["_id"], account.get("email", ""), {
+            "msg": {
+                "email_changed": f"The email address on your {platform_name} account has been changed.",
+                "password_changed": f"The password on your {platform_name} account has been changed.",
+                "mfa_added": f"A multi-factor authenticator has been added to your {platform_name} account.",
+                "mfa_removed": f"A multi-factor authenticator has been removed from your {platform_name} account.",
+                "mfa_recovery_reset": f"The multi-factor authentication recovery code on your {platform_name} account has been reset.",
+                "mfa_recovery_used": f"Your multi-factor authentication recovery code has been used to reset multi-factor authentication on your {platform_name} account."
+            }[action_type] if action_type != "locked" else None,
+            "token": create_token("email", [  # this doesn't use EmailTicket in sessions.py because it'd be a recursive import
+                account["email"],
+                account["_id"],
+                "lockdown",
+                int(time.time())+86400
+            ]) if account.get("email") and action_type != "locked" else None
+        })
+    
+        # Email
+        if account.get('email'):
+            Thread(
+                target=send_email,
+                args=[EMAIL_SUBJECTS[tmpl_name], account["_id"], account["email"], txt_tmpl, html_tmpl]
+            ).start()
+
+        # Inbox
+        rdb.publish("admin", msgpack.packb({
+            "op": "alert_user",
+            "user": account["_id"],
+            "content": txt_tmpl
+        }))
 
 
 def add_audit_log(action_type, mod_username, mod_ip, data):
@@ -513,14 +595,8 @@ def background_tasks_loop():
             except Exception as e:
                 log(f"Failed to delete account {user['_id']}: {e}")
 
-        # Revoke old sessions (60 days)
-        db.acc_sessions.delete_many({"refreshed_at": {"$lt": int(time.time())-5184000}})
-
-        # Purge old netinfo
-        db.netinfo.delete_many({"last_refreshed": {"$lt": int(time.time())-2419200}})
-
-        # Purge old netlogs
-        db.netlog.delete_many({"last_used": {"$lt": int(time.time())-2419200}})
+        # Revoke inactive sessions (3 weeks of inactivity)
+        db.acc_sessions.delete_many({"refreshed_at": {"$lt": int(time.time())-(86400*21)}})
 
         # Purge old deleted posts
         db.posts.delete_many({"deleted_at": {"$lt": int(time.time())-2419200}})
@@ -528,7 +604,8 @@ def background_tasks_loop():
         # Purge old post revisions
         db.post_revisions.delete_many({"time": {"$lt": int(time.time())-2419200}})
 
-        # Purge old admin audit logs
+        """ we should probably not be getting rid of audit logs...
+        # Purge old "get" admin audit logs
         db.audit_log.delete_many({
             "time": {"$lt": int(time.time())-2419200},
             "type": {"$in": [
@@ -545,6 +622,7 @@ def background_tasks_loop():
                 "got_announcements"
             ]}
         })
+        """
 
         log("Finished background tasks!")
 
@@ -557,39 +635,41 @@ def check_password_hash(password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed_password.encode())
 
 
-def send_email(template: str, to_name: str, to_address: str, token: Optional[str] = ""):
+def get_normalized_email_hash(address: str) -> str:
+    """
+    Get a hash of an email address with aliases and dots stripped.
+    This is to allow using address aliases, but to still detect ban evasion.
+    Also, Gmail ignores dots in addresses. Thanks Google.
+    """
+
+    identifier, domain = address.split("@")
+    identifier = re.split(r'\+|\%', identifier)[0]
+    identifier = identifier.replace(".", "")
+
+    return urlsafe_b64encode(sha256(f"{identifier}@{domain}".encode()).digest()).decode()
+
+
+def render_email_tmpl(template: str, to_name: str, to_address: str, data: Optional[dict[str, str]] = {}) -> tuple[str, str]:
+    data.update({
+        "subject": EMAIL_SUBJECTS[template],
+        "name": to_name,
+        "address": to_address,
+        "env": os.environ
+    })
+    
     txt_tmpl = email_env.get_template(f"{template}.txt")
     html_tmpl = email_env.get_template(f"{template}.html")
 
+    return txt_tmpl.render(data), html_tmpl.render(data)
+
+
+def send_email(subject: str, to_name: str, to_address: str, txt_tmpl: str, html_tmpl: str):
     message = MIMEMultipart("alternative")
     message["From"] = formataddr((os.environ["EMAIL_FROM_NAME"], os.environ["EMAIL_FROM_ADDRESS"]))
     message["To"] = formataddr((to_name, to_address))
-
-    match template:
-        case "verify":
-            message["Subject"] = "Verify your email address"
-        case "recovery":
-            message["Subject"] = "Reset your password"
-        case "email_changed":
-            message["Subject"] = "Your email has been changed"
-        case "password_changed":
-            message["Subject"] = "Your password has been changed"
-        case "mfa_added":
-            message["Subject"] = "Multi-factor authenticator added"
-        case "mfa_removed":
-            message["Subject"] = "Multi-factor authenticator removed"
-        case "locked":
-            message["Subject"] = "Your account has been locked"
-
-    data = {
-        "subject": message["Subject"],
-        "name": to_name,
-        "address": to_address,
-        "token": token,
-        "env": os.environ
-    }
-    message.attach(MIMEText(txt_tmpl.render(data), "plain"))
-    message.attach(MIMEText(html_tmpl.render(data), "html"))
+    message["Subject"] = subject
+    message.attach(MIMEText(txt_tmpl, "plain"))
+    message.attach(MIMEText(html_tmpl, "html"))
 
     with smtplib.SMTP(os.environ["EMAIL_SMTP_HOST"], int(os.environ["EMAIL_SMTP_PORT"])) as server:
         if os.getenv("EMAIL_SMTP_TLS"):

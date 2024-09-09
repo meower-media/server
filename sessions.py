@@ -1,5 +1,5 @@
 from typing import Optional, TypedDict, Literal
-import uuid, time, msgpack
+import uuid, time, msgpack, pymongo
 
 from database import db, rdb
 import security, errors
@@ -38,40 +38,65 @@ class AccSession:
             "refreshed_at": int(time.time())
         }
         db.acc_sessions.insert_one(data)
+
+        security.log_security_action("session_create", user, {
+            "session_id": data["_id"],
+            "ip": ip,
+            "user_agent": user_agent
+        })
+
         return cls(data)
 
     @classmethod
     def get_by_id(cls: "AccSession", session_id: str) -> "AccSession":
         data: Optional[AccSessionDB] = db.acc_sessions.find_one({"_id": session_id})
         if not data:
-            raise errors.SessionNotFound
+            raise errors.AccSessionNotFound
 
         return cls(data)
 
     @classmethod
     def get_by_token(cls: "AccSession", token: str) -> "AccSession":
-        session_id, _ = security.extract_token(token, "acc")
+        session_id, _, expires_at = security.extract_token(token, "acc")
+        if expires_at < int(time.time()):
+            raise errors.AccSessionTokenExpired
         return cls.get_by_id(session_id)
 
     @classmethod
     def get_username_by_token(cls: "AccSession", token: str) -> str:
-        session_id, _ = security.extract_token(token, "acc")
-        username = rdb.get(f"u{session_id}")
+        session_id, _, expires_at = security.extract_token(token, "acc")
+        if expires_at < int(time.time()):
+            raise errors.AccSessionTokenExpired
+        username = rdb.get(session_id)
         if username:
             return username.decode()
         else:
             session = cls.get_by_id(session_id)
             username = session.username
-            rdb.set(f"u{session_id}", username, ex=300)
+            rdb.set(session_id, username, ex=300)
             return username
 
     @classmethod
     def get_all(cls: "AccSession", user: str) -> list["AccSession"]:
-        return [cls(data) for data in db.acc_sessions.find({"user": user})]
+        return [
+            cls(data)
+            for data in db.acc_sessions.find(
+                {"user": user},
+                sort=[("refreshed_at", pymongo.DESCENDING)]
+            )
+        ]
+
+    @property
+    def id(self) -> str:
+        return self._db["_id"]
 
     @property
     def token(self) -> str:
-        return security.create_token("acc", [self._db["_id"], self._db["refreshed_at"]])
+        return security.create_token("acc", [
+            self._db["_id"],
+            self._db["refreshed_at"],
+            self._db["refreshed_at"]+(86400*21)  # expire token after 3 weeks
+        ])
 
     @property
     def username(self):
@@ -91,7 +116,7 @@ class AccSession:
     def refresh(self, ip: str, user_agent: str, check_token: Optional[str] = None):
         if check_token:
             # token re-use prevention
-            _, refreshed_at = security.extract_token(check_token, "acc")
+            _, refreshed_at, _ = security.extract_token(check_token, "acc")
             if refreshed_at != self._db["refreshed_at"]:
                 return self.revoke()
 
@@ -102,6 +127,12 @@ class AccSession:
         })
         db.acc_sessions.update_one({"_id": self._db["_id"]}, {"$set": self._db})
 
+        security.log_security_action("session_refresh", self._db["user"], {
+            "session_id": self._db["_id"],
+            "ip": ip,
+            "user_agent": user_agent
+        })
+
     def revoke(self):
         db.acc_sessions.delete_one({"_id": self._db["_id"]})
         rdb.delete(f"u{self._db['_id']}")
@@ -110,6 +141,10 @@ class AccSession:
             "user": self._db["user"],
             "sid": self._db["_id"]
         }))
+
+        security.log_security_action("session_revoke", self._db["user"], {
+            "session_id": self._db["_id"]
+        })
 
 
 class EmailTicket:

@@ -51,7 +51,8 @@ class CloudlinkServer:
             #"Kicked": "E:020 | Kicked",  -- deprecated
             #"ChatFull": "E:023 | Chat full",  -- deprecated
             #"LoggedOut": "I:024 | Logged out",  -- deprecated
-            "Deleted": "E:025 | Deleted"
+            "Deleted": "E:025 | Deleted",
+            "AccountLocked": "E:026 | Account Locked"
         }
         self.commands: dict[str, function] = {
             # Core commands
@@ -337,6 +338,8 @@ class CloudlinkClient:
                     self.send_statuscode("2FARequired", listener)
                 case "accountDeleted":
                     self.send_statuscode("Deleted", listener)
+                case "accountLocked":
+                    self.send_statuscode("AccountLocked", listener)
                 case "accountBanned":
                     self.send_statuscode("Banned", listener)
                 case "tooManyRequests":

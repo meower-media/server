@@ -49,13 +49,11 @@ async def internal_auth():
 
 
 @app.before_request
-async def check_ip():
+async def get_ip():
     if hasattr(request, "internal_ip") and request.internal_ip:  # internal IP forwarding
         request.ip = request.internal_ip
     else:
         request.ip = (request.headers.get("Cf-Connecting-Ip", request.remote_addr))
-    if request.path != "/status" and blocked_ips.search_best(request.ip):
-        return {"error": True, "type": "ipBlocked"}, 403
 
 
 @app.before_request
