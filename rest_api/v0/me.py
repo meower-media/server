@@ -51,8 +51,11 @@ class UpdateConfigBody(BaseModel):
 
 class UpdateEmailBody(BaseModel):
     password: str = Field(min_length=1, max_length=255)  # change in API v1
-    email: Optional[str] = Field(default=None, max_length=255, pattern=security.EMAIL_REGEX)
+    email: str = Field(max_length=255, pattern=security.EMAIL_REGEX)
     captcha: Optional[str] = Field(default="", max_length=2000)
+
+class RemoveEmailBody(BaseModel):
+    password: str = Field(min_length=1, max_length=255)  # change in API v1
 
 class ChangePasswordBody(BaseModel):
     old: str = Field(min_length=1, max_length=255)  # change in API v1
@@ -256,6 +259,41 @@ async def update_email(data: UpdateEmailBody):
         target=security.send_email,
         args=[security.EMAIL_SUBJECTS["verify"], request.user, data.email, txt_tmpl, html_tmpl]
     ).start()
+
+    return {"error": False}, 200
+
+
+@me_bp.delete("/email")
+@validate_request(RemoveEmailBody)
+async def remove_email(data: RemoveEmailBody):
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Check ratelimits
+    if security.ratelimited(f"login:u:{request.user}"):
+        abort(429)
+
+    # Check password
+    account = db.usersv0.find_one({"_id": request.user}, projection={"email": 1, "pswd": 1})
+    if not security.check_password_hash(data.password, account["pswd"]):
+        security.ratelimit(f"login:u:{request.user}", 5, 60)
+        return {"error": True, "type": "invalidCredentials"}, 401
+
+    # Log action
+    security.log_security_action("email_changed", account["_id"], {
+        "old_email_hash": security.get_normalized_email_hash(account["email"]) if account.get("email") else None,
+        "new_email_hash": None,
+        "ip": request.ip,
+        "user_agent": request.headers.get("User-Agent")
+    })
+
+    # Update user's email address
+    db.usersv0.update_one({"_id": account["_id"]}, {"$set": {
+        "email": "",
+        "normalized_email_hash": ""
+    }})
+    app.cl.send_event("update_config", {"email": ""}, usernames=[account["_id"]])
 
     return {"error": False}, 200
 
