@@ -51,7 +51,8 @@ class CloudlinkServer:
             #"Kicked": "E:020 | Kicked",  -- deprecated
             #"ChatFull": "E:023 | Chat full",  -- deprecated
             #"LoggedOut": "I:024 | Logged out",  -- deprecated
-            "Deleted": "E:025 | Deleted"
+            "Deleted": "E:025 | Deleted",
+            "AccountLocked": "E:026 | Account Locked"
         }
         self.commands: dict[str, function] = {
             # Core commands
@@ -226,7 +227,8 @@ class CloudlinkClient:
         self.server = server
         self.websocket = websocket
 
-        # Set username, protocol version, IP, and trusted status
+        # Set account session ID, username, protocol version, IP, and trusted status
+        self.acc_session_id: Optional[str] = None
         self.username: Optional[str] = None
         try:
             self.proto_version: int = int(self.req_params.get("v")[0])
@@ -255,7 +257,7 @@ class CloudlinkClient:
         else:
             return self.websocket.remote_address
 
-    def authenticate(self, account: dict[str, Any], token: str, listener: Optional[str] = None):
+    def authenticate(self, acc_session: dict[str, Any], token: str, account: dict[str, Any], listener: Optional[str] = None):
         if self.username:
             self.logout()
 
@@ -265,6 +267,7 @@ class CloudlinkClient:
             return self.send_statuscode("Banned", listener)
 
         # Authenticate
+        self.acc_session_id = acc_session["_id"]
         self.username = account["_id"]
         if self.username in self.server.usernames:
             self.server.usernames[self.username].append(self)
@@ -275,6 +278,7 @@ class CloudlinkClient:
         # Send auth payload
         self.send("auth", {
             "username": self.username,
+            "session": acc_session,
             "token": token,
             "account": account,
             "relationships": self.proxy_api_request("/me/relationships", "get")["autoget"],
@@ -307,6 +311,7 @@ class CloudlinkClient:
         headers.update({
             "X-Internal-Token": os.environ["INTERNAL_API_TOKEN"],
             "X-Internal-Ip": self.ip,
+            "X-Internal-UA": self.websocket.request_headers.get("User-Agent"),
         })
         if self.username:
             headers["X-Internal-Username"] = self.username
@@ -321,8 +326,6 @@ class CloudlinkClient:
             return resp
         else:
             match resp["type"]:
-                case "repairModeEnabled":
-                    self.kick()
                 case "ipBlocked"|"registrationBlocked":
                     self.send_statuscode("Blocked", listener)
                 case "badRequest":
@@ -335,6 +338,8 @@ class CloudlinkClient:
                     self.send_statuscode("2FARequired", listener)
                 case "accountDeleted":
                     self.send_statuscode("Deleted", listener)
+                case "accountLocked":
+                    self.send_statuscode("AccountLocked", listener)
                 case "accountBanned":
                     self.send_statuscode("Banned", listener)
                 case "tooManyRequests":
@@ -353,10 +358,8 @@ class CloudlinkClient:
     def send_statuscode(self, statuscode: str, listener: Optional[str] = None):
         return self.send("statuscode", self.server.statuscodes[statuscode], listener=listener)
 
-    def kick(self):
-        async def _kick():
-            await self.websocket.close()
-        asyncio.create_task(_kick())
+    async def kick(self):
+        await self.websocket.close()
 
 class CloudlinkCommands:
     @staticmethod
@@ -389,7 +392,7 @@ class CloudlinkCommands:
         else:
             if resp and not resp["error"]:
                 # Authenticate client
-                client.authenticate(resp["account"], resp["token"], listener=listener)
+                client.authenticate(resp["session"], resp["token"], resp["account"], listener=listener)
                 
                 # Tell the client it is authenticated
                 client.send_statuscode("OK", listener)

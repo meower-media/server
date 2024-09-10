@@ -1,0 +1,6 @@
+{% extends "_base.txt" %}
+{% block body %}
+To confirm adding your email address ({{ address }}) to your {{ env['EMAIL_PLATFORM_NAME'] }} account, please follow this link (this link will expire in 30 minutes): {{ env['EMAIL_PLATFORM_FRONTEND'] }}/emails/verify#{{ token }}
+
+If this wasn't you, please ignore this email, no further action is required.
+{% endblock %}

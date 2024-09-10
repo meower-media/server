@@ -1,12 +1,16 @@
 import pymongo
+import pymongo.errors
 import redis
 import os
 import secrets
+import time
 from radix import Radix
+from hashlib import sha256
+from base64 import urlsafe_b64encode
 
 from utils import log
 
-CURRENT_DB_VERSION = 9
+CURRENT_DB_VERSION = 10
 
 # Create Redis connection
 log("Connecting to Redis...")
@@ -41,7 +45,9 @@ for collection_name in []:
 # Create usersv0 indexes
 try: db.usersv0.create_index([("lower_username", pymongo.ASCENDING)], name="lower_username", unique=True)
 except: pass
-try: db.usersv0.create_index([("tokens", pymongo.ASCENDING)], name="tokens", unique=True)
+try: db.usersv0.create_index([("email", pymongo.ASCENDING)], name="email", unique=True)
+except: pass
+try: db.usersv0.create_index([("normalized_email_hash", pymongo.ASCENDING)], name="normalized_email_hash", unique=True)
 except: pass
 try: db.usersv0.create_index([("created", pymongo.DESCENDING)], name="recent_users")
 except: pass
@@ -60,24 +66,24 @@ except: pass
 try: db.authenticators.create_index([("user", pymongo.ASCENDING)], name="user")
 except: pass
 
+# Create account sessions indexes
+try: db.acc_sessions.create_index([("user", pymongo.ASCENDING)], name="user")
+except: pass
+try: db.acc_sessions.create_index([("ip", pymongo.ASCENDING)], name="ip")
+except: pass
+try: db.acc_sessions.create_index([("refreshed_at", pymongo.ASCENDING)], name="refreshed_at")
+except: pass
+
+# Create security log indexes
+try: db.security_log.create_index([("user", pymongo.ASCENDING)], name="user")
+except: pass
+
 # Create data exports indexes
 try: db.data_exports.create_index([("user", pymongo.ASCENDING)], name="user")
 except: pass
 
 # Create relationships indexes
 try: db.relationships.create_index([("_id.from", pymongo.ASCENDING)], name="from")
-except: pass
-
-# Create netinfo indexes
-try: db.netinfo.create_index([("last_refreshed", pymongo.ASCENDING)], name="last_refreshed")
-except: pass
-
-# Create netlog indexes
-try: db.netlog.create_index([("_id.ip", pymongo.ASCENDING)], name="ip")
-except: pass
-try: db.netlog.create_index([("_id.user", pymongo.ASCENDING)], name="user")
-except: pass
-try: db.netlog.create_index([("last_used", pymongo.ASCENDING)], name="last_used")
 except: pass
 
 # Create posts indexes
@@ -179,39 +185,30 @@ except: pass
 
 
 # Create default database items
-for username in ["Server", "Deleted", "Meower", "Admin", "username"]:
-    try:
-        db.usersv0.insert_one({
-            "_id": username,
-            "lower_username": username.lower(),
-            "uuid": None,
-            "created": None,
-            "pfp_data": None,
-            "avatar": None,
-            "avatar_color": None,
-            "quote": None,
-            "pswd": None,
-            "tokens": None,
-            "flags": 1,
-            "permissions": None,
-            "ban": None,
-            "last_seen": None,
-            "delete_after": None
-        })
-    except: pass
 try:
     db.config.insert_one({
         "_id": "migration",
         "database": 1
     })
-except: pass
+except pymongo.errors.DuplicateKeyError: pass
 try:
     db.config.insert_one({
         "_id": "status",
         "repair_mode": False,
         "registration": True
     })
-except: pass
+except pymongo.errors.DuplicateKeyError: pass
+try:
+    db.config.insert_one({
+        "_id": "signing_keys",
+        "acc": secrets.token_bytes(64),
+        "email": secrets.token_bytes(64)
+    })
+except pymongo.errors.DuplicateKeyError: pass
+
+
+# Load signing keys
+signing_keys = db.config.find_one({"_id": "signing_keys"})
 
 
 # Load netblocks
@@ -305,6 +302,39 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
         db.usersv0.update_one({"_id": user["_id"]}, {"$set": {
             "mfa_recovery_code": user["mfa_recovery_code"][:10]
         }})
+
+    # Delete system users from DB
+    log("[Migrator] Deleting system users from DB")
+    db.usersv0.delete_many({"_id": {"$in": ["Server", "Deleted", "Meower", "Admin", "username"]}})
+
+    # Emails
+    log("[Migrator] Adding email addresses")
+    db.usersv0.update_many({"email": {"$exists": False}}, {"$set": {
+        "email": "",
+        "normalized_email_hash": ""
+    }})
+
+    # New sessions
+    log("[Migrator] Adding new sessions")
+    for user in db.usersv0.find({
+        "tokens": {"$exists": True},
+        "last_seen": {"$ne": None, "$gt": int(time.time())-(86400*21)},
+    }, projection={"_id": 1, "tokens": 1}):
+        if user["tokens"]:
+            for token in user["tokens"]:
+                rdb.set(
+                    urlsafe_b64encode(sha256(token.encode()).digest()),
+                    user["_id"],
+                    ex=86400*21  # 21 days
+                )
+    db.usersv0.update_many({}, {"$unset": {"tokens": ""}})
+    try: db.usersv0.drop_index("tokens")
+    except: pass
+
+    # No more netinfo and netlog
+    log("[Migrator] Removing netinfo and netlog")
+    db.netinfo.drop()
+    db.netlog.drop()
 
     db.config.update_one({"_id": "migration"}, {"$set": {"database": CURRENT_DB_VERSION}})
     log(f"[Migrator] Finished Migrating DB to version {CURRENT_DB_VERSION}")

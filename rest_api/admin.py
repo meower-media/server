@@ -8,6 +8,7 @@ import time, pymongo
 
 import security
 from database import db, get_total_pages, blocked_ips, registration_blocked_ips
+from sessions import AccSession
 
 
 admin_bp = Blueprint("admin_bp", __name__, url_prefix="/admin")
@@ -531,21 +532,19 @@ async def get_user(username):
             # Get netlogs
             netlogs = [
                 {
-                    "ip": netlog["_id"]["ip"],
-                    "user": netlog["_id"]["user"],
-                    "last_used": netlog["last_used"],
+                    "ip": session._db["ip"],
+                    "user": session.username,
+                    "last_used": session._db["refreshed_at"],
                 }
-                for netlog in db.netlog.find(
-                    {"_id.user": username}, sort=[("last_used", pymongo.DESCENDING)]
-                )
+                for session in AccSession.get_all(username)
             ]
 
             # Get alts
             alts = [
-                netlog["_id"]["user"]
-                for netlog in db.netlog.find(
-                    {"_id.ip": {"$in": [netlog["ip"] for netlog in netlogs]}}
-                )
+                session["user"]
+                for session in db.acc_sessions.find({
+                    "ip": {"$in": [netlog["ip"] for netlog in netlogs]}
+                })
             ]
             if username in alts:
                 alts.remove(username)
@@ -556,7 +555,7 @@ async def get_user(username):
                 payload["recent_ips"] = [
                     {
                         "ip": netlog["ip"],
-                        "netinfo": security.get_netinfo(netlog["ip"]),
+                        "netinfo": security.get_ip_info(netlog["ip"]),
                         "last_used": netlog["last_used"],
                         "blocked": (
                             blocked_ips.search_best(netlog["ip"])
@@ -651,17 +650,17 @@ async def delete_user(username, query_args: DeleteUserQueryArgs):
             {"_id": username}, {"$set": {"delete_after": None}}
         )
     elif deletion_mode in ["schedule", "immediate", "purge"]:
-        db.usersv0.update_one(
-            {"_id": username},
-            {
-                "$set": {
-                    "tokens": [],
-                    "delete_after": int(time.time()) + (604800 if deletion_mode == "schedule" else 0),
-                }
-            },
-        )
-        for client in app.cl.usernames.get(username, []):
-            client.kick()
+        if deletion_mode == "schedule":
+            db.usersv0.update_one(
+                {"_id": username},
+                {
+                    "$set": {
+                        "delete_after": int(time.time()) + (604800 if deletion_mode == "schedule" else 0),
+                    }
+                },
+            )
+        for session in AccSession.get_all(username):
+            session.revoke()
         if deletion_mode in ["immediate", "purge"]:
             security.delete_account(username, purge=(deletion_mode == "purge"))
     else:
@@ -709,7 +708,7 @@ async def ban_user(username, data: UpdateUserBanBody):
         data.state == "temp_ban" and data.expires > time.time()
     ):
         for client in app.cl.usernames.get(username, []):
-            client.kick()
+            await client.websocket.close()
     else:
         app.cl.send_event("update_config", {"ban": data.model_dump()}, usernames=[username])
 
@@ -828,12 +827,9 @@ async def kick_user(username):
     if not security.has_permission(request.permissions, security.AdminPermissions.KICK_USERS):
         abort(401)
 
-    # Revoke tokens
-    db.usersv0.update_one({"_id": username}, {"$set": {"tokens": []}})
-
-    # Kick clients
-    for client in app.cl.usernames.get(username, []):
-        client.kick()
+    # Revoke sessions
+    for session in AccSession.get_all(username):
+        session.revoke()
 
     # Add log
     security.add_audit_log(
@@ -1098,9 +1094,6 @@ async def get_netinfo(ip):
     if not security.has_permission(request.permissions, security.AdminPermissions.VIEW_IPS):
         abort(403)
 
-    # Get netinfo
-    netinfo = security.get_netinfo(ip)
-
     # Get netblocks
     netblocks = []
     for radix_node in blocked_ips.search_covering(ip):
@@ -1109,16 +1102,17 @@ async def get_netinfo(ip):
         netblocks.append(db.netblock.find_one({"_id": radix_node.prefix}))
 
     # Get netlogs
-    netlogs = [
-        {
-            "ip": netlog["_id"]["ip"],
-            "user": netlog["_id"]["user"],
-            "last_used": netlog["last_used"],
-        }
-        for netlog in db.netlog.find(
-            {"_id.ip": ip}, sort=[("last_used", pymongo.DESCENDING)]
-        )
-    ]
+    hit_users = set()
+    netlogs = []
+    for session in db.acc_sessions.find({"ip": ip}, sort=[("refreshed_at", pymongo.DESCENDING)]):
+        if session["user"] in hit_users:
+            continue
+        netlogs.append({
+            "ip": session["ip"],
+            "user": session["user"],
+            "last_used": session["refreshed_at"]
+        })
+        hit_users.add(session["user"])
 
     # Add log
     security.add_audit_log("got_netinfo", request.user, request.ip, {"ip": ip})
@@ -1126,7 +1120,7 @@ async def get_netinfo(ip):
     # Return netinfo, netblocks, and netlogs
     return {
         "error": False,
-        "netinfo": netinfo,
+        "netinfo": security.get_ip_info(ip),
         "netblocks": netblocks,
         "netlogs": netlogs,
     }, 200
@@ -1219,7 +1213,7 @@ async def create_netblock(cidr, data: NetblockBody):
     if data.type == 0:
         for client in copy(app.cl.clients):
             if blocked_ips.search_best(client.ip):
-                client.kick()
+                await client.websocket.close()
 
     # Add log
     security.add_audit_log(
@@ -1321,7 +1315,7 @@ async def kick_all_clients():
 
     # Kick all clients
     for client in copy(app.cl.clients):
-        client.kick()
+        await client.websocket.close()
 
     # Add log
     security.add_audit_log("kicked_all", request.user, request.ip, {})
@@ -1343,7 +1337,7 @@ async def enable_repair_mode():
 
     # Kick all clients
     for client in copy(app.cl.clients):
-        client.kick()
+        await client.websocket.close()
 
     # Add log
     security.add_audit_log("enabled_repair_mode", request.user, request.ip, {})

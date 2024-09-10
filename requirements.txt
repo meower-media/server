@@ -17,3 +17,4 @@ pyotp
 emoji
 websockets
 qrcode
+sentry-sdk

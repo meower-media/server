@@ -1,0 +1,30 @@
+{% extends "_base.html" %}
+{% block body %}
+    <tr>
+        <td style="padding-bottom: 12px;">
+            To reset your {{ env['EMAIL_PLATFORM_NAME'] }} account password, please click the button below.
+        </td>
+    </tr>
+
+    <tr>
+        <td style="padding-bottom: 24px;">
+            If you didn't request this, please ignore this email, no further action is required.
+        </td>
+    </tr>
+
+    <tr>
+        <td style="padding-bottom: 12px;"><i>This link will expire in 30 minutes.</i></td>
+    </tr>
+
+    <tr>
+        <td style="padding-bottom: 28px;">
+            <a
+                href="{{ env['EMAIL_PLATFORM_FRONTEND'] }}/emails/recover#{{ token }}"
+                target="_blank"
+                style="padding: 12px; background-color: #f29e2e; border-radius: 6px; text-decoration: none; color: white; max-width: fit-content;"
+            >
+                <b>Reset Password</b>
+            </a>
+        </td>
+    </tr>
+{% endblock %}

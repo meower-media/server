@@ -1,0 +1,7 @@
+{% extends "_base.txt" %}
+{% block body %}
+{{ msg }}
+{% if token %}
+If this wasn't you, please follow this link to secure your account (this link will expire in 24 hours): {{ env['EMAIL_PLATFORM_FRONTEND'] }}/emails/lockdown#{{ token }}
+{% endif %}
+{% endblock %}

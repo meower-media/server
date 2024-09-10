@@ -3,8 +3,9 @@ from quart_schema import validate_request, validate_querystring
 from pydantic import BaseModel, Field
 from typing import Optional, List, Literal
 from copy import copy
-from base64 import b64encode
-from io import BytesIO
+from base64 import urlsafe_b64encode
+from hashlib import sha256
+from threading import Thread
 import pymongo
 import uuid
 import time
@@ -12,10 +13,13 @@ import pyotp
 import qrcode, qrcode.image.svg
 import uuid
 import secrets
+import os
+import requests
 
 import security
 from database import db, rdb, get_total_pages
 from uploads import claim_file, delete_file
+from sessions import AccSession, EmailTicket
 from utils import log
 
 
@@ -44,6 +48,14 @@ class UpdateConfigBody(BaseModel):
     class Config:
         validate_assignment = True
         str_strip_whitespace = True
+
+class UpdateEmailBody(BaseModel):
+    password: str = Field(min_length=1, max_length=255)  # change in API v1
+    email: str = Field(max_length=255, pattern=security.EMAIL_REGEX)
+    captcha: Optional[str] = Field(default="", max_length=2000)
+
+class RemoveEmailBody(BaseModel):
+    password: str = Field(min_length=1, max_length=255)  # change in API v1
 
 class ChangePasswordBody(BaseModel):
     old: str = Field(min_length=1, max_length=255)  # change in API v1
@@ -101,13 +113,12 @@ async def delete_account(data: DeleteAccountBody):
     
     # Schedule account for deletion
     db.usersv0.update_one({"_id": request.user}, {"$set": {
-        "tokens": [],
         "delete_after": int(time.time())+604800  # 7 days
     }})
 
-    # Disconnect clients
-    for client in app.cl.usernames.get(request.user, []):
-        client.kick()
+    # Revoke sessions
+    for session in AccSession.get_all(request.user):
+        session.revoke()
 
     return {"error": False}, 200
 
@@ -200,6 +211,93 @@ async def get_relationships():
     }, 200
 
 
+@me_bp.patch("/email")
+@validate_request(UpdateEmailBody)
+async def update_email(data: UpdateEmailBody):
+    # Make sure email is enabled
+    if not os.getenv("EMAIL_SMTP_HOST"):
+        return {"error": True, "type": "featureDisabled"}, 503
+
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Check ratelimits
+    if security.ratelimited(f"login:u:{request.user}") or security.ratelimited(f"emailch:{request.user}"):
+        abort(429)
+
+    # Check password
+    account = db.usersv0.find_one({"_id": request.user}, projection={"pswd": 1})
+    if not security.check_password_hash(data.password, account["pswd"]):
+        security.ratelimit(f"login:u:{request.user}", 5, 60)
+        return {"error": True, "type": "invalidCredentials"}, 401
+
+    # Make sure the email address hasn't been used before
+    if db.usersv0.count_documents({"normalized_email_hash": security.get_normalized_email_hash(data.email)}, limit=1):
+        return {"error": True, "type": "emailExists"}, 409
+
+    # Ratelimit
+    security.ratelimit(f"emailch:{request.user}", 3, 2700)
+
+    # Check captcha
+    if os.getenv("CAPTCHA_SECRET") and not (hasattr(request, "bypass_captcha") and request.bypass_captcha):
+        if not requests.post("https://api.hcaptcha.com/siteverify", data={
+            "secret": os.getenv("CAPTCHA_SECRET"),
+            "response": data.captcha,
+        }).json()["success"]:
+            return {"error": True, "type": "invalidCaptcha"}, 403
+
+    # Create email verification ticket
+    ticket = EmailTicket(data.email, request.user, "verify", expires_at=int(time.time())+1800)
+
+    # Set pending email address
+    rdb.set(f"pe{request.user}", data.email, ex=1800)
+
+    # Send email
+    txt_tmpl, html_tmpl = security.render_email_tmpl("verify", request.user, data.email, {"token": ticket.token})
+    Thread(
+        target=security.send_email,
+        args=[security.EMAIL_SUBJECTS["verify"], request.user, data.email, txt_tmpl, html_tmpl]
+    ).start()
+
+    return {"error": False}, 200
+
+
+@me_bp.delete("/email")
+@validate_request(RemoveEmailBody)
+async def remove_email(data: RemoveEmailBody):
+    # Check authorization
+    if not request.user:
+        abort(401)
+
+    # Check ratelimits
+    if security.ratelimited(f"login:u:{request.user}"):
+        abort(429)
+
+    # Check password
+    account = db.usersv0.find_one({"_id": request.user}, projection={"email": 1, "pswd": 1})
+    if not security.check_password_hash(data.password, account["pswd"]):
+        security.ratelimit(f"login:u:{request.user}", 5, 60)
+        return {"error": True, "type": "invalidCredentials"}, 401
+
+    # Log action
+    security.log_security_action("email_changed", account["_id"], {
+        "old_email_hash": security.get_normalized_email_hash(account["email"]) if account.get("email") else None,
+        "new_email_hash": None,
+        "ip": request.ip,
+        "user_agent": request.headers.get("User-Agent")
+    })
+
+    # Update user's email address
+    db.usersv0.update_one({"_id": account["_id"]}, {"$set": {
+        "email": "",
+        "normalized_email_hash": ""
+    }})
+    app.cl.send_event("update_config", {"email": ""}, usernames=[account["_id"]])
+
+    return {"error": False}, 200
+
+
 @me_bp.patch("/password")
 @validate_request(ChangePasswordBody)
 async def change_password(data: ChangePasswordBody):
@@ -212,16 +310,23 @@ async def change_password(data: ChangePasswordBody):
         abort(429)
 
     # Check password
-    account = db.usersv0.find_one({"_id": request.user}, projection={"pswd": 1})
+    account = db.usersv0.find_one({"_id": request.user}, projection={"email": 1, "pswd": 1})
     if not security.check_password_hash(data.old, account["pswd"]):
         security.ratelimit(f"login:u:{request.user}", 5, 60)
         return {"error": True, "type": "invalidCredentials"}, 401
 
     # Update password
-    db.usersv0.update_one({"_id": request.user}, {"$set": {"pswd": security.hash_password(data.new)}})
+    new_hash = security.hash_password(data.new)
+    db.usersv0.update_one({"_id": request.user}, {"$set": {"pswd": new_hash}})
 
-    # Send alert
-    app.supporter.create_post("inbox", account["_id"], "Your account password has been changed. If this wasn't requested by you, please secure your account immediately.")
+    # Log event
+    security.log_security_action("password_changed", account["_id"], {
+        "method": "self",
+        "old_pswd_hash": account["pswd"],
+        "new_pswd_hash": new_hash,
+        "ip": request.ip,
+        "user_agent": request.headers.get("User-Agent")
+    })
 
     return {"error": False}, 200
 
@@ -260,7 +365,7 @@ async def add_authenticator(data: AddAuthenticatorBody):
         abort(429)
 
     # Check password
-    account = db.usersv0.find_one({"_id": request.user}, projection={"pswd": 1, "mfa_recovery_code": 1})
+    account = db.usersv0.find_one({"_id": request.user}, projection={"email": 1, "pswd": 1, "mfa_recovery_code": 1})
     if not security.check_password_hash(data.password, account["pswd"]):
         security.ratelimit(f"login:u:{request.user}", 5, 60)
         return {"error": True, "type": "invalidCredentials"}, 401
@@ -276,8 +381,12 @@ async def add_authenticator(data: AddAuthenticatorBody):
     }
     db.authenticators.insert_one(authenticator)
 
-    # Send alert
-    app.supporter.create_post("inbox", account["_id"], "A multi-factor authenticator has been added to your account. If this wasn't requested by you, please secure your account immediately.")
+    # Log action
+    security.log_security_action("mfa_added", account["_id"], {
+        "authenticator_id": authenticator["_id"],
+        "ip": request.ip,
+        "user_agent": request.headers.get("User-Agent")
+    })
 
     # Return authenticator and MFA recovery code
     del authenticator["user"]
@@ -334,7 +443,7 @@ async def remove_authenticator(authenticator_id: str, data: RemoveAuthenticatorB
         abort(429)
 
     # Check password
-    account = db.usersv0.find_one({"_id": request.user}, projection={"pswd": 1, "mfa_recovery_code": 1})
+    account = db.usersv0.find_one({"_id": request.user}, projection={"email": 1, "pswd": 1})
     if not security.check_password_hash(data.password, account["pswd"]):
         security.ratelimit(f"login:u:{request.user}", 5, 60)
         return {"error": True, "type": "invalidCredentials"}, 401
@@ -347,8 +456,12 @@ async def remove_authenticator(authenticator_id: str, data: RemoveAuthenticatorB
     if result.deleted_count < 1:
         abort(404)
 
-    # Send alert
-    app.supporter.create_post("inbox", account["_id"], "A multi-factor authenticator has been removed from your account. If this wasn't requested by you, please secure your account immediately.")
+    # Log action
+    security.log_security_action("mfa_removed", account["_id"], {
+        "authenticator_id": authenticator_id,
+        "ip": request.ip,
+        "user_agent": request.headers.get("User-Agent")
+    })
 
     return {"error": False}
 
@@ -382,19 +495,24 @@ async def reset_mfa_recovery_code(data: ResetMFARecoveryCodeBody):
         abort(401)
 
     # Check password
-    account = db.usersv0.find_one({"_id": request.user}, projection={"pswd": 1})
+    account = db.usersv0.find_one({"_id": request.user}, projection={"pswd": 1, "mfa_recovery_code": 1})
     if not security.check_password_hash(data.password, account["pswd"]):
         security.ratelimit(f"login:u:{request.user}", 5, 60)
         return {"error": True, "type": "invalidCredentials"}, 401
     
     # Reset MFA recovery code
-    mfa_recovery_code = secrets.token_hex(5)
-    db.usersv0.update_one({"_id": request.user}, {"$set": {"mfa_recovery_code": mfa_recovery_code}})
+    new_recovery_code = secrets.token_hex(5)
+    db.usersv0.update_one({"_id": account["_id"]}, {"$set": {
+        "mfa_recovery_code": new_recovery_code
+    }})
+    security.log_security_action("mfa_recovery_reset", account["_id"], {
+        "old_recovery_code_hash": urlsafe_b64encode(sha256(account["mfa_recovery_code"]).digest()).decode(),
+        "new_recovery_code_hash": urlsafe_b64encode(sha256(new_recovery_code.encode()).digest()).decode(),
+        "ip": request.ip,
+        "user_agent": request.headers.get("User-Agent")
+    })
 
-    # Send alert
-    app.supporter.create_post("inbox", account["_id"], "Your multi-factor authentication recovery code has been reset. If this wasn't requested by you, please secure your account immediately.")
-
-    return {"error": False, "mfa_recovery_code": mfa_recovery_code}
+    return {"error": False, "mfa_recovery_code": new_recovery_code}
 
 
 @me_bp.delete("/tokens")
@@ -403,12 +521,9 @@ async def delete_tokens():
     if not request.user:
         abort(401)
     
-    # Revoke tokens
-    db.usersv0.update_one({"_id": request.user}, {"$set": {"tokens": []}})
-
-    # Disconnect clients
-    for client in app.cl.usernames.get(request.user, []):
-        client.kick()
+    # Revoke sessions
+    for session in AccSession.get_all(request.user):
+        session.revoke()
 
     return {"error": False}, 200
 

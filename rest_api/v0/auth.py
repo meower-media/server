@@ -1,10 +1,15 @@
-import re, os, requests, pyotp, secrets
+import re, os, requests, pyotp, secrets, time
 from pydantic import BaseModel
 from quart import Blueprint, request, abort, current_app as app
 from quart_schema import validate_request
 from pydantic import Field
 from typing import Optional
-from database import db, registration_blocked_ips
+from base64 import urlsafe_b64encode
+from hashlib import sha256
+from threading import Thread
+
+from database import db, rdb, blocked_ips, registration_blocked_ips
+from sessions import AccSession, EmailTicket
 import security
 
 auth_bp = Blueprint("auth_bp", __name__, url_prefix="/auth")
@@ -16,6 +21,16 @@ class AuthRequest(BaseModel):
     mfa_recovery_code: Optional[str] = Field(default="", min_length=10, max_length=10)
     captcha: Optional[str] = Field(default="", max_length=2000)
 
+class RecoverAccountBody(BaseModel):
+    email: str = Field(min_length=1, max_length=255, pattern=security.EMAIL_REGEX)
+    captcha: Optional[str] = Field(default="", max_length=2000)
+
+
+@auth_bp.before_request
+async def ip_block_check():
+    if blocked_ips.search_best(request.ip):
+        return {"error": True, "type": "ipBlocked"}, 403
+
 
 @auth_bp.post("/login")
 @validate_request(AuthRequest)
@@ -26,10 +41,13 @@ async def login(data: AuthRequest):
     security.ratelimit(f"login:i:{request.ip}", 50, 900)
 
     # Get basic account details
-    account = db.usersv0.find_one({"lower_username": data.username.lower()}, projection={
+    account = db.usersv0.find_one({
+        "email": data.username
+    } if "@" in data.username else {
+        "lower_username": data.username.lower()
+    }, projection={
         "_id": 1,
         "flags": 1,
-        "tokens": 1,
         "pswd": 1,
         "mfa_recovery_code": 1
     })
@@ -40,12 +58,31 @@ async def login(data: AuthRequest):
     if account["flags"] & security.UserFlags.DELETED:
         return {"error": True, "type": "accountDeleted"}, 401
 
+    # Make sure account isn't locked
+    if account["flags"] & security.UserFlags.LOCKED:
+        return {"error": True, "type": "accountLocked"}, 401
+
     # Make sure account isn't ratelimited
     if security.ratelimited(f"login:u:{account['_id']}"):
         abort(429)
 
-    # Check credentials
-    if data.password not in account["tokens"]:
+    # Legacy tokens (remove in the future at some point)
+    if len(data.password) == 86:
+        encoded_token = urlsafe_b64encode(sha256(data.password.encode()).digest())
+        username = rdb.get(encoded_token)
+        if username and username.decode() == account["_id"]:
+            data.password = AccSession.create(
+                username.decode(),
+                request.ip,
+                request.headers.get("User-Agent")
+            ).token
+            rdb.delete(encoded_token)
+
+    # Check credentials & get session
+    try:  # token for already existing session
+        session = AccSession.get_by_token(data.password)
+        session.refresh(request.ip, request.headers.get("User-Agent"), check_token=data.password)
+    except:  # no error capturing here, as it's probably just a password rather than a token, and we don't want to capture passwords
         # Check password
         password_valid = security.check_password_hash(data.password, account["pswd"])
 
@@ -70,6 +107,11 @@ async def login(data: AuthRequest):
         # Abort if password is invalid
         if not password_valid:
             security.ratelimit(f"login:u:{account['_id']}", 5, 60)
+            security.log_security_action("auth_fail", account["_id"], {
+                "status": "invalid_password",
+                "ip": request.ip,
+                "user_agent": request.headers.get("User-Agent")
+            })
             abort(401)
 
         # Check MFA
@@ -85,33 +127,60 @@ async def login(data: AuthRequest):
                         break
                 if not passed:
                     security.ratelimit(f"login:u:{account['_id']}", 5, 60)
+                    security.log_security_action("auth_fail", account["_id"], {
+                        "status": "invalid_totp_code",
+                        "ip": request.ip,
+                        "user_agent": request.headers.get("User-Agent")
+                    })
                     abort(401)
             elif data.mfa_recovery_code:
                 if data.mfa_recovery_code == account["mfa_recovery_code"]:
                     db.authenticators.delete_many({"user": account["_id"]})
+
+                    new_recovery_code = secrets.token_hex(5)
                     db.usersv0.update_one({"_id": account["_id"]}, {"$set": {
-                        "mfa_recovery_code": secrets.token_hex(5)
+                        "mfa_recovery_code": new_recovery_code
                     }})
-                    app.supporter.create_post("inbox", account["_id"], "All multi-factor authenticators have been removed from your account by someone who used your multi-factor authentication recovery code. If this wasn't you, please secure your account immediately.")
+                    security.log_security_action("mfa_recovery_used", account["_id"], {
+                        "old_recovery_code_hash": urlsafe_b64encode(sha256(data.mfa_recovery_code.encode()).digest()).decode(),
+                        "new_recovery_code_hash": urlsafe_b64encode(sha256(new_recovery_code.encode()).digest()).decode(),
+                        "ip": request.ip,
+                        "user_agent": request.headers.get("User-Agent")
+                    })
                 else:
                     security.ratelimit(f"login:u:{account['_id']}", 5, 60)
+                    security.log_security_action("auth_fail", account["_id"], {
+                        "status": "invalid_recovery_code",
+                        "ip": request.ip,
+                        "user_agent": request.headers.get("User-Agent")
+                    })
                     abort(401)
             else:
                 mfa_methods = set()
                 for authenticator in authenticators:
                     mfa_methods.add(authenticator["type"])
+                security.log_security_action("auth_fail", account["_id"], {
+                    "status": "mfa_required",
+                    "ip": request.ip,
+                    "user_agent": request.headers.get("User-Agent")
+                })
                 return {
                     "error": True,
                     "type": "mfaRequired",
                     "mfa_methods": list(mfa_methods)
                 }, 401
 
-    # Return account and token
+        # Create session
+        session = AccSession.create(account["_id"], request.ip, request.headers.get("User-Agent"))
+
+    # Return session and account details
     return {
         "error": False,
-        "account": security.get_account(account['_id'], True),
-        "token": security.create_user_token(account['_id'], request.ip)
+        "session": session.v0,
+        "token": session.token,
+        "account": security.get_account(account['_id'], True)
     }, 200
+
 
 @auth_bp.post("/register")
 @validate_request(AuthRequest)
@@ -156,9 +225,47 @@ async def register(data: AuthRequest):
     # Ratelimit
     security.ratelimit(f"register:{request.ip}:s", 5, 900)
     
-    # Return account and token
+    # Create session
+    session = AccSession.create(data.username, request.ip, request.headers.get("User-Agent"))
+
+    # Return session and account details
     return {
         "error": False,
-        "account": security.get_account(data.username, True),
-        "token": security.create_user_token(data.username, request.ip)
+        "session": session.v0,
+        "token": session.token,
+        "account": security.get_account(data.username, True)
     }, 200
+
+
+@auth_bp.post("/recover")
+@validate_request(RecoverAccountBody)
+async def recover_account(data: RecoverAccountBody):
+    # Check ratelimits
+    if security.ratelimited(f"recover:{request.ip}"):
+        abort(429)
+    security.ratelimit(f"recover:{request.ip}", 3, 2700)
+
+    # Check captcha
+    if os.getenv("CAPTCHA_SECRET") and not (hasattr(request, "bypass_captcha") and request.bypass_captcha):
+        if not requests.post("https://api.hcaptcha.com/siteverify", data={
+            "secret": os.getenv("CAPTCHA_SECRET"),
+            "response": data.captcha,
+        }).json()["success"]:
+            return {"error": True, "type": "invalidCaptcha"}, 403
+
+    # Get account
+    account = db.usersv0.find_one({"email": data.email}, projection={"_id": 1, "email": 1, "flags": 1})
+    if not account:
+        return {"error": False}, 200
+
+    # Create recovery email ticket
+    ticket = EmailTicket(data.email, account["_id"], "recover", expires_at=int(time.time())+1800)
+
+    # Send email
+    txt_tmpl, html_tmpl = security.render_email_tmpl("recover", account["_id"], account["email"], {"token": ticket.token})
+    Thread(
+        target=security.send_email,
+        args=[security.EMAIL_SUBJECTS["recover"], account["_id"], account["email"], txt_tmpl, html_tmpl]
+    ).start()
+
+    return {"error": False}, 200

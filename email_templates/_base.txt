@@ -1,0 +1,5 @@
+Hey {{ name }}!
+
+{% block body %}{% endblock %}
+
+- {{ env['EMAIL_PLATFORM_BRAND'] }}
