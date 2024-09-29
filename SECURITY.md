@@ -1,5 +1,5 @@
 # Security Policy
-Meower Media thanks you for taking time to help make Meower a safer place. Meower Media takes the security of all products and services seriously, including all open source repositories managed via our Github organization, [meower-media-co](https://github.com/meower-media-co).
+Meower Media thanks you for taking time to help make Meower a safer place. Meower Media takes the security of all products and services seriously, including all open source repositories managed via our Github organization, [meower-media](https://github.com/meower-media).
 
 ## Version support
 As of Feb. 7th, 2023, the currently deployed server version is built upon Cloudlink 3.
