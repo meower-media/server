@@ -1,0 +1,10 @@
+package events
+
+import "github.com/meower-media/server/pkg/users"
+
+type PostReactionRemove struct {
+	ChatId int64      `msgpack:"chat_id"`
+	PostId int64      `msgpack:"post_id"`
+	Emoji  string     `msgpack:"emoji"`
+	User   users.User `msgpack:"user"`
+}

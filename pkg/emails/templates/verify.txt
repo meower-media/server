@@ -1,0 +1,5 @@
+{{define "body"}}
+To confirm adding your email address ({{.ToAddress}}) to your {{.PlatformName}} account, please follow this link (this link will expire in 30 minutes): {{.PlatformFrontend}}/emails/verify#{{.Token}}
+
+If this wasn't you, please ignore this email, no further action is required.
+{{end}}

@@ -1,0 +1,5 @@
+Hey {{.ToName}}!
+
+{{template "body" .}}
+
+- {{.PlatformBrand}}

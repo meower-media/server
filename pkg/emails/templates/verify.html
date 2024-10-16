@@ -1,0 +1,25 @@
+{{define "body"}}
+<tr>
+    <td style="padding-bottom: 12px;">To confirm adding your email address (<a style="color: black;" href="mailto:{{.ToAddress}}" target="_blank">{{.ToAddress}}</a>) to your {{.PlatformName}} account, please click the button below.</td>
+</tr>
+
+<tr>
+    <td style="padding-bottom: 24px;">If this wasn't you, please ignore this email, no further action is required.</td>
+</tr>
+
+<tr>
+    <td style="padding-bottom: 12px;"><i>This link will expire in 30 minutes.</i></td>
+</tr>
+
+<tr>
+    <td style="padding-bottom: 28px;">
+        <a
+            href="{{.PlatformBrand}}/emails/verify#{{.Token}}"
+            target="_blank"
+            style="padding: 12px; background-color: #f29e2e; border-radius: 6px; text-decoration: none; color: white; max-width: fit-content;"
+        >
+            <b>Verify Email Address</b>
+        </a>
+    </td>
+</tr>
+{{end}}
