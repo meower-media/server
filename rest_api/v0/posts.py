@@ -8,7 +8,7 @@ import pymongo, uuid, time, emoji
 
 import security
 from database import db, get_total_pages
-from uploads import claim_file, delete_file
+from uploads import claim_file, unclaim_file
 from utils import log
 
 
@@ -294,13 +294,11 @@ async def delete_attachment(post_id: str, attachment_id: str):
         abort(403)
 
     # Delete attachment
-    for attachment in copy(post["attachments"]):
-        if attachment["id"] == attachment_id:
-            try:
-                delete_file(attachment_id)
-            except Exception as e:
-                log(f"Unable to delete attachment: {e}")
-            post["attachments"].remove(attachment)
+    if attachment_id in post["attachments"]:
+        post["attachments"].remove(attachment_id)
+        unclaim_file(attachment_id)
+    else:
+        abort(404)
 
     if post["p"] or post["attachments"] > 0:
         # Update post
@@ -364,7 +362,7 @@ async def delete_post(query_args: PostIdQueryArgs):
     # Delete attachments
     for attachment in post["attachments"]:
         try:
-            delete_file(attachment["id"])
+            unclaim_file(attachment["id"])
         except Exception as e:
             log(f"Unable to delete attachment: {e}")
 
@@ -460,12 +458,16 @@ async def create_chat_post(chat_id, data: PostBody):
     # Claim attachments
     attachments = []
     if chat_id != "livechat":
-        for attachment_id in set(data.attachments):
+        for attachment_id in data.attachments:
+            if attachment_id in attachments:
+                continue
             try:
-                attachments.append(claim_file(attachment_id, "attachments"))
+                claim_file(attachment_id, "attachments", request.user)
             except Exception as e:
                 log(f"Unable to claim attachment: {e}")
                 return {"error": True, "type": "unableToClaimAttachment"}, 500
+            else:
+                attachments.append(attachment_id)
 
     # Make sure the post has text content or at least 1 attachment or at least 1 sticker
     if not data.content and not attachments and not data.stickers:

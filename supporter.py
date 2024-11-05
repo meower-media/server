@@ -4,7 +4,6 @@ import uuid, time, msgpack, pymongo, re, copy
 
 from cloudlink import CloudlinkServer
 from database import db, rdb
-from uploads import FileDetails
 
 """
 Meower Supporter Module
@@ -64,7 +63,7 @@ class Supporter:
         origin: str,
         author: str,
         content: str,
-        attachments: list[FileDetails] = [],
+        attachments: list[str] = [],
         stickers: list[str] = [],
         nonce: Optional[str] = None,
         chat_members: list[str] = [],
@@ -206,6 +205,21 @@ class Supporter:
                 ]})
             else:
                 post.update({"reply_to": [None for _ in post.pop("reply_to", [])]})
+
+            # Attachments
+            post["attachments"] = list(db.files.aggregate([
+                {"$match": {"_id": {"$in": post["attachments"]}}},
+                {"$project": {
+                    "id": "$_id",
+                    "_id": 0,
+                    "mime": 1,
+                    "thumbnail_mime": 1,
+                    "size": 1,
+                    "filename": 1,
+                    "width": 1,
+                    "height": 1
+                }}
+            ]))
 
             # Custom emojis
             if post.get("emojis"):

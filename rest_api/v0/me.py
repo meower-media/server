@@ -3,8 +3,6 @@ from quart_schema import validate_request, validate_querystring
 from pydantic import BaseModel, Field
 from typing import Optional, List, Literal
 from copy import copy
-from base64 import b64encode
-from io import BytesIO
 import pymongo
 import uuid
 import time
@@ -15,7 +13,7 @@ import secrets
 
 import security
 from database import db, rdb, get_total_pages
-from uploads import claim_file, delete_file
+from uploads import claim_file, unclaim_file
 from utils import log
 
 
@@ -150,13 +148,13 @@ async def update_config(data: UpdateConfigBody):
         cur_avatar = db.usersv0.find_one({"_id": request.user}, projection={"avatar": 1})["avatar"]
         if new_config["avatar"] != "":
             try:
-                claim_file(new_config["avatar"], "icons")
+                claim_file(new_config["avatar"], "icons", request.user)
             except Exception as e:
                 log(f"Unable to claim avatar: {e}")
                 return {"error": True, "type": "unableToClaimAvatar"}, 500
         if cur_avatar:
             try:
-                delete_file(cur_avatar)
+                unclaim_file(cur_avatar)
             except Exception as e:
                 log(f"Unable to delete avatar: {e}")
 

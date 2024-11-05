@@ -1,52 +1,35 @@
-from typing import TypedDict
-import os
-
-from grpc_uploads import client as grpc_uploads
+from database import db
 
 
-class FileDetails(TypedDict):
-    id: str
-    mime: str
-    filename: str
-    size: int
-    width: int
-    height: int
+class FileNotFoundError(Exception): pass
+class FileAlreadyClaimedError(Exception): pass
 
 
-def claim_file(file_id: str, bucket: str) -> FileDetails:
-    resp = grpc_uploads.stub.ClaimFile(
-        grpc_uploads.pb2.ClaimFileReq(
-            id=file_id,
-            bucket=bucket
-        ),
-        metadata=(
-            ("x-token", os.getenv("GRPC_UPLOADS_TOKEN")),
-        ),
-        timeout=30
-    )
-    return {
-        "id": resp.id,
-        "mime": resp.mime,
-        "filename": resp.filename,
-        "size": resp.size,
-        "width": resp.width,
-        "height": resp.height
-    }
+def claim_file(file_id: str, bucket: str, uploader: str):
+    # Find file
+    file = db.files.find_one()
+    if not file:
+        raise FileNotFoundError
 
-def delete_file(file_id: str):
-    grpc_uploads.stub.DeleteFile(
-        grpc_uploads.pb2.DeleteFileReq(id=file_id),
-        metadata=(
-            ("x-token", os.getenv("GRPC_UPLOADS_TOKEN")),
-        ),
-        timeout=30
+    result = db.files.update_one({
+        "_id": file_id,
+        "bucket": bucket,
+        "uploaded_by": uploader,
+        "claimed": False
+    }, {"$set": {"claimed": True}})
+    if result.matched_count == 0:
+        raise FileNotFoundError
+    elif result.modified_count == 0:
+        raise FileAlreadyClaimedError
+
+def unclaim_file(file_id: str):
+    db.files.update_many(
+        {"_id": file_id},
+        {"$set": {"claimed": False, "uploaded_at": 0}}
     )
 
-def clear_files(user_id: str):
-    grpc_uploads.stub.ClearFiles(
-        grpc_uploads.pb2.ClearFilesReq(user_id=user_id),
-        metadata=(
-            ("x-token", os.getenv("GRPC_UPLOADS_TOKEN")),
-        ),
-        timeout=30
+def unclaim_all_files(username: str):
+    db.files.update_one(
+        {"uploaded_by": username},
+        {"$set": {"claimed": False, "uploaded_at": 0}}
     )

@@ -11,8 +11,6 @@ uvicorn
 py-radix
 pydantic
 msgpack
-grpcio
-protobuf
 pyotp
 emoji
 websockets

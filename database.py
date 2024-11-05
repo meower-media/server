@@ -6,7 +6,7 @@ from radix import Radix
 
 from utils import log
 
-CURRENT_DB_VERSION = 9
+CURRENT_DB_VERSION = 10
 
 # Create Redis connection
 log("Connecting to Redis...")
@@ -174,7 +174,21 @@ except: pass
 
 # Create post reactions index
 try:
-    db.post_reactions.create_index([("_id.post_id", 1), ("_id.emoji", 1)])
+    db.post_reactions.create_index([("_id.post_id", pymongo.ASCENDING), ("_id.emoji", pymongo.ASCENDING)])
+except: pass
+
+# Create files indexes
+try:
+    db.files.create_index([("hash", pymongo.ASCENDING)], name="hash")
+except: pass
+try:
+    db.files.create_index([("uploaded_by", pymongo.ASCENDING)], name="uploaded_by")
+except: pass
+try:
+    db.files.create_index([
+        ("claimed", pymongo.ASCENDING),
+        ("uploaded_by", pymongo.ASCENDING)
+    ], name="unclaimed", partialFilterExpression={"claimed": False})
 except: pass
 
 
@@ -305,6 +319,16 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
         db.usersv0.update_one({"_id": user["_id"]}, {"$set": {
             "mfa_recovery_code": user["mfa_recovery_code"][:10]
         }})
+
+    # Post attachments
+    log("[Migrator] Converting post attachments")
+    updates = []
+    for post in db.posts.find({"attachments.id": {"$exists": True}}):
+        updates.append(pymongo.UpdateOne(
+            {"_id": post["_id"]},
+            {"$set": {"attachments": [attachment["id"] for attachment in post["attachments"]]}}
+        ))
+    db.posts.bulk_write(updates)
 
     db.config.update_one({"_id": "migration"}, {"$set": {"database": CURRENT_DB_VERSION}})
     log(f"[Migrator] Finished Migrating DB to version {CURRENT_DB_VERSION}")

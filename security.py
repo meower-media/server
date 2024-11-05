@@ -1,10 +1,10 @@
 from hashlib import sha256
 from typing import Optional
-import time, requests, os, uuid, secrets, bcrypt, msgpack
+import time, requests, uuid, secrets, bcrypt, msgpack
 
 from database import db, rdb
 from utils import log
-from uploads import clear_files
+from uploads import unclaim_all_files
 
 """
 Meower Security Module
@@ -48,6 +48,7 @@ class UserFlags:
     DELETED = 2
     PROTECTED = 4
     POST_RATELIMIT_BYPASS = 8
+    ULTRA_HD_UPLOADS = 16  # joke flag
 
 
 class AdminPermissions:
@@ -381,7 +382,7 @@ def delete_account(username, purge=False):
     db.authenticators.delete_many({"user": username})
 
     # Delete uploaded files
-    clear_files(username)
+    unclaim_all_files(username)
 
     # Delete user settings
     db.user_settings.delete_one({"_id": username})
@@ -450,7 +451,7 @@ def get_netinfo(ip_address):
     netinfo = db.netinfo.find_one({"_id": ip_hash})
     if not netinfo:
         resp = requests.get(f"http://ip-api.com/json/{ip_address}?fields=25349915")
-        if resp.ok:
+        if resp.ok and resp.json()["status"] == "success":
             resp_json = resp.json()
             netinfo = {
                 "_id": ip_hash,

@@ -92,12 +92,16 @@ async def create_home_post(data: PostBody):
 
     # Claim attachments
     attachments = []
-    for attachment_id in set(data.attachments):
+    for attachment_id in data.attachments:
+        if attachment_id in attachments:
+            continue
         try:
-            attachments.append(claim_file(attachment_id, "attachments"))
+            claim_file(attachment_id, "attachments", request.user)
         except Exception as e:
             log(f"Unable to claim attachment: {e}")
             return {"error": True, "type": "unableToClaimAttachment"}, 500
+        else:
+            attachments.append(attachment_id)
 
     # Make sure the post has text content or at least 1 attachment or at least 1 sticker
     if not data.content and not attachments and not data.stickers:

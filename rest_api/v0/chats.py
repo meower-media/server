@@ -6,7 +6,7 @@ import pymongo, uuid, time, re, os
 
 import security
 from database import db, get_total_pages
-from uploads import claim_file, delete_file
+from uploads import claim_file, unclaim_file
 from utils import log
 
 chats_bp = Blueprint("chats_bp", __name__, url_prefix="/chats")
@@ -82,7 +82,7 @@ async def create_chat(data: ChatBody):
     # Claim icon
     if data.icon:
         try:
-            claim_file(data.icon, "icons")
+            claim_file(data.icon, "icons", request.user)
         except Exception as e:
             log(f"Unable to claim icon: {e}")
             return {"error": True, "type": "unableToClaimIcon"}, 500
@@ -183,18 +183,20 @@ async def update_chat(chat_id, data: ChatBody):
     updated_vals = {"_id": chat_id}
     if data.nickname is not None and chat["nickname"] != data.nickname:
         updated_vals["nickname"] = data.nickname
-        app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the nickname of the group chat to '{chat['nickname']}'.", chat_members=chat["members"])
+        app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the nickname of the group chat to '{data.nickname}'.", chat_members=chat["members"])
     if data.icon is not None and chat["icon"] != data.icon:
         # Claim icon (and delete old one)
         if data.icon != "":
             try:
-                updated_vals["icon"] = claim_file(data.icon, "icons")["id"]
+                claim_file(data.icon, "icons", request.user)
             except Exception as e:
                 log(f"Unable to claim icon: {e}")
                 return {"error": True, "type": "unableToClaimIcon"}, 500
+            else:
+                updated_vals["icon"] = data.icon
         if chat["icon"]:
             try:
-                delete_file(chat["icon"])
+                unclaim_file(chat["icon"])
             except Exception as e:
                 log(f"Unable to delete icon: {e}")
         app.supporter.create_post(chat_id, "Server", f"@{request.user} changed the icon of the group chat.", chat_members=chat["members"])
@@ -270,7 +272,7 @@ async def leave_chat(chat_id):
         else:
             if chat["icon"]:
                 try:
-                    delete_file(chat["icon"])
+                    unclaim_file(chat["icon"])
                 except Exception as e:
                     log(f"Unable to delete icon: {e}")
             db.posts.delete_many({"post_origin": chat_id, "isDeleted": False})
@@ -658,10 +660,12 @@ async def create_chat_emote(chat_id: str, emote_type: Literal["emojis", "sticker
 
     # Claim file
     try:
-        file = claim_file(emote_id, emote_type)
+        claim_file(emote_id, emote_type, request.user)
     except Exception as e:
         log(f"Unable to claim emote: {e}")
         return {"error": True, "type": "unableToClaimEmote"}, 500
+    else:
+        file = db.files.find_one({"_id": emote_id})
 
     # Fall back to filename if no name is specified
     if not data.name:
@@ -783,6 +787,6 @@ async def delete_chat_emote(chat_id: str, emote_type: Literal["emojis", "sticker
         "_id": emote_id,
         "chat_id": chat_id
     }, usernames=chat["members"])
-    delete_file(emote_id)
+    unclaim_file(emote_id)
 
     return {"error": False}, 200
