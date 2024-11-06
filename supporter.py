@@ -215,6 +215,7 @@ class Supporter:
                     "mime": 1,
                     "thumbnail_mime": 1,
                     "size": 1,
+                    "thumbnail_size": 1,
                     "filename": 1,
                     "width": 1,
                     "height": 1
