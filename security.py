@@ -171,7 +171,7 @@ def create_account(username: str, password: str, ip: str):
                 "ip": ip,
                 "reason": "User registered while using a VPN.",
                 "comment": "",
-                "time": int(time())
+                "time": int(time.time())
             }]
         })
 
