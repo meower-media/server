@@ -88,7 +88,7 @@ async def check_auth(headers: TokenHeader):
             if account["ban"]["state"] == "perm_ban" or (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time()):
                 rdb.publish("admin", msgpack.packb({
                     "op": "log",
-                    "data": f"**Banned (REST API)**\n@{account['_id']} ({account['uuid']})\nInternal username: {getattr(request, "internal_username")}\nBan: {account['ban']}"
+                    "data": f"**Banned (REST API)**\n@{account['_id']} ({account['uuid']})\nInternal username: {getattr(request, 'internal_username')}\nBan: {account['ban']}"
                 }))
                 return {"error": True, "type": "accountBanned"}, 403
             request.user = account["_id"]
