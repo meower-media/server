@@ -1,9 +1,10 @@
-import websockets, asyncio, json, time, requests, os
+import websockets, asyncio, json, time, requests, os, msgpack
 from typing import Optional, Iterable, TypedDict, Literal, Any
 from inspect import getfullargspec
 from urllib.parse import urlparse, parse_qs
 
 from utils import log, full_stack
+from database import rdb
 
 VERSION = "0.1.7.10"
 
@@ -261,6 +262,10 @@ class CloudlinkClient:
 
         # Check ban
         if (account["ban"]["state"] == "perm_ban") or (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time()):
+            rdb.publish("admin", msgpack.packb({
+                "op": "log",
+                "data": f"**Banned (Cloudlink)**\n@{account['_id']} ({account['uuid']})\nBan: {account['ban']}"
+            }))
             self.send("banned", account["ban"], listener=listener)
             return self.send_statuscode("Banned", listener)
 

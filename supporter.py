@@ -163,6 +163,11 @@ class Supporter:
                         # Logout user (can't kick because of async stuff)
                         for c in self.cl.usernames.get(username, []):
                             c.logout()
+
+                    case "log":  # this is a temp thing
+                        try:
+                            self.create_post("6b69fd4b-41bb-4a2d-9591-1c6c0ea4941a", "Server", msg["data"], chat_members=["Tnix"])
+                        except: pass
             except:
                 continue
 
