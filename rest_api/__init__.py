@@ -65,16 +65,7 @@ async def check_auth(headers: TokenHeader):
     # Authenticate request
     account = None
     if request.path != "/status":
-        if hasattr(request, "internal_username") and request.internal_username:  # internal auth
-            account = db.usersv0.find_one({"_id": request.internal_username}, projection={
-                "_id": 1,
-                "uuid": 1,
-                "flags": 1,
-                "permissions": 1,
-                "ban.state": 1,
-                "ban.expires": 1
-            })
-        elif headers.token:  # external auth
+        if headers.token:
             account = db.usersv0.find_one({"tokens": headers.token}, projection={
                 "_id": 1,
                 "uuid": 1,
@@ -84,16 +75,12 @@ async def check_auth(headers: TokenHeader):
                 "ban.expires": 1
             })
         
-        if account:
-            if account["ban"]["state"] == "perm_ban" or (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time()):
-                rdb.publish("admin", msgpack.packb({
-                    "op": "log",
-                    "data": f"**Banned (REST API)**\n@{account['_id']} ({account['uuid']})\nInternal username: {getattr(request, 'internal_username')}\nBan: {account['ban']}"
-                }))
-                return {"error": True, "type": "accountBanned"}, 403
-            request.user = account["_id"]
-            request.flags = account["flags"]
-            request.permissions = account["permissions"]
+            if account:
+                if account["ban"]["state"] == "perm_ban" or (account["ban"]["state"] == "temp_ban" and account["ban"]["expires"] > time.time()):
+                    return {"error": True, "type": "accountBanned"}, 403
+                request.user = account["_id"]
+                request.flags = account["flags"]
+                request.permissions = account["permissions"]
 
 
 @app.get("/")  # Welcome message

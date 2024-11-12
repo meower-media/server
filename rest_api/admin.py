@@ -407,7 +407,6 @@ async def delete_post(post_id):
     else:
         chat = db.chats.find_one({
             "_id": post["post_origin"],
-            "members": request.user,
             "deleted": False
         }, projection={"members": 1})
         if chat:

@@ -100,6 +100,17 @@ class Supporter:
         if origin != "livechat":
             db.posts.insert_one(post)
 
+        # Send to files automod if there are attachments
+        if len(attachments):
+            rdb.publish("automod:files", msgpack.packb({
+                "type": 1,
+                "username": author,
+                "file_bucket": "attachments",
+                "file_hashes": [file["hash"] for file in db.files.find({"_id": {"$in": attachments}})],
+                "post_id": post_id,
+                "post_content": content
+            }))
+
         # Add nonce for WebSocket
         if nonce:
             post["nonce"] = nonce
@@ -163,6 +174,43 @@ class Supporter:
                         # Logout user (can't kick because of async stuff)
                         for c in self.cl.usernames.get(username, []):
                             c.logout()
+                    case "delete_post":
+                        # Get post
+                        post = db.posts.find_one({"_id": msg.pop("id")}, projection={"_id": 1, "post_origin": 1})
+
+                        # Delete post
+                        db.posts.update_one(
+                            {"_id": post["_id"]},
+                            {
+                                "$set": {
+                                    "isDeleted": True,
+                                    "deleted_at": int(time.time()),
+                                    "mod_deleted": True,
+                                }
+                            },
+                        )
+
+                        # Emit deletion
+                        if post["post_origin"] == "home" or (post["post_origin"] == "inbox" and post["u"] == "Server"):
+                            self.cl.send_event("delete_post", {
+                                "chat_id": post["post_origin"],
+                                "post_id": post["_id"]
+                            })
+                        elif post["post_origin"] == "inbox":
+                            self.cl.send_event("delete_post", {
+                                "chat_id": post["post_origin"],
+                                "post_id": post["_id"]
+                            }, usernames=[post["u"]])
+                        else:
+                            chat = db.chats.find_one({
+                                "_id": post["post_origin"],
+                                "deleted": False
+                            }, projection={"members": 1})
+                            if chat:
+                                self.cl.send_event("delete_post", {
+                                    "chat_id": post["post_origin"],
+                                    "post_id": post["_id"]
+                                }, usernames=chat["members"])
 
                     case "log":  # this is a temp thing
                         try:

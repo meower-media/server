@@ -4,10 +4,10 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from threading import Thread
 from copy import copy
-import pymongo, uuid, time, emoji
+import pymongo, uuid, time, emoji, msgpack
 
 import security
-from database import db, get_total_pages
+from database import db, rdb, get_total_pages
 from uploads import claim_file, unclaim_file
 from utils import log
 
@@ -149,7 +149,18 @@ async def report_post(post_id, data: ReportBody):
     post = db.posts.find_one({"_id": post_id})
     if not post:
         abort(404)
-    
+
+    # Send to files automod if there are attachments
+    if len(post["attachments"]):
+        rdb.publish("automod:files", msgpack.packb({
+            "type": 2,
+            "username": post["u"],
+            "file_bucket": "attachments",
+            "file_hashes": [file["hash"] for file in db.files.find({"_id": {"$in": post["attachments"]}})],
+            "post_id": post["_id"],
+            "post_content": post["p"]
+        }))
+
     security.ratelimit(f"report:{request.user}", 3, 5)
     
     report = db.reports.find_one({

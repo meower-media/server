@@ -4,7 +4,7 @@ from inspect import getfullargspec
 from urllib.parse import urlparse, parse_qs
 
 from utils import log, full_stack
-from database import rdb
+from database import db, rdb
 
 VERSION = "0.1.7.10"
 
@@ -282,9 +282,9 @@ class CloudlinkClient:
             "username": self.username,
             "token": token,
             "account": account,
-            "relationships": self.proxy_api_request("/me/relationships", "get")["autoget"],
+            "relationships": self.proxy_api_request("/me/relationships", "get", headers={"token": token})["autoget"],
             **({
-                "chats": self.proxy_api_request("/chats", "get")["autoget"]
+                "chats": self.proxy_api_request("/chats", "get", headers={"token": token})["autoget"]
             } if self.proto_version != 0 else {})
         }, listener=listener)
 
@@ -292,8 +292,8 @@ class CloudlinkClient:
         if not self.username:
             return
 
-        # Trigger last_seen update
-        self.proxy_api_request("/me", "get")
+        # Update last_seen
+        db.usersv0.update_one({"_id": self.username}, {"$set": {"last_seen": int(time.time())}})
 
         self.server.usernames[self.username].remove(self)
         if len(self.server.usernames[self.username]) == 0:
@@ -313,8 +313,6 @@ class CloudlinkClient:
             "X-Internal-Token": os.environ["INTERNAL_API_TOKEN"],
             "X-Internal-Ip": self.ip,
         })
-        if self.username:
-            headers["X-Internal-Username"] = self.username
 
         # Make request
         resp = getattr(requests, method)(

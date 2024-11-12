@@ -72,10 +72,7 @@ async def get_me():
     # Check authorization
     if not request.user:
         abort(401)
-
-    # Update last_seen (this is only to remove CL3's dependency on the DB)
-    db.usersv0.update_one({"_id": request.user}, {"$set": {"last_seen": int(time.time())}})
-
+        
     # Get and return account
     return {"error": False, **security.get_account(request.user, include_config=True)}, 200
 
