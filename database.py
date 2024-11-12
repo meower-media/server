@@ -328,7 +328,8 @@ if db.config.find_one({"_id": "migration", "database": {"$ne": CURRENT_DB_VERSIO
             {"_id": post["_id"]},
             {"$set": {"attachments": [attachment["id"] for attachment in post["attachments"]]}}
         ))
-    db.posts.bulk_write(updates)
+    if len(updates):
+        db.posts.bulk_write(updates)
 
     db.config.update_one({"_id": "migration"}, {"$set": {"database": CURRENT_DB_VERSION}})
     log(f"[Migrator] Finished Migrating DB to version {CURRENT_DB_VERSION}")
