@@ -13,5 +13,5 @@ pydantic
 msgpack
 pyotp
 emoji
-websockets
+websockets==13.1
 qrcode
