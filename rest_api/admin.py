@@ -725,9 +725,8 @@ async def get_user_posts(username, query_args: GetUserPostsQueryArgs):
     # Get posts
     if query_args.origin:
         query = {
-            "post_origin": query_args.origin,
-            "$or": [{"isDeleted": False}, {"isDeleted": True}],
             "u": username,
+            "post_origin": query_args.origin
         }
     else:
         query = {"u": username}
@@ -769,7 +768,7 @@ async def clear_user_posts(username, query_args: ClearUserPostsQueryArgs):
 
     # Delete posts
     if query_args.origin:
-        query = {"post_origin": query_args.origin, "isDeleted": False, "u": username}
+        query = {"u": username, "post_origin": query_args.origin, "isDeleted": False}
     else:
         query = {"u": username, "isDeleted": False}
     db.posts.update_many(

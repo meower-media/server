@@ -22,7 +22,7 @@ async def get_inbox_posts(query_args: GetInboxQueryArgs):
         abort(401)
 
     # Get and return posts
-    query = {"post_origin": "inbox", "isDeleted": False, "$or": [{"u": request.user}, {"u": "Server"}]}
+    query = {"u": {"$or": [request.user, "Server"]}, "post_origin": "inbox", "isDeleted": False}
     return {
         "error": False,
         "autoget": app.supporter.parse_posts_v0(db.posts.find(

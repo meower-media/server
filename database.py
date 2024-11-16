@@ -85,13 +85,14 @@ try:
     db.posts.create_index([
         ("post_origin", pymongo.ASCENDING),
         ("isDeleted", pymongo.ASCENDING),
-        ("t.e", pymongo.DESCENDING),
-        ("u", pymongo.ASCENDING)
+        ("t.e", pymongo.DESCENDING)
     ], name="default")
 except: pass
 try:
     db.posts.create_index([
-        ("u", pymongo.ASCENDING)
+        ("u", pymongo.ASCENDING),
+        ("post_origin", pymongo.ASCENDING),
+        ("t.e", pymongo.DESCENDING)
     ], name="user")
 except: pass
 try:
