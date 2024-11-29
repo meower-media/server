@@ -51,10 +51,12 @@ try:
         ("quote", pymongo.TEXT)
     ], name="search", partialFilterExpression={"pswd": {"$type": "string"}})
 except: pass
+"""
 try: db.usersv0.create_index([
         ("delete_after", pymongo.ASCENDING)
     ], name="scheduled_deletions", partialFilterExpression={"delete_after": {"$type": "number"}})
 except: pass
+"""
 
 # Create authenticators indexes
 try: db.authenticators.create_index([("user", pymongo.ASCENDING)], name="user")
@@ -68,17 +70,20 @@ except: pass
 try: db.relationships.create_index([("_id.from", pymongo.ASCENDING)], name="from")
 except: pass
 
-# Create netinfo indexes
+"""
 try: db.netinfo.create_index([("last_refreshed", pymongo.ASCENDING)], name="last_refreshed")
 except: pass
+"""
 
 # Create netlog indexes
 try: db.netlog.create_index([("_id.ip", pymongo.ASCENDING)], name="ip")
 except: pass
 try: db.netlog.create_index([("_id.user", pymongo.ASCENDING)], name="user")
 except: pass
+"""
 try: db.netlog.create_index([("last_used", pymongo.ASCENDING)], name="last_used")
 except: pass
+"""
 
 # Create posts indexes
 try:
@@ -100,13 +105,13 @@ try:
         ("p", pymongo.TEXT)
     ], name="search", partialFilterExpression={"post_origin": "home", "isDeleted": False})
 except: pass
-
+"""
 try:
     db.posts.create_index([
         ("deleted_at", pymongo.ASCENDING)
     ], name="scheduled_purges", partialFilterExpression={"isDeleted": True, "mod_deleted": False})
 except: pass
-
+"""
 try:
     db.posts.create_index([
         ("post_origin", pymongo.ASCENDING),
@@ -115,6 +120,7 @@ try:
     ], name="pinned_posts", partialFilterExpression={"pinned": True})
 except: pass
 
+"""
 # Create post revisions indexes
 try:
     db.post_revisions.create_index([
@@ -127,6 +133,7 @@ try:
         ("time", pymongo.ASCENDING)
     ], name="scheduled_purges")
 except: pass
+"""
 
 # Create chats indexes
 try:
@@ -165,6 +172,7 @@ try:
     ], name="all_reports")
 except: pass
 
+"""
 # Create audit log indexes
 try:
     db.audit_log.create_index([
@@ -172,6 +180,7 @@ try:
         ("type", pymongo.ASCENDING)
     ], name="scheduled_purges")
 except: pass
+"""
 
 # Create post reactions index
 try:

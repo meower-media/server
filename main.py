@@ -10,7 +10,7 @@ from threading import Thread
 
 from cloudlink import CloudlinkServer
 from supporter import Supporter
-from security import background_tasks_loop
+#from security import background_tasks_loop
 from rest_api import app as rest_api
 
 
@@ -23,7 +23,7 @@ if __name__ == "__main__":
     cl.supporter = supporter
 
     # Start background tasks loop
-    Thread(target=background_tasks_loop, daemon=True).start()
+    #Thread(target=background_tasks_loop, daemon=True).start()
 
     # Initialise REST API
     rest_api.cl = cl

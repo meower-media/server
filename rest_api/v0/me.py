@@ -93,16 +93,19 @@ async def delete_account(data: DeleteAccountBody):
     if not security.check_password_hash(data.password, account["pswd"]):
         security.ratelimit(f"login:u:{request.user}", 5, 60)
         return {"error": True, "type": "invalidCredentials"}, 401
-    
+
     # Schedule account for deletion
     db.usersv0.update_one({"_id": request.user}, {"$set": {
         "tokens": [],
-        "delete_after": int(time.time())+604800  # 7 days
+        "delete_after": int(time.time())
     }})
 
     # Disconnect clients
     for client in app.cl.usernames.get(request.user, []):
         client.kick()
+
+    # Delete account
+    security.delete_account(request.user)
 
     return {"error": False}, 200
 
